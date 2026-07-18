@@ -1,0 +1,7 @@
+# Erzwinge, dass alle Textdateien standardmäßig LF (Linux) nutzen
+* text eol=lf
+
+# Verhindere, dass Git Binärdateien (Bilder, etc.) anfasst
+*.png binary
+*.jpg binary
+*.ico binary
