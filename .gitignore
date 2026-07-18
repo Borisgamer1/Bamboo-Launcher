@@ -2,9 +2,13 @@
 node_modules/
 server/node_modules/
 
+# Lockfiles (project uses pnpm)
+package-lock.json
+
 # Environment variables
 .env
 .env.*
+*.local
 server/.env
 
 # Logs
@@ -15,6 +19,12 @@ server/admin.log
 # Build outputs
 dist/
 release/
+
+# Cache
+.eslintcache
+.vite/
+.cache/
+coverage/
 
 # OS files
 .DS_Store
@@ -27,4 +37,8 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Generated server content
+server/content/
+server/cosmetic_models/
 
