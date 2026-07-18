@@ -12,9 +12,10 @@
 		"electron": "electron .",
 		"dist": "electron-builder",
 		"release": "npm run build && electron-builder",
+		"postinstall": "cd server && npm install",
 		"server:start": "cd server && node start.js",
 		"server:stop": "cd server && node stop.js",
-		"start": "npm run server:start",
+		"start": "cd server && node render-entry.js",
 		"stop": "npm run server:stop"
 	},
 	"dependencies": {
