@@ -1232,7 +1232,7 @@ async function renderBanners() {
           <tbody>${bannersCache.map(b => `
             <tr>
               <td style="font-weight:600">${escapeHtml(b.title)}</td>
-              <td>${b.imageUrl?'<img src="'+b.imageUrl+'" style="height:36px;border-radius:6px;object-fit:cover" onerror="this.style.display=\\'none\\'">':'<span style="color:var(--text-muted)">—</span>'}</td>
+              <td>${b.imageUrl?'<img src="'+b.imageUrl+'" style="height:36px;border-radius:6px;object-fit:cover" onerror="this.style.display=\'none\'">':'<span style="color:var(--text-muted)">—</span>'}</td>
               <td style="color:var(--text-muted);font-size:12px">${b.sortOrder||0}</td>
               <td><span class="status-dot ${b.isActive?'active':'inactive'}"></span>${b.isActive?'Aktiv':'Inaktiv'}</td>
               <td>
