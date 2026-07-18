@@ -5,275 +5,343 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bamboo Admin Panel</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg-primary: #06060d;
+    --bg-secondary: #0a0b14;
+    --bg-tertiary: #0f101d;
+    --bg-card: #11121f;
+    --bg-hover: #16172b;
+    --border-subtle: #1a1b2f;
+    --border-default: #21233d;
+    --border-active: #10b981;
+    --text-primary: #e4e6f0;
+    --text-secondary: #8b8fa8;
+    --text-muted: #5b5f78;
+    --accent: #10b981;
+    --accent-hover: #059669;
+    --accent-dim: rgba(16,185,129,0.1);
+    --danger: #ef4444;
+    --danger-dim: rgba(239,68,68,0.12);
+    --warning: #f59e0b;
+    --info: #6366f1;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+    --font-mono: 'Cascadia Code','Fira Code','JetBrains Mono',Consolas,monospace;
+  }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #0a0a0f;
-    color: #e2e8f0;
+    font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
     min-height: 100vh;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
+
+  /* SVG Icon base */
+  .ico { width:18px; height:18px; flex-shrink:0; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .ico-sm { width:14px; height:14px; }
+  .ico-lg { width:22px; height:22px; }
+  .ico-xl { width:28px; height:28px; }
+
   /* ===== Login ===== */
-  #login-overlay {
-    position: fixed; inset: 0; z-index: 9999;
-    display: flex; align-items: center; justify-content: center;
-    background: radial-gradient(ellipse at center, #13131a 0%, #0a0a0f 100%);
-  }
-  #login-overlay.hidden { display: none; }
+  #login-overlay { position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center, #0a0b18 0%, #04050d 100%); }
+  #login-overlay.hidden { display:none; }
   .login-card {
-    background: #13131f; border: 1px solid #1e293b; border-radius: 20px;
-    padding: 40px; width: 380px; max-width: 90vw;
-    box-shadow: 0 25px 80px rgba(0,0,0,0.6);
+    background:var(--bg-card);border:1px solid var(--border-default);border-radius:var(--radius-xl);
+    padding:40px;width:400px;max-width:90vw;box-shadow:0 25px 80px rgba(0,0,0,0.6);
   }
-  .login-card .logo {
-    width: 56px; height: 56px; border-radius: 16px;
-    background: linear-gradient(135deg, #10b981, #059669);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 28px; margin-bottom: 20px;
-  }
-  .login-card h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 4px; }
-  .login-card p { font-size: 13px; color: #64748b; margin-bottom: 24px; }
-  .login-card label { font-size: 12px; font-weight: 600; color: #94a3b8; display: block; margin-bottom: 6px; }
+  .login-logo { width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;margin-bottom:20px; }
+  .login-card h1 { font-size:22px;font-weight:800;letter-spacing:-0.3px;margin-bottom:4px; }
+  .login-card .sub { font-size:13px;color:var(--text-muted);margin-bottom:24px; }
+  .login-card label { font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px; }
   .login-card input {
-    width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid #1e293b;
-    background: #0f172a; color: #e2e8f0; font-size: 14px; outline: none;
-    transition: border-color 0.2s; margin-bottom: 14px;
+    width:100%;padding:10px 14px;border-radius:var(--radius-md);border:1px solid var(--border-default);
+    background:var(--bg-secondary);color:var(--text-primary);font-size:14px;outline:none;
+    transition:border-color 0.2s;margin-bottom:14px;
   }
-  .login-card input:focus { border-color: #10b981; }
-  .login-card .error { color: #ef4444; font-size: 12px; margin-top: -8px; margin-bottom: 12px; display: none; }
+  .login-card input:focus { border-color:var(--accent); }
+  .login-card .error { color:var(--danger);font-size:12px;margin-top:-8px;margin-bottom:12px;display:none; }
   .login-card button {
-    width: 100%; padding: 12px; border: none; border-radius: 10px;
-    background: linear-gradient(135deg, #10b981, #059669); color: white;
-    font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity 0.2s;
+    width:100%;padding:12px;border:none;border-radius:var(--radius-md);
+    background:linear-gradient(135deg,var(--accent),var(--accent-hover));color:white;
+    font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;
   }
-  .login-card button:hover { opacity: 0.9; }
-  .login-card button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .login-card button:hover { opacity:0.9;transform:translateY(-1px); }
+  .login-card button:disabled { opacity:0.5;cursor:not-allowed;transform:none; }
 
   /* ===== Layout ===== */
-  #app { display: none; }
-  #app.active { display: flex; min-height: 100vh; }
+  #app { display:none; }
+  #app.active { display:flex;min-height:100vh; }
   .sidebar {
-    width: 240px; background: #0f0f18; border-right: 1px solid #1a1a2e;
-    padding: 20px 0; flex-shrink: 0; display: flex; flex-direction: column;
+    width:220px;background:var(--bg-secondary);border-right:1px solid var(--border-subtle);
+    padding:16px 0;flex-shrink:0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;
   }
-  .sidebar .brand {
-    padding: 0 20px 20px; border-bottom: 1px solid #1a1a2e; margin-bottom: 12px;
-    display: flex; align-items: center; gap: 12px;
-  }
-  .sidebar .brand .icon {
-    width: 36px; height: 36px; border-radius: 10px;
-    background: linear-gradient(135deg, #10b981, #059669);
-    display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
-  }
-  .sidebar .brand h2 { font-size: 15px; font-weight: 800; }
-  .sidebar .brand span { font-size: 10px; color: #64748b; font-weight: 500; }
-  .sidebar nav { flex: 1; overflow-y: auto; }
+  .sidebar .brand { padding:0 16px 16px;border-bottom:1px solid var(--border-subtle);margin-bottom:8px;display:flex;align-items:center;gap:10px; }
+  .sidebar .brand .icon { width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-hover));display:flex;align-items:center;justify-content:center;color:white; }
+  .sidebar .brand h2 { font-size:14px;font-weight:800;line-height:1.2; }
+  .sidebar .brand span { font-size:10px;color:var(--text-muted);font-weight:500;display:block; }
+  .sidebar nav { flex:1;overflow-y:auto;padding:4px 8px; }
+  .sidebar nav .nav-section { font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;padding:12px 12px 6px; }
   .sidebar nav button {
-    display: flex; align-items: center; gap: 10px; width: 100%;
-    padding: 10px 20px; border: none; background: transparent; color: #64748b;
-    font-size: 13px; font-weight: 600; cursor: pointer; text-align: left;
-    transition: all 0.15s; border-right: 2px solid transparent;
+    display:flex;align-items:center;gap:10px;width:100%;
+    padding:9px 12px;border:none;background:transparent;color:var(--text-secondary);
+    font-size:12.5px;font-weight:600;cursor:pointer;text-align:left;
+    border-radius:var(--radius-md);transition:all 0.15s;margin-bottom:1px;
   }
-  .sidebar nav button:hover { color: #e2e8f0; background: rgba(255,255,255,0.03); }
-  .sidebar nav button.active { color: #10b981; background: rgba(16,185,129,0.08); border-right-color: #10b981; }
-  .sidebar .user-info {
-    padding: 16px 20px; border-top: 1px solid #1a1a2e; font-size: 12px;
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .sidebar .user-info .name { color: #94a3b8; }
-  .sidebar .user-info .logout {
-    color: #ef4444; cursor: pointer; font-weight: 600; font-size: 11px;
-    padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.2);
-    background: rgba(239,68,68,0.08); transition: all 0.15s;
-  }
-  .sidebar .user-info .logout:hover { background: rgba(239,68,68,0.2); }
+  .sidebar nav button:hover { color:var(--text-primary);background:var(--bg-hover); }
+  .sidebar nav button.active { color:var(--accent);background:var(--accent-dim); }
+  .sidebar .user-info { padding:12px 16px;border-top:1px solid var(--border-subtle);font-size:12px;display:flex;align-items:center;justify-content:space-between;margin-top:auto; }
+  .sidebar .user-info .name { color:var(--text-secondary);font-weight:600; }
+  .sidebar .user-info .logout { color:var(--danger);cursor:pointer;font-weight:600;font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid rgba(239,68,68,0.2);background:rgba(239,68,68,0.08);transition:all 0.15s; }
+  .sidebar .user-info .logout:hover { background:var(--danger-dim); }
 
-  .main { flex: 1; padding: 24px 32px; overflow-y: auto; max-height: 100vh; }
+  .main { flex:1;padding:20px 28px;overflow-y:auto;max-height:100vh;background:var(--bg-primary); }
 
   /* ===== Components ===== */
-  .page-header { margin-bottom: 24px; }
-  .page-header h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
-  .page-header p { font-size: 13px; color: #64748b; margin-top: 4px; }
+  .page-header { margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px; }
+  .page-header h1 { font-size:22px;font-weight:800;letter-spacing:-0.3px;display:flex;align-items:center;gap:10px; }
+  .page-header p { font-size:12px;color:var(--text-muted);margin-top:2px; }
 
-  /* Stats Cards */
-  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stats-row { display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:10px;margin-bottom:20px; }
   .stat-card {
-    background: #11111e; border: 1px solid #1e293b; border-radius: 14px;
-    padding: 16px 20px;
+    background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);
+    padding:14px 18px;transition:border-color 0.2s;
   }
-  .stat-card .stat-value { font-size: 28px; font-weight: 800; }
-  .stat-card .stat-label { font-size: 12px; color: #64748b; margin-top: 2px; }
+  .stat-card:hover { border-color:var(--border-default); }
+  .stat-card .stat-value { font-size:26px;font-weight:800; }
+  .stat-card .stat-label { font-size:11px;color:var(--text-muted);margin-top:2px; }
 
-  /* Tables / Cards */
   .card {
-    background: #11111e; border: 1px solid #1e293b; border-radius: 14px;
-    overflow: hidden; margin-bottom: 16px;
+    background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);
+    overflow:hidden;margin-bottom:14px;
   }
   .card-header {
-    padding: 14px 20px; border-bottom: 1px solid #1a1a2e;
-    display: flex; align-items: center; justify-content: space-between;
+    padding:12px 18px;border-bottom:1px solid var(--border-subtle);
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
   }
-  .card-header h3 { font-size: 14px; font-weight: 700; }
-  .card-header .badge {
-    font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
-    background: rgba(16,185,129,0.1); color: #10b981; border: 1px solid rgba(16,185,129,0.2);
-  }
-  .card-body { padding: 16px 20px; overflow-x: auto; }
+  .card-header h3 { font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px; }
+  .card-body { padding:14px 18px; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  thead th {
-    text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 700;
-    color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;
-    border-bottom: 1px solid #1e293b;
-  }
-  tbody td { padding: 10px 12px; border-bottom: 1px solid #16162a; }
-  tbody tr:hover { background: rgba(255,255,255,0.02); }
-  tbody tr:last-child td { border-bottom: none; }
+  /* Buttons */
+  .btn { padding:7px 14px;border:none;border-radius:var(--radius-md);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap; }
+  .btn-primary { background:var(--accent);color:white; }
+  .btn-primary:hover { background:var(--accent-hover);transform:translateY(-1px); }
+  .btn-secondary { background:var(--info);color:white; }
+  .btn-secondary:hover { opacity:0.9; }
+  .btn-ghost { background:transparent;color:var(--text-secondary);border:1px solid var(--border-default); }
+  .btn-ghost:hover { background:var(--bg-hover);color:var(--text-primary);border-color:var(--text-muted); }
+  .btn-danger { background:var(--danger-dim);color:var(--danger);border:1px solid rgba(239,68,68,0.2); }
+  .btn-danger:hover { background:rgba(239,68,68,0.25); }
+  .btn-sm { padding:4px 10px;font-size:11px;border-radius:6px; }
+  .btn-xs { padding:3px 8px;font-size:10px;border-radius:5px; }
 
+  /* ===== Search & Filters ===== */
+  .toolbar { display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center; }
+  .search-box {
+    display:flex;align-items:center;gap:8px;background:var(--bg-card);border:1px solid var(--border-default);
+    border-radius:var(--radius-md);padding:0 12px;flex:1;min-width:200px;max-width:360px;
+    transition:border-color 0.2s;
+  }
+  .search-box:focus-within { border-color:var(--accent); }
+  .search-box input { flex:1;padding:8px 0;border:none;background:transparent;color:var(--text-primary);font-size:12.5px;outline:none; }
+  .search-box input::placeholder { color:var(--text-muted); }
+  .search-box .ico { color:var(--text-muted); }
+  .filter-select {
+    padding:8px 28px 8px 12px;border-radius:var(--radius-md);border:1px solid var(--border-default);
+    background:var(--bg-card);color:var(--text-primary);font-size:12px;font-weight:600;outline:none;
+    cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b8fa8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;
+  }
+  .filter-select:focus { border-color:var(--accent); }
+
+  /* ===== Asset Grid ===== */
+  .asset-grid { display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:12px; }
+  .asset-card {
+    background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);
+    padding:16px;cursor:pointer;transition:all 0.2s;position:relative;
+  }
+  .asset-card:hover { border-color:var(--border-default);background:var(--bg-hover);transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,0,0,0.3); }
+  .asset-card .asset-header { display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px; }
+  .asset-card .asset-name { font-size:14px;font-weight:700; }
+  .asset-card .asset-slug { font-size:11px;color:var(--text-muted);font-family:var(--font-mono); }
+  .asset-card .asset-desc { font-size:12px;color:var(--text-secondary);margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
+  .asset-card .asset-meta { display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap; }
+  .asset-card .asset-actions { display:flex;gap:4px;margin-top:12px;opacity:0;transition:opacity 0.15s; }
+  .asset-card:hover .asset-actions { opacity:1; }
+
+  /* Badges */
+  .badge { font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;display:inline-flex;align-items:center;gap:3px; }
+  .badge-published { background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.2); }
+  .badge-draft { background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2); }
+  .badge-archived { background:rgba(139,143,168,0.1);color:#8b8fa8;border:1px solid rgba(139,143,168,0.2); }
   .badge-type {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+    font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;
+    text-transform:uppercase;letter-spacing:0.3px;
   }
-  .badge-type.cape { background: rgba(99,102,241,0.1); color: #818cf8; border: 1px solid rgba(99,102,241,0.2); }
-  .badge-type.aura { background: rgba(168,85,247,0.1); color: #c084fc; border: 1px solid rgba(168,85,247,0.2); }
-  .badge-type.hat { background: rgba(245,158,11,0.1); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
-  .badge-type.ear { background: rgba(236,72,153,0.1); color: #f472b6; border: 1px solid rgba(236,72,153,0.2); }
-  .badge-type.wings { background: rgba(14,165,233,0.1); color: #38bdf8; border: 1px solid rgba(14,165,233,0.2); }
-  .badge-type.rank { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
-  .badge-type.other { background: rgba(148,163,184,0.1); color: #94a3b8; border: 1px solid rgba(148,163,184,0.2); }
+  .badge-cosmetic { background:rgba(99,102,241,0.1);color:#818cf8;border:1px solid rgba(99,102,241,0.2); }
+  .badge-theme { background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.2); }
+  .badge-background { background:rgba(14,165,233,0.1);color:#38bdf8;border:1px solid rgba(14,165,233,0.2); }
+  .badge-icon { background:rgba(236,72,153,0.1);color:#f472b6;border:1px solid rgba(236,72,153,0.2); }
+  .badge-music { background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.2); }
+  .badge-font { background:rgba(245,158,11,0.1);color:#fbbf24;border:1px solid rgba(245,158,11,0.2); }
+  .badge-shader { background:rgba(34,211,238,0.1);color:#22d3ee;border:1px solid rgba(34,211,238,0.2); }
+  .badge-other { background:rgba(148,163,184,0.1);color:#94a3b8;border:1px solid rgba(148,163,184,0.2); }
+  .badge-resource_pack { background:rgba(59,130,246,0.1);color:#60a5fa;border:1px solid rgba(59,130,246,0.2); }
+  .badge-ui_asset { background:rgba(20,184,166,0.1);color:#2dd4bf;border:1px solid rgba(20,184,166,0.2); }
 
-  .badge-rarity {
-    display: inline-flex; align-items: center; gap: 3px;
-    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 6px;
-  }
-  .badge-rarity.common { background: rgba(148,163,184,0.1); color: #94a3b8; border: 1px solid rgba(148,163,184,0.2); }
-  .badge-rarity.rare { background: rgba(96,165,250,0.1); color: #93c5fd; border: 1px solid rgba(96,165,250,0.2); }
-  .badge-rarity.epic { background: rgba(168,85,247,0.1); color: #c084fc; border: 1px solid rgba(168,85,247,0.2); }
-  .badge-rarity.legendary { background: rgba(251,191,36,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
-  .badge-rarity.mythic { background: rgba(251,146,60,0.1); color: #fb923c; border: 1px solid rgba(251,146,60,0.2); }
+  /* ===== Table ===== */
+  .data-table { width:100%;border-collapse:collapse;font-size:13px; }
+  .data-table thead th { text-align:left;padding:10px 14px;font-size:10.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border-subtle); }
+  .data-table tbody td { padding:10px 14px;border-bottom:1px solid var(--border-subtle); }
+  .data-table tbody tr:hover { background:rgba(255,255,255,0.015); }
+  .data-table tbody tr:last-child td { border-bottom:none; }
+  .data-table .sort-th { cursor:pointer;user-select:none;transition:color 0.15s; }
+  .data-table .sort-th:hover { color:var(--text-primary); }
+  .data-table .sort-th.active { color:var(--accent); }
 
-  .status-dot {
-    display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px;
+  /* ===== Modal ===== */
+  .modal-overlay { position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center; }
+  .modal-overlay.open { display:flex; }
+  .modal { background:var(--bg-card);border:1px solid var(--border-default);border-radius:var(--radius-xl);padding:0;width:680px;max-width:95vw;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 25px 80px rgba(0,0,0,0.5); }
+  .modal-header { padding:18px 24px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;justify-content:space-between; }
+  .modal-header h2 { font-size:16px;font-weight:700; }
+  .modal-body { padding:20px 24px;overflow-y:auto;flex:1; }
+  .modal-body label { font-size:11px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px;margin-top:14px;text-transform:uppercase;letter-spacing:0.5px; }
+  .modal-body label:first-child { margin-top:0; }
+  .modal-body input, .modal-body select, .modal-body textarea {
+    width:100%;padding:9px 12px;border-radius:var(--radius-md);border:1px solid var(--border-default);
+    background:var(--bg-secondary);color:var(--text-primary);font-size:13px;outline:none;
+    transition:border-color 0.2s;font-family:inherit;
   }
-  .status-dot.active { background: #10b981; box-shadow: 0 0 8px rgba(16,185,129,0.4); }
-  .status-dot.inactive { background: #64748b; }
+  .modal-body input:focus, .modal-body select:focus, .modal-body textarea:focus { border-color:var(--accent); }
+  .modal-body textarea { min-height:70px;resize:vertical; }
+  .modal-footer { padding:14px 24px;border-top:1px solid var(--border-subtle);display:flex;gap:8px;justify-content:flex-end; }
 
-  .btn {
-    padding: 6px 14px; border: none; border-radius: 8px; font-size: 12px; font-weight: 600;
-    cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 4px;
-  }
-  .btn-primary { background: #10b981; color: white; }
-  .btn-primary:hover { background: #059669; }
-  .btn-sm { padding: 4px 10px; font-size: 11px; border-radius: 6px; }
-  .btn-ghost { background: transparent; color: #64748b; border: 1px solid #1e293b; }
-  .btn-ghost:hover { background: rgba(255,255,255,0.05); color: #e2e8f0; }
-  .btn-danger { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
-  .btn-danger:hover { background: rgba(239,68,68,0.2); }
+  .form-row { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+  .form-row-3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px; }
 
-  .empty-state {
-    text-align: center; padding: 40px 20px; color: #64748b;
-  }
-  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
-  .empty-state p { font-size: 13px; }
-  .loading { text-align: center; padding: 40px; color: #64748b; }
-  .spinner {
-    display: inline-block; width: 20px; height: 20px; border: 2px solid #1e293b;
-    border-top-color: #10b981; border-radius: 50%; animation: spin 0.6s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Tabs */
+  .tab-nav { display:flex;gap:2px;background:var(--bg-secondary);border-radius:var(--radius-md);padding:3px;margin-bottom:14px; }
+  .tab-nav button { padding:7px 14px;border:none;border-radius:var(--radius-md);font-size:12px;font-weight:600;background:transparent;color:var(--text-secondary);cursor:pointer;transition:all 0.15s; }
+  .tab-nav button.active { background:var(--bg-card);color:var(--text-primary);box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+  .tab-nav button:hover:not(.active) { color:var(--text-primary); }
 
-  .toast {
-    position: fixed; bottom: 24px; right: 24px; z-index: 10000;
-    padding: 12px 20px; border-radius: 10px; font-size: 13px; font-weight: 600;
-    display: none; align-items: center; gap: 8px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-  }
-  .toast.show { display: flex; }
-  .toast.success { background: #065f46; border: 1px solid #10b981; color: #a7f3d0; }
-  .toast.error { background: #7f1d1d; border: 1px solid #ef4444; color: #fca5a5; }
+  /* Toast */
+  .toast { position:fixed;bottom:24px;right:24px;z-index:10000;padding:12px 20px;border-radius:var(--radius-md);font-size:13px;font-weight:600;display:none;align-items:center;gap:8px;box-shadow:0 10px 40px rgba(0,0,0,0.5);max-width:400px; }
+  .toast.show { display:flex; }
+  .toast.success { background:#065f46;border:1px solid var(--accent);color:#a7f3d0; }
+  .toast.error { background:#7f1d1d;border:1px solid var(--danger);color:#fca5a5; }
+  .toast.info { background:#1e3a5f;border:1px solid var(--info);color:#a5b4fc; }
 
-  /* Modal */
-  .modal-overlay {
-    position: fixed; inset: 0; z-index: 9998;
-    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
-    display: none; align-items: center; justify-content: center;
-  }
-  .modal-overlay.open { display: flex; }
-  .modal {
-    background: #13131f; border: 1px solid #1e293b; border-radius: 20px;
-    padding: 28px; width: 520px; max-width: 90vw; max-height: 85vh; overflow-y: auto;
-  }
-  .modal h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
-  .modal .sub { font-size: 12px; color: #64748b; margin-bottom: 20px; }
-  .modal label { font-size: 12px; font-weight: 600; color: #94a3b8; display: block; margin-bottom: 4px; margin-top: 12px; }
-  .modal input, .modal select, .modal textarea {
-    width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #1e293b;
-    background: #0f172a; color: #e2e8f0; font-size: 13px; outline: none;
-    transition: border-color 0.2s;
-  }
-  .modal input:focus, .modal select:focus, .modal textarea:focus { border-color: #10b981; }
-  .modal textarea { min-height: 80px; resize: vertical; }
-  .modal .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
-  .modal .modal-actions .btn { padding: 8px 18px; }
+  /* File list in modal */
+  .file-list { display:flex;flex-direction:column;gap:6px; }
+  .file-item { display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius-md);background:var(--bg-secondary);border:1px solid var(--border-subtle);font-size:12px;transition:all 0.15s; }
+  .file-item:hover { border-color:var(--border-default); }
+  .file-item .file-icon { color:var(--text-muted); }
+  .file-item .file-name { flex:1;font-weight:600;font-family:var(--font-mono);font-size:11px; }
+  .file-item .file-type { font-size:10px;color:var(--text-muted);text-transform:uppercase; }
+  .file-item .file-size { font-size:10px;color:var(--text-muted);min-width:50px;text-align:right; }
 
-  #app-content .page { display: none; }
-  #app-content .page.active { display: block; }
+  /* Empty state */
+  .empty-state { text-align:center;padding:48px 20px;color:var(--text-muted); }
+  .empty-state .ico { width:42px;height:42px;margin:0 auto 12px;opacity:0.5; }
+  .empty-state h3 { font-size:15px;color:var(--text-secondary);margin-bottom:4px; }
+  .empty-state p { font-size:12px; }
 
-  .tab-bar { display: flex; gap: 2px; background: #0f0f18; border-radius: 10px; padding: 3px; margin-bottom: 16px; }
-  .tab-bar button {
-    padding: 6px 14px; border: none; border-radius: 8px; font-size: 12px; font-weight: 600;
-    background: transparent; color: #64748b; cursor: pointer; transition: all 0.15s;
-  }
-  .tab-bar button.active { background: #1e293b; color: #e2e8f0; }
-  .tab-bar button:hover:not(.active) { color: #94a3b8; }
+  .loading { text-align:center;padding:40px;color:var(--text-muted); }
+  .spinner { display:inline-block;width:22px;height:22px;border:2px solid var(--border-default);border-top-color:var(--accent);border-radius:50%;animation:spin 0.6s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
 
-  /* Upload Area */
-  .upload-zone {
-    border: 2px dashed #1e293b; border-radius: 14px; padding: 32px;
-    text-align: center; cursor: pointer; transition: all 0.2s;
-    background: #0d0d16;
-  }
-  .upload-zone:hover, .upload-zone.drag-over { border-color: #10b981; background: rgba(16,185,129,0.05); }
-  .upload-zone .icon-upload { font-size: 36px; margin-bottom: 8px; }
-  .upload-zone p { font-size: 13px; color: #64748b; margin: 4px 0; }
-  .upload-zone .browse-link { color: #10b981; font-weight: 600; cursor: pointer; text-decoration: underline; }
-  .upload-progress {
-    margin-top: 12px; height: 6px; border-radius: 3px; background: #1e293b;
-    overflow: hidden; display: none;
-  }
-  .upload-progress.active { display: block; }
-  .upload-progress .fill {
-    height: 100%; background: linear-gradient(90deg, #10b981, #34d399);
-    border-radius: 3px; transition: width 0.3s;
-  }
+  #app-content .page { display:none; }
+  #app-content .page.active { display:block; }
 
-  /* Manifest JSON View */
-  .json-view {
-    font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px;
-    background: #0a0a12; border: 1px solid #1e293b; border-radius: 10px;
-    padding: 16px; max-height: 400px; overflow: auto; white-space: pre-wrap;
-    word-break: break-all; color: #94a3b8; line-height: 1.5;
-  }
+  /* Tag input */
+  .tag-input-wrap { display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:6px 8px;border-radius:var(--radius-md);border:1px solid var(--border-default);background:var(--bg-secondary);min-height:38px;cursor:text;transition:border-color 0.2s; }
+  .tag-input-wrap:focus-within { border-color:var(--accent); }
+  .tag { font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;gap:3px;border:1px solid rgba(16,185,129,0.2); }
+  .tag .tag-close { cursor:pointer;opacity:0.6;transition:opacity 0.15s; }
+  .tag .tag-close:hover { opacity:1; }
+  .tag-input { border:none;background:transparent;color:var(--text-primary);font-size:12px;outline:none;min-width:60px;flex:1;padding:2px 4px; }
 
-  .file-list-item {
-    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-    border-bottom: 1px solid #16162a; font-size: 13px; transition: background 0.15s;
-  }
-  .file-list-item:hover { background: rgba(255,255,255,0.02); }
-  .file-list-item .icon { font-size: 16px; width: 24px; text-align: center; }
-  .file-list-item .name { flex: 1; font-weight: 500; }
-  .file-list-item .size { color: #64748b; font-size: 11px; min-width: 60px; text-align: right; }
-  .file-list-item .actions { display: flex; gap: 4px; }
+  /* Tooltip for sidebar text */
+  .nav-label { font-size:12.5px;font-weight:600; }
 </style>
 </head>
 <body>
 
+<!-- ===== SVG Icon Definitions ===== -->
+<svg style="display:none" aria-hidden="true">
+  <defs>
+    <!-- Dashboard -->
+    <symbol id="ico-layout-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+    <!-- Package/Box for Assets -->
+    <symbol id="ico-package" viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
+    <!-- Sparkles for Cosmetics -->
+    <symbol id="ico-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/></symbol>
+    <!-- Newspaper for News -->
+    <symbol id="ico-newspaper" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></symbol>
+    <!-- Calendar for Events -->
+    <symbol id="ico-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
+    <!-- Image for Banners -->
+    <symbol id="ico-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
+    <!-- Plus -->
+    <symbol id="ico-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+    <!-- Search -->
+    <symbol id="ico-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <!-- Filter -->
+    <symbol id="ico-filter" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></symbol>
+    <!-- Edit -->
+    <symbol id="ico-edit" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
+    <!-- Trash -->
+    <symbol id="ico-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></symbol>
+    <!-- Toggle/Visibility -->
+    <symbol id="ico-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="ico-eye-off" viewBox="0 0 24 24"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></symbol>
+    <!-- Archive -->
+    <symbol id="ico-archive" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></symbol>
+    <!-- Upload -->
+    <symbol id="ico-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+    <!-- Download -->
+    <symbol id="ico-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <!-- File -->
+    <symbol id="ico-file" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></symbol>
+    <!-- Folder -->
+    <symbol id="ico-folder" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></symbol>
+    <!-- Tag -->
+    <symbol id="ico-tag" viewBox="0 0 24 24"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></symbol>
+    <!-- User -->
+    <symbol id="ico-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <!-- Log Out -->
+    <symbol id="ico-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+    <!-- Refresh -->
+    <symbol id="ico-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+    <!-- Chevron (dropdown arrow) -->
+    <symbol id="ico-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <!-- X/Close -->
+    <symbol id="ico-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <!-- Check -->
+    <symbol id="ico-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    <!-- Alert -->
+    <symbol id="ico-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+    <!-- Settings -->
+    <symbol id="ico-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></symbol>
+    <!-- Database -->
+    <symbol id="ico-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></symbol>
+    <!-- Server -->
+    <symbol id="ico-server" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
+    <!-- Bamboo logo SVG (simple bamboo stalk) -->
+    <symbol id="ico-bamboo" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M8 6h8"/><path d="M7 11h10"/><path d="M9 16h6"/><path d="M15 4l1 3"/><path d="M9 4L8 7"/><path d="M16 9l1 3"/><path d="M8 9l-1 3"/><path d="M14 14l1 3"/><path d="M10 14l-1 3"/></symbol>
+  </defs>
+</svg>
+
 <!-- ===== Login Overlay ===== -->
 <div id="login-overlay">
   <div class="login-card">
-    <div class="logo">🎋</div>
+    <div class="login-logo"><svg class="ico ico-lg" style="color:white"><use href="#ico-bamboo"/></svg></div>
     <h1>Admin Panel</h1>
-    <p>Bamboo Backend Verwaltung</p>
+    <p class="sub">Bamboo Backend Verwaltung</p>
     <label>Benutzername</label>
     <input type="text" id="login-user" value="admin" autocomplete="username">
     <label>Passwort</label>
@@ -290,16 +358,30 @@
 <div id="app">
   <aside class="sidebar">
     <div class="brand">
-      <div class="icon">🎋</div>
+      <div class="icon"><svg class="ico ico-sm" style="color:white"><use href="#ico-bamboo"/></svg></div>
       <div><h2>Bamboo</h2><span>Admin Panel</span></div>
     </div>
     <nav>
-      <button class="active" data-page="dashboard" onclick="switchPage('dashboard')">📊 Dashboard</button>
-      <button data-page="cosmetics" onclick="switchPage('cosmetics')">✨ Cosmetics</button>
-      <button data-page="news" onclick="switchPage('news')">📰 News</button>
-      <button data-page="events" onclick="switchPage('events')">📅 Events</button>
-      <button data-page="banners" onclick="switchPage('banners')">🖼 Banners</button>
-      <button data-page="content" onclick="switchPage('content')">📦 Content</button>
+      <div class="nav-section">Verwaltung</div>
+      <button class="active" data-page="dashboard" onclick="switchPage('dashboard')">
+        <svg class="ico"><use href="#ico-layout-dashboard"/></svg><span class="nav-label">Dashboard</span>
+      </button>
+      <button data-page="assets" onclick="switchPage('assets')">
+        <svg class="ico"><use href="#ico-package"/></svg><span class="nav-label">Asset Manager</span>
+      </button>
+      <div class="nav-section" style="margin-top:8px">Inhalte</div>
+      <button data-page="cosmetics" onclick="switchPage('cosmetics')">
+        <svg class="ico"><use href="#ico-sparkles"/></svg><span class="nav-label">Cosmetics</span>
+      </button>
+      <button data-page="news" onclick="switchPage('news')">
+        <svg class="ico"><use href="#ico-newspaper"/></svg><span class="nav-label">News</span>
+      </button>
+      <button data-page="events" onclick="switchPage('events')">
+        <svg class="ico"><use href="#ico-calendar"/></svg><span class="nav-label">Events</span>
+      </button>
+      <button data-page="banners" onclick="switchPage('banners')">
+        <svg class="ico"><use href="#ico-image"/></svg><span class="nav-label">Banners</span>
+      </button>
     </nav>
     <div class="user-info">
       <span class="name" id="sidebar-user">admin</span>
@@ -308,41 +390,146 @@
   </aside>
   <main class="main">
     <div id="app-content">
-      <!-- Dashboard -->
       <div class="page active" id="page-dashboard"></div>
-      <!-- Cosmetics -->
+      <div class="page" id="page-assets"></div>
       <div class="page" id="page-cosmetics"></div>
-      <!-- News -->
       <div class="page" id="page-news"></div>
-      <!-- Events -->
       <div class="page" id="page-events"></div>
-      <!-- Banners -->
       <div class="page" id="page-banners"></div>
-      <!-- Content -->
-      <div class="page" id="page-content"></div>
     </div>
   </main>
 </div>
 
-<!-- ===== Cosmetic Modal ===== -->
+<!-- ===== Asset Editor Modal ===== -->
+<div class="modal-overlay" id="asset-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="asset-modal-title">Neues Asset</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('asset-modal')">
+        <svg class="ico ico-sm"><use href="#ico-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="tab-nav" id="asset-modal-tabs">
+        <button class="active" data-tab="meta">Metadaten</button>
+        <button data-tab="files">Dateien</button>
+        <button data-tab="preview">Vorschau</button>
+      </div>
+      <input type="hidden" id="asset-id">
+      <!-- Meta Tab -->
+      <div id="tab-meta" class="asset-tab">
+        <label>Slug (eindeutige ID)</label>
+        <input type="text" id="asset-slug" placeholder="z.B. duck-crown">
+        <label>Name</label>
+        <input type="text" id="asset-name" placeholder="Asset Name">
+        <label>Beschreibung</label>
+        <textarea id="asset-desc" placeholder="Kurze Beschreibung..."></textarea>
+        <div class="form-row-3">
+          <div>
+            <label>Typ</label>
+            <select id="asset-type">
+              <option value="cosmetic">Cosmetic</option><option value="theme">Theme</option>
+              <option value="background">Background</option><option value="icon">Icon</option>
+              <option value="ui_asset">UI Asset</option><option value="music">Music</option>
+              <option value="shader">Shader</option><option value="resource_pack">Resource Pack</option>
+              <option value="font">Font</option><option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label>Status</label>
+            <select id="asset-status">
+              <option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option>
+            </select>
+          </div>
+          <div>
+            <label>Version</label>
+            <input type="number" id="asset-version" value="1" min="1">
+          </div>
+        </div>
+        <div class="form-row">
+          <div><label>Kategorie</label><input type="text" id="asset-category" placeholder="z.B. hats"></div>
+          <div><label>Sortierung</label><input type="number" id="asset-sort" value="0" min="0"></div>
+        </div>
+        <label>Tags</label>
+        <div class="tag-input-wrap" id="tag-wrap">
+          <div id="tags-display"></div>
+          <input type="text" class="tag-input" id="tag-input" placeholder="Tag eingeben & Enter...">
+        </div>
+        <div class="form-row">
+          <div><label>Thumbnail URL</label><input type="text" id="asset-thumbnail" placeholder="https://..."></div>
+          <div><label>Preview URL</label><input type="text" id="asset-preview" placeholder="https://..."></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);font-weight:400;margin-top:12px">
+          <input type="checkbox" id="asset-active" checked> Aktiv
+        </label>
+      </div>
+      <!-- Files Tab -->
+      <div id="tab-files" class="asset-tab" style="display:none">
+        <div class="file-list" id="asset-files-list">
+          <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px">
+            <svg class="ico ico-lg" style="margin:0 auto 8px;opacity:0.4"><use href="#ico-file"/></svg>
+            <p>Keine Dateien. Speichere das Asset zuerst,<br>dann kannst du Dateien hinzufügen.</p>
+          </div>
+        </div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-subtle)">
+          <label>Datei hinzufügen</label>
+          <div class="form-row">
+            <div><input type="text" id="new-file-name" placeholder="Dateiname (z.B. model.glb)"></div>
+            <div>
+              <select id="new-file-type">
+                <option value="texture">Texture</option><option value="model">Model</option>
+                <option value="icon">Icon</option><option value="preview">Preview</option>
+                <option value="manifest">Manifest</option><option value="audio">Audio</option>
+                <option value="shader">Shader</option><option value="font">Font</option><option value="config">Config</option><option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:8px"><input type="text" id="new-file-path" placeholder="Dateipfad (z.B. textures/diffuse.png)"></div>
+          <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="addAssetFile()">
+            <svg class="ico ico-sm"><use href="#ico-plus"/></svg>Datei hinzufügen
+          </button>
+        </div>
+      </div>
+      <!-- Preview Tab -->
+      <div id="tab-preview" class="asset-tab" style="display:none">
+        <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px">
+          <svg class="ico ico-lg" style="margin:0 auto 8px;opacity:0.4"><use href="#ico-image"/></svg>
+          <p>Vorschau wird beim Speichern aktualisiert</p>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('asset-modal')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveAsset()">
+        <svg class="ico ico-sm"><use href="#ico-check"/></svg>Speichern
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Cosmetics Modal (kept from original, de-emojified) ===== -->
 <div class="modal-overlay" id="cosmetic-modal">
   <div class="modal">
-    <h2 id="cosmetic-modal-title">Neues Cosmetic</h2>
-    <p class="sub" id="cosmetic-modal-sub">Erstelle ein neues kosmetisches Item</p>
-    <input type="hidden" id="cosmetic-id">
-    <label>Slug (eindeutige ID)</label>
-    <input type="text" id="cosmetic-slug" placeholder="z.B. dragon-wing">
-    <label>Name</label>
-    <input type="text" id="cosmetic-name" placeholder="Dragon Wing">
-    <label>Beschreibung</label>
-    <textarea id="cosmetic-desc" placeholder="Eine kurze Beschreibung..."></textarea>
-    <div class="form-row">
-      <div><label>Typ</label><select id="cosmetic-type"><option value="cape">Cape</option><option value="aura">Aura</option><option value="hat">Hat</option><option value="ear">Ears</option><option value="rank">Rank</option><option value="other">Other</option></select></div>
-      <div><label>Seltenheit</label><select id="cosmetic-rarity"><option value="common">Common</option><option value="rare">Rare</option><option value="epic">Epic</option><option value="legendary">Legendary</option><option value="mythic">Mythic</option></select></div>
+    <div class="modal-header">
+      <h2 id="cosmetic-modal-title">Neues Cosmetic</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('cosmetic-modal')"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
     </div>
-    <label>Preview URL (optional)</label>
-    <input type="text" id="cosmetic-preview" placeholder="https://...">
-    <div class="modal-actions">
+    <div class="modal-body">
+      <input type="hidden" id="cosmetic-id">
+      <label>Slug (eindeutige ID)</label>
+      <input type="text" id="cosmetic-slug" placeholder="z.B. dragon-wing">
+      <label>Name</label>
+      <input type="text" id="cosmetic-name" placeholder="Dragon Wing">
+      <label>Beschreibung</label>
+      <textarea id="cosmetic-desc" placeholder="Eine kurze Beschreibung..."></textarea>
+      <div class="form-row">
+        <div><label>Typ</label><select id="cosmetic-type"><option value="cape">Cape</option><option value="aura">Aura</option><option value="hat">Hat</option><option value="ear">Ears</option><option value="rank">Rank</option><option value="other">Other</option></select></div>
+        <div><label>Seltenheit</label><select id="cosmetic-rarity"><option value="common">Common</option><option value="rare">Rare</option><option value="epic">Epic</option><option value="legendary">Legendary</option><option value="mythic">Mythic</option></select></div>
+      </div>
+      <label>Preview URL (optional)</label>
+      <input type="text" id="cosmetic-preview" placeholder="https://...">
+    </div>
+    <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('cosmetic-modal')">Abbrechen</button>
       <button class="btn btn-primary" onclick="saveCosmetic()">Speichern</button>
     </div>
@@ -352,32 +539,29 @@
 <!-- ===== News Modal ===== -->
 <div class="modal-overlay" id="news-modal">
   <div class="modal">
-    <h2 id="news-modal-title">Neuer News-Eintrag</h2>
-    <p class="sub" id="news-modal-sub">Erstelle einen neuen News-Artikel</p>
-    <input type="hidden" id="news-id">
-    <label>Titel</label>
-    <input type="text" id="news-title" placeholder="News Titel">
-    <label>Untertitel</label>
-    <input type="text" id="news-subtitle" placeholder="Optionaler Untertitel">
-    <label>Inhalt</label>
-    <textarea id="news-content" placeholder="Artikelinhalt..." style="min-height:120px"></textarea>
-    <div class="form-row">
-      <div><label>Kategorie</label><input type="text" id="news-category" placeholder="general" value="general"></div>
-      <div><label>Banner URL</label><input type="text" id="news-banner" placeholder="https://..."></div>
+    <div class="modal-header">
+      <h2 id="news-modal-title">Neuer News-Eintrag</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('news-modal')"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
     </div>
-    <div class="form-row">
-      <div><label>Veröffentlicht am</label><input type="datetime-local" id="news-published"></div>
-      <div><label>Game Version</label><input type="text" id="news-version" placeholder="z.B. 1.21"></div>
+    <div class="modal-body">
+      <input type="hidden" id="news-id">
+      <label>Titel</label><input type="text" id="news-title" placeholder="News Titel">
+      <label>Untertitel</label><input type="text" id="news-subtitle" placeholder="Optionaler Untertitel">
+      <label>Inhalt</label><textarea id="news-content" placeholder="Artikelinhalt..." style="min-height:120px"></textarea>
+      <div class="form-row">
+        <div><label>Kategorie</label><input type="text" id="news-category" placeholder="general" value="general"></div>
+        <div><label>Banner URL</label><input type="text" id="news-banner" placeholder="https://..."></div>
+      </div>
+      <div class="form-row">
+        <div><label>Veröffentlicht am</label><input type="datetime-local" id="news-published"></div>
+        <div><label>Game Version</label><input type="text" id="news-version" placeholder="z.B. 1.21"></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:12px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:400"><input type="checkbox" id="news-visible" checked> Sichtbar</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:400"><input type="checkbox" id="news-pinned"> Angepinnt</label>
+      </div>
     </div>
-    <div style="display:flex;gap:16px;margin-top:12px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8;font-weight:400">
-        <input type="checkbox" id="news-visible" checked> Sichtbar
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8;font-weight:400">
-        <input type="checkbox" id="news-pinned"> Angepinnt
-      </label>
-    </div>
-    <div class="modal-actions">
+    <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('news-modal')">Abbrechen</button>
       <button class="btn btn-primary" onclick="saveNews()">Speichern</button>
     </div>
@@ -387,36 +571,33 @@
 <!-- ===== Events Modal ===== -->
 <div class="modal-overlay" id="events-modal">
   <div class="modal">
-    <h2 id="events-modal-title">Neues Event</h2>
-    <p class="sub" id="events-modal-sub">Erstelle ein neues Event</p>
-    <input type="hidden" id="event-id">
-    <label>Titel</label>
-    <input type="text" id="event-title" placeholder="Event Titel">
-    <label>Untertitel</label>
-    <input type="text" id="event-subtitle" placeholder="Optionaler Untertitel">
-    <label>Beschreibung</label>
-    <textarea id="event-desc" placeholder="Eventbeschreibung..." style="min-height:80px"></textarea>
-    <div class="form-row">
-      <div><label>Kategorie</label><input type="text" id="event-category" placeholder="general" value="general"></div>
-      <div><label>Banner URL</label><input type="text" id="event-banner" placeholder="https://..."></div>
+    <div class="modal-header">
+      <h2 id="events-modal-title">Neues Event</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('events-modal')"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
     </div>
-    <div class="form-row">
-      <div><label>Startdatum</label><input type="datetime-local" id="event-start"></div>
-      <div><label>Enddatum</label><input type="datetime-local" id="event-end"></div>
+    <div class="modal-body">
+      <input type="hidden" id="event-id">
+      <label>Titel</label><input type="text" id="event-title" placeholder="Event Titel">
+      <label>Untertitel</label><input type="text" id="event-subtitle" placeholder="Optionaler Untertitel">
+      <label>Beschreibung</label><textarea id="event-desc" placeholder="Eventbeschreibung..." style="min-height:80px"></textarea>
+      <div class="form-row">
+        <div><label>Kategorie</label><input type="text" id="event-category" placeholder="general" value="general"></div>
+        <div><label>Banner URL</label><input type="text" id="event-banner" placeholder="https://..."></div>
+      </div>
+      <div class="form-row">
+        <div><label>Startdatum</label><input type="datetime-local" id="event-start"></div>
+        <div><label>Enddatum</label><input type="datetime-local" id="event-end"></div>
+      </div>
+      <div class="form-row">
+        <div><label>Priorität</label><input type="number" id="event-priority" value="0" min="0"></div>
+        <div><label>Autor</label><input type="text" id="event-author" placeholder="Bamboo Team" value="Bamboo Team"></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:12px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:400"><input type="checkbox" id="event-active" checked> Aktiv</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:400"><input type="checkbox" id="event-visible" checked> Sichtbar</label>
+      </div>
     </div>
-    <div class="form-row">
-      <div><label>Priorität</label><input type="number" id="event-priority" value="0" min="0"></div>
-      <div><label>Autor</label><input type="text" id="event-author" placeholder="Bamboo Team" value="Bamboo Team"></div>
-    </div>
-    <div style="display:flex;gap:16px;margin-top:12px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8;font-weight:400">
-        <input type="checkbox" id="event-active" checked> Aktiv
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8;font-weight:400">
-        <input type="checkbox" id="event-visible" checked> Sichtbar
-      </label>
-    </div>
-    <div class="modal-actions">
+    <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('events-modal')">Abbrechen</button>
       <button class="btn btn-primary" onclick="saveEvent()">Speichern</button>
     </div>
@@ -426,29 +607,28 @@
 <!-- ===== Banners Modal ===== -->
 <div class="modal-overlay" id="banners-modal">
   <div class="modal">
-    <h2 id="banners-modal-title">Neues Banner</h2>
-    <p class="sub" id="banners-modal-sub">Erstelle ein neues Banner</p>
-    <input type="hidden" id="banner-id">
-    <label>Titel</label>
-    <input type="text" id="banner-title" placeholder="Banner Titel">
-    <label>Bild URL</label>
-    <input type="text" id="banner-image" placeholder="https://...">
-    <label>Beschreibung</label>
-    <textarea id="banner-desc" placeholder="Kurze Beschreibung..." style="min-height:60px"></textarea>
-    <div class="form-row">
-      <div><label>Link-Ziel</label><input type="text" id="banner-target" placeholder="https://..."></div>
-      <div><label>Link-Typ</label><select id="banner-clicktype"><option value="external">External</option><option value="internal">Internal</option><option value="none">None</option></select></div>
+    <div class="modal-header">
+      <h2 id="banners-modal-title">Neues Banner</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('banners-modal')"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
     </div>
-    <div class="form-row">
-      <div><label>Sortierung</label><input type="number" id="banner-sort" value="0" min="0"></div>
-      <div><label>Priorität</label><input type="number" id="banner-priority" value="0" min="0"></div>
+    <div class="modal-body">
+      <input type="hidden" id="banner-id">
+      <label>Titel</label><input type="text" id="banner-title" placeholder="Banner Titel">
+      <label>Bild URL</label><input type="text" id="banner-image" placeholder="https://...">
+      <label>Beschreibung</label><textarea id="banner-desc" placeholder="Kurze Beschreibung..." style="min-height:60px"></textarea>
+      <div class="form-row">
+        <div><label>Link-Ziel</label><input type="text" id="banner-target" placeholder="https://..."></div>
+        <div><label>Link-Typ</label><select id="banner-clicktype"><option value="external">External</option><option value="internal">Internal</option><option value="none">None</option></select></div>
+      </div>
+      <div class="form-row">
+        <div><label>Sortierung</label><input type="number" id="banner-sort" value="0" min="0"></div>
+        <div><label>Priorität</label><input type="number" id="banner-priority" value="0" min="0"></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:12px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:400"><input type="checkbox" id="banner-active" checked> Aktiv</label>
+      </div>
     </div>
-    <div style="display:flex;gap:16px;margin-top:12px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8;font-weight:400">
-        <input type="checkbox" id="banner-active" checked> Aktiv
-      </label>
-    </div>
-    <div class="modal-actions">
+    <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('banners-modal')">Abbrechen</button>
       <button class="btn btn-primary" onclick="saveBanner()">Speichern</button>
     </div>
@@ -457,101 +637,90 @@
 
 <script>
 const API = '';
-
 let token = localStorage.getItem('bamboo_admin_token') || '';
 let user = JSON.parse(localStorage.getItem('bamboo_admin_user') || 'null');
+let assetsCache = [];
 let cosmeticsCache = [];
+let newsCache = [];
+let eventsCache = [];
+let bannersCache = [];
+let editingAssetTags = [];
 
-// ===== Auth =====
+// ===== Helpers =====
+function ico(name) { return `<svg class="ico"><use href="#${name}"/></svg>`; }
+function icosm(name) { return `<svg class="ico ico-sm"><use href="#${name}"/></svg>`; }
 function showToast(msg, type) {
   const t = document.getElementById('toast');
-  t.textContent = msg; t.className = 'toast show ' + type;
+  t.innerHTML = msg; t.className = 'toast show ' + type;
   setTimeout(() => t.classList.remove('show'), 3000);
 }
+function formatBytes(b) {
+  if (!b || b === 0) return '0 B';
+  const u = ['B','KB','MB','GB']; const i = Math.floor(Math.log(b)/Math.log(1024));
+  return (b/Math.pow(1024,i)).toFixed(i===0?0:1)+' '+u[i];
+}
+function timeAgo(d) {
+  if (!d) return '—';
+  const diff = (Date.now() - new Date(d).getTime()) / 1000;
+  if (diff < 60) return 'gerade eben';
+  if (diff < 3600) return Math.floor(diff/60) + 'm';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h';
+  return Math.floor(diff/86400) + 'd';
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
+// ===== Auth =====
 async function login() {
-  const btn = document.getElementById('login-btn');
-  const err = document.getElementById('login-error');
-  const username = document.getElementById('login-user').value;
-  const password = document.getElementById('login-pass').value;
+  const btn = document.getElementById('login-btn'), err = document.getElementById('login-error');
+  const u = document.getElementById('login-user').value, p = document.getElementById('login-pass').value;
   btn.disabled = true; btn.textContent = 'Anmelden...'; err.style.display = 'none';
   try {
-    const res = await fetch(API + '/api/auth/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    token = data.data.token;
-    user = data.data.user;
-    localStorage.setItem('bamboo_admin_token', token);
-    localStorage.setItem('bamboo_admin_user', JSON.stringify(user));
+    const r = await fetch(API+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error);
+    token = d.data.token; user = d.data.user;
+    localStorage.setItem('bamboo_admin_token',token);
+    localStorage.setItem('bamboo_admin_user',JSON.stringify(user));
     document.getElementById('login-overlay').classList.add('hidden');
     document.getElementById('app').classList.add('active');
     document.getElementById('sidebar-user').textContent = user.displayName || user.username;
     init();
-  } catch(e) {
-    err.textContent = e.message || 'Anmeldung fehlgeschlagen';
-    err.style.display = 'block';
-  }
+  } catch(e) { err.textContent = e.message || 'Anmeldung fehlgeschlagen'; err.style.display = 'block'; }
   btn.disabled = false; btn.textContent = 'Anmelden';
 }
-
 function logout() {
-  token = ''; user = null;
-  localStorage.removeItem('bamboo_admin_token');
-  localStorage.removeItem('bamboo_admin_user');
-  document.getElementById('app').classList.remove('active');
-  document.getElementById('login-overlay').classList.remove('hidden');
+  token='';user=null;localStorage.removeItem('bamboo_admin_token');localStorage.removeItem('bamboo_admin_user');
+  document.getElementById('app').classList.remove('active');document.getElementById('login-overlay').classList.remove('hidden');
 }
-
-// Check saved session
 if (token && user) {
-  (async () => {
-    try {
-      const res = await fetch(API + '/api/auth/verify', { headers: { 'Authorization': 'Bearer ' + token } });
-      const data = await res.json();
-      if (data.success) {
-        document.getElementById('login-overlay').classList.add('hidden');
-        document.getElementById('app').classList.add('active');
-        document.getElementById('sidebar-user').textContent = user.displayName || user.username;
-        init();
-        return;
-      }
-    } catch {}
-    token = ''; user = null;
-    localStorage.removeItem('bamboo_admin_token');
-    localStorage.removeItem('bamboo_admin_user');
+  (async()=>{
+    try{const r=await fetch(API+'/api/auth/verify',{headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(d.success){document.getElementById('login-overlay').classList.add('hidden');document.getElementById('app').classList.add('active');document.getElementById('sidebar-user').textContent=user.displayName||user.username;init();return;}}catch(e){}
+    token='';user=null;localStorage.removeItem('bamboo_admin_token');localStorage.removeItem('bamboo_admin_user');
   })();
-}
-
-// ===== Navigation =====
-function switchPage(page) {
-  document.querySelectorAll('.sidebar nav button').forEach(b => b.classList.remove('active'));
-  document.querySelector(`.sidebar nav button[data-page="${page}"]`).classList.add('active');
-  document.querySelectorAll('#app-content .page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + page).classList.add('active');
-  if (page === 'dashboard') renderDashboard();
-  else if (page === 'cosmetics') renderCosmetics();
-  else if (page === 'news') renderNews();
-  else if (page === 'events') renderEvents();
-  else if (page === 'banners') renderBanners();
-  else if (page === 'content') renderContent();
 }
 
 // ===== API Helper =====
 async function api(path, opts = {}) {
-  const res = await fetch(API + path, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, ...opts.headers }
-  });
-  if (res.status === 401) { logout(); throw new Error('Session abgelaufen'); }
-  return res.json();
+  const r = await fetch(API+path,{...opts,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,...opts.headers}});
+  if (r.status===401){logout();throw new Error('Session abgelaufen');}
+  return r.json();
 }
+async function init() { renderDashboard(); }
 
-// ===== Init =====
-async function init() {
-  renderDashboard();
+// ===== Navigation =====
+function switchPage(page) {
+  document.querySelectorAll('.sidebar nav button').forEach(b=>b.classList.remove('active'));
+  const btn = document.querySelector(`.sidebar nav button[data-page="${page}"]`);
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('#app-content .page').forEach(p=>p.classList.remove('active'));
+  const pg = document.getElementById('page-'+page);
+  if (pg) pg.classList.add('active');
+  if (page==='dashboard') renderDashboard();
+  else if (page==='assets') renderAssets();
+  else if (page==='cosmetics') renderCosmetics();
+  else if (page==='news') renderNews();
+  else if (page==='events') renderEvents();
+  else if (page==='banners') renderBanners();
 }
 
 // ===== Dashboard =====
@@ -559,71 +728,301 @@ async function renderDashboard() {
   const el = document.getElementById('page-dashboard');
   el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try {
-    const [cosRes, healthRes, repoRes] = await Promise.all([
-      api('/api/cosmetics?limit=1'),
-      fetch(API + '/api/health').then(r => r.json()).catch(() => ({})),
-      fetch(API + '/api/content/repo-status', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.json()).catch(() => ({}))
+    const [cosRes,healthRes,assetStatsRes] = await Promise.all([
+      api('/api/cosmetics?limit=1'),fetch(API+'/api/health').then(r=>r.json()).catch(()=>({})),
+      fetch(API+'/api/assets/stats',{headers:{'Authorization':'Bearer '+token}}).then(r=>r.json()).catch(()=>({}))
     ]);
     const totalCos = cosRes.total || 0;
-    const repo = repoRes.data || {};
-    const manifest = repo.manifest || {};
-    const git = repo.git || {};
+    const assetStats = assetStatsRes;
+    const statusCounts = (assetStats.byStatus || []).reduce((a,c) => { a[c.status] = parseInt(c.count); return a; }, {});
+    
     el.innerHTML = `
-      <div class="page-header"><h1>Dashboard</h1><p>Übersicht über das Bamboo Backend</p></div>
+      <div class="page-header"><h1>Dashboard</h1><p>&Uuml;bersicht &uuml;ber das Bamboo Backend</p></div>
       <div class="stats-row">
-        <div class="stat-card"><div class="stat-value">${totalCos}</div><div class="stat-label">✨ Cosmetics</div></div>
-        <div class="stat-card"><div class="stat-value">${manifest.fileCount || '—'}</div><div class="stat-label">📦 Content Files</div></div>
-        <div class="stat-card"><div class="stat-value">${manifest.version ? 'v' + manifest.version : '—'}</div><div class="stat-label">📋 Manifest Version</div></div>
-        <div class="stat-card"><div class="stat-value">${healthRes.database === 'connected' ? '✅' : '❌'}</div><div class="stat-label">🗄️ PostgreSQL</div></div>
-        <div class="stat-card"><div class="stat-value">${healthRes.status === 'ok' ? '✅' : '❌'}</div><div class="stat-label">🖥️ Backend Status</div></div>
-        <div class="stat-card"><div class="stat-value">${git.hasUncommittedChanges ? '⚠️' : '✅'}</div><div class="stat-label">📝 Git Status</div></div>
+        <div class="stat-card"><div class="stat-value">${assetStats.total || 0}</div><div class="stat-label">Assets</div></div>
+        <div class="stat-card"><div class="stat-value">${totalCos}</div><div class="stat-label">Cosmetics</div></div>
+        <div class="stat-card"><div class="stat-value">${statusCounts.published || 0}</div><div class="stat-label">Ver&ouml;ffentlicht</div></div>
+        <div class="stat-card"><div class="stat-value">${statusCounts.draft || 0}</div><div class="stat-label">Entw&uuml;rfe</div></div>
+        <div class="stat-card"><div class="stat-value">${healthRes.database==='connected' ? 'Online' : 'Offline'}</div><div class="stat-label">Datenbank</div></div>
+        <div class="stat-card"><div class="stat-value">${healthRes.status==='ok' ? 'Online' : 'Offline'}</div><div class="stat-label">Backend</div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div class="card">
-          <div class="card-header"><h3>Letzte Cosmetics</h3><span class="badge">${totalCos} gesamt</span></div>
-          <div class="card-body" id="dash-cosmetics-list">${totalCos > 0 ? '<div class="loading"><div class="spinner"></div></div>' : '<div class="empty-state"><p>Keine Cosmetics vorhanden</p></div>'}</div>
+          <div class="card-header"><h3>Asset Typen</h3></div>
+          <div class="card-body" style="font-size:13px">
+            ${(assetStats.byType||[]).length > 0 ? assetStats.byType.map(t => `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-subtle)">
+                <span class="badge-type badge-${t.asset_type}">${t.asset_type}</span>
+                <span style="font-weight:700">${t.count}</span>
+              </div>`).join('') : '<div class="empty-state"><p>Keine Assets</p></div>'}
+          </div>
         </div>
         <div class="card">
-          <div class="card-header"><h3>Content Repo</h3><span class="badge">${git.branch || '—'}</span></div>
-          <div class="card-body" style="font-size:13px">
-            ${manifest.fileCount ? `
-              <div style="margin-bottom:8px">📋 <strong>${manifest.fileCount}</strong> Dateien in Manifest v${manifest.version}</div>
-              <div style="margin-bottom:8px">💾 <strong>${formatBytes(manifest.totalSize || 0)}</strong> total</div>
-              <div style="margin-bottom:8px">🕐 Zuletzt aktualisiert: <strong>${manifest.updatedAt ? new Date(manifest.updatedAt).toLocaleString() : '—'}</strong></div>
-              ${git.lastCommit ? `<div style="margin-bottom:8px">📝 Letzter Commit: <strong style="font-family:monospace;font-size:11px">${git.lastCommit}</strong></div>` : ''}
-              ${git.hasUncommittedChanges ? '<div style="color:#f59e0b">⚠️ Nicht committete Änderungen vorhanden</div>' : '<div style="color:#10b981">✅ Alles synchronisiert</div>'}
-            ` : '<div class="empty-state"><p>Keine Content-Daten verfügbar</p></div>'}
+          <div class="card-header"><h3>Schnellzugriff</h3></div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn btn-primary" style="width:100%" onclick="switchPage('assets');openAssetModal()">Neues Asset erstellen</button>
+            <button class="btn btn-ghost" style="width:100%" onclick="switchPage('cosmetics')">Cosmetics verwalten</button>
+            <button class="btn btn-ghost" style="width:100%" onclick="switchPage('news')">News verwalten</button>
           </div>
         </div>
       </div>
     `;
-    if (totalCos > 0) {
-      const full = await api('/api/cosmetics?limit=5');
-      const list = document.getElementById('dash-cosmetics-list');
-      if (full.data && full.data.length > 0) {
-        list.innerHTML = full.data.map(c => `
-          <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #16162a">
-            <span class="badge-type ${c.type}">${c.type}</span>
-            <span style="flex:1;font-weight:600">${c.name}</span>
-            <span class="badge-rarity ${c.rarity}">${c.rarity}</span>
-            <span class="status-dot ${c.isActive ? 'active' : 'inactive'}"></span>
-          </div>
-        `).join('');
-      }
-    }
-  } catch(e) {
-    el.innerHTML = `<div class="empty-state"><p>⚠️ ${e.message}</p></div>`;
+  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
+}
+
+// ===== ASSET MANAGER =====
+let assetFilters = { search:'', type:'all', status:'all', category:'all', sortBy:'updatedAt', sortDir:'desc' };
+
+async function renderAssets() {
+  const el = document.getElementById('page-assets');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const params = new URLSearchParams({
+      search:assetFilters.search, assetType:assetFilters.type, category:assetFilters.category,
+      status:assetFilters.status, sortBy:assetFilters.sortBy, sortDir:assetFilters.sortDir, limit:'200'
+    });
+    const data = await api('/api/assets?'+params.toString());
+    assetsCache = data.data || [];
+    
+    el.innerHTML = `
+      <div class="page-header">
+        <div><h1>${ico('ico-package')}Asset Manager</h1><p>${data.total || 0} Assets im System</p></div>
+        <button class="btn btn-primary" onclick="openAssetModal()">${ico('ico-plus')}Neues Asset</button>
+      </div>
+      <div class="toolbar">
+        <div class="search-box">
+          ${ico('ico-search')}
+          <input type="text" id="asset-search" placeholder="Assets durchsuchen..." value="${escapeHtml(assetFilters.search)}"
+            oninput="assetFilters.search=this.value;renderAssets()">
+        </div>
+        ${ico('ico-filter')}
+        <select class="filter-select" id="filter-type" onchange="assetFilters.type=this.value;renderAssets()">
+          <option value="all">Alle Typen</option>
+          <option value="cosmetic">Cosmetic</option><option value="theme">Theme</option>
+          <option value="background">Background</option><option value="icon">Icon</option>
+          <option value="ui_asset">UI Asset</option><option value="music">Music</option>
+          <option value="shader">Shader</option><option value="resource_pack">Resource Pack</option>
+          <option value="font">Font</option><option value="other">Other</option>
+        </select>
+        <select class="filter-select" id="filter-status" onchange="assetFilters.status=this.value;renderAssets()">
+          <option value="all">Alle Status</option>
+          <option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option>
+        </select>
+        <select class="filter-select" id="filter-sort" onchange="const v=this.value.split(':');assetFilters.sortBy=v[0];assetFilters.sortDir=v[1];renderAssets()">
+          <option value="updatedAt:desc">Zuletzt aktualisiert</option><option value="name:asc">Name A-Z</option>
+          <option value="name:desc">Name Z-A</option><option value="version:desc">Version</option>
+          <option value="created:desc">Erstellungsdatum</option>
+        </select>
+      </div>
+      ${assetsCache.length === 0 ? `
+        <div class="empty-state">
+          ${ico('ico-package')}
+          <h3>Keine Assets gefunden</h3>
+          <p>Erstelle dein erstes Asset mit dem Button oben.</p>
+        </div>
+      ` : `
+        <div class="asset-grid">
+          ${assetsCache.map(a => `
+            <div class="asset-card" onclick="openAssetModal('${a.id}')">
+              <div class="asset-header">
+                <div>
+                  <div class="asset-name">${escapeHtml(a.name)}</div>
+                  <div class="asset-slug">${escapeHtml(a.slug)}</div>
+                </div>
+                <span class="badge badge-${a.status}">${a.status}</span>
+              </div>
+              ${a.description ? `<div class="asset-desc">${escapeHtml(a.description)}</div>` : ''}
+              <div class="asset-meta">
+                <span class="badge-type badge-${a.assetType}">${a.assetType}</span>
+                ${a.category && a.category !== 'general' ? `<span style="font-size:10px;color:var(--text-muted)">${escapeHtml(a.category)}</span>` : ''}
+                <span style="font-size:10px;color:var(--text-muted);margin-left:4px">v${a.version}</span>
+                <span style="font-size:10px;color:var(--text-muted)">${a.fileCount || 0} Dateien</span>
+              </div>
+              <div class="asset-actions" onclick="event.stopPropagation()">
+                <button class="btn btn-ghost btn-xs" onclick="openAssetModal('${a.id}')" title="Bearbeiten">${icosm('ico-edit')}</button>
+                <button class="btn btn-ghost btn-xs" onclick="toggleAsset('${a.id}')" title="${a.isActive?'Deaktivieren':'Aktivieren'}">${icosm(a.isActive?'ico-eye-off':'ico-eye')}</button>
+                <button class="btn btn-ghost btn-xs" onclick="changeAssetStatus('${a.id}','${a.status==='published'?'archived':'published'}')" title="Status wechseln">${icosm('ico-archive')}</button>
+                <button class="btn btn-danger btn-xs" onclick="deleteAsset('${a.id}')" title="L&ouml;schen">${icosm('ico-trash')}</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `}
+    `;
+    
+    // Set filter values
+    setTimeout(() => {
+      const ft = document.getElementById('filter-type'); if (ft) ft.value = assetFilters.type;
+      const fs = document.getElementById('filter-status'); if (fs) fs.value = assetFilters.status;
+    }, 50);
+  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
+}
+
+function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ===== Asset Modal =====
+function openAssetModal(id) {
+  document.getElementById('asset-id').value = id || '';
+  document.getElementById('asset-modal-title').textContent = id ? 'Asset bearbeiten' : 'Neues Asset';
+  document.querySelectorAll('#asset-modal-tabs button').forEach((b,i) => b.classList.toggle('active', i===0));
+  document.querySelectorAll('.asset-tab').forEach((t,i) => t.style.display = i===0 ? 'block' : 'none');
+  
+  if (!id) {
+    // New asset
+    document.getElementById('asset-slug').value = '';
+    document.getElementById('asset-name').value = '';
+    document.getElementById('asset-desc').value = '';
+    document.getElementById('asset-type').value = 'cosmetic';
+    document.getElementById('asset-status').value = 'draft';
+    document.getElementById('asset-version').value = '1';
+    document.getElementById('asset-category').value = '';
+    document.getElementById('asset-sort').value = '0';
+    document.getElementById('asset-thumbnail').value = '';
+    document.getElementById('asset-preview').value = '';
+    document.getElementById('asset-active').checked = true;
+    editingAssetTags = [];
+    renderTags();
+    document.getElementById('asset-files-list').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px"><svg class="ico ico-lg" style="margin:0 auto 8px;opacity:0.4"><use href="#ico-file"/></svg><p>Speichere das Asset zuerst.</p></div>';
+    document.getElementById('asset-modal').classList.add('open');
+    return;
   }
+  
+  // Load existing
+  api('/api/assets/'+id).then(asset => {
+    document.getElementById('asset-slug').value = asset.slug || '';
+    document.getElementById('asset-name').value = asset.name || '';
+    document.getElementById('asset-desc').value = asset.description || '';
+    document.getElementById('asset-type').value = asset.assetType || 'cosmetic';
+    document.getElementById('asset-status').value = asset.status || 'draft';
+    document.getElementById('asset-version').value = asset.version || 1;
+    document.getElementById('asset-category').value = asset.category || '';
+    document.getElementById('asset-sort').value = asset.sortOrder || 0;
+    document.getElementById('asset-thumbnail').value = asset.thumbnailUrl || '';
+    document.getElementById('asset-preview').value = asset.previewUrl || '';
+    document.getElementById('asset-active').checked = asset.isActive !== false;
+    editingAssetTags = asset.tags || [];
+    renderTags();
+    
+    // Files
+    const files = asset.files || [];
+    const fl = document.getElementById('asset-files-list');
+    if (files.length === 0) {
+      fl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px"><svg class="ico ico-lg" style="margin:0 auto 8px;opacity:0.4"><use href="#ico-file"/></svg><p>Keine Dateien vorhanden</p></div>';
+    } else {
+      fl.innerHTML = files.map(f => `
+        <div class="file-item">
+          ${icosm('ico-file')}
+          <span class="file-name">${escapeHtml(f.fileName)}</span>
+          <span class="file-type">${f.fileType}</span>
+          <span class="file-size">${formatBytes(f.fileSize)}</span>
+          <button class="btn btn-ghost btn-xs" onclick="removeAssetFile('${id}','${f.id}')">${icosm('ico-trash')}</button>
+        </div>
+      `).join('');
+    }
+  }).catch(e => showToast('Fehler: '+e.message,'error'));
+  
+  document.getElementById('asset-modal').classList.add('open');
 }
 
-function formatBytes(bytes) {
-  if (!bytes || bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+// Asset modal tabs
+document.getElementById('asset-modal-tabs').addEventListener('click', function(e) {
+  if (e.target.tagName !== 'BUTTON') return;
+  const tab = e.target.dataset.tab;
+  this.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  document.querySelectorAll('.asset-tab').forEach(t => t.style.display = 'none');
+  document.getElementById('tab-'+tab).style.display = 'block';
+});
+
+// Tags
+function renderTags() {
+  const wrap = document.getElementById('tags-display');
+  wrap.innerHTML = editingAssetTags.map((t,i) => `
+    <span class="tag">${escapeHtml(t)}<span class="tag-close" onclick="editingAssetTags.splice(${i},1);renderTags()">${icosm('ico-x')}</span></span>
+  `).join('');
+}
+document.getElementById('tag-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const v = this.value.trim();
+    if (v && !editingAssetTags.includes(v)) { editingAssetTags.push(v); renderTags(); }
+    this.value = '';
+  }
+});
+
+async function saveAsset() {
+  const id = document.getElementById('asset-id').value;
+  const body = {
+    slug: document.getElementById('asset-slug').value,
+    name: document.getElementById('asset-name').value,
+    description: document.getElementById('asset-desc').value,
+    assetType: document.getElementById('asset-type').value,
+    status: document.getElementById('asset-status').value,
+    version: parseInt(document.getElementById('asset-version').value) || 1,
+    category: document.getElementById('asset-category').value,
+    sortOrder: parseInt(document.getElementById('asset-sort').value) || 0,
+    thumbnailUrl: document.getElementById('asset-thumbnail').value,
+    previewUrl: document.getElementById('asset-preview').value,
+    tags: editingAssetTags,
+    isActive: document.getElementById('asset-active').checked,
+    metadata: {}
+  };
+  if (!body.slug || !body.name) { showToast('Slug und Name sind erforderlich','error'); return; }
+  try {
+    if (id) {
+      await api('/api/assets/'+id, { method:'PUT', body:JSON.stringify(body) });
+      showToast('Asset aktualisiert','success');
+    } else {
+      await api('/api/assets', { method:'POST', body:JSON.stringify(body) });
+      showToast('Asset erstellt','success');
+    }
+    closeModal('asset-modal');
+    renderAssets();
+  } catch(e) { showToast('Fehler: '+e.message,'error'); }
 }
 
-// ===== Cosmetics =====
+async function addAssetFile() {
+  const id = document.getElementById('asset-id').value;
+  if (!id) { showToast('Bitte zuerst speichern','error'); return; }
+  const fileName = document.getElementById('new-file-name').value.trim();
+  const fileType = document.getElementById('new-file-type').value;
+  const filePath = document.getElementById('new-file-path').value.trim();
+  if (!fileName) { showToast('Dateiname erforderlich','error'); return; }
+  try {
+    await api('/api/assets/'+id+'/files', { method:'POST', body:JSON.stringify({ fileName, fileType, filePath: filePath || fileName }) });
+    showToast('Datei hinzugef&uuml;gt','success');
+    document.getElementById('new-file-name').value = '';
+    document.getElementById('new-file-path').value = '';
+    openAssetModal(id);
+  } catch(e) { showToast('Fehler: '+e.message,'error'); }
+}
+
+async function removeAssetFile(assetId, fileId) {
+  if (!confirm('Datei wirklich entfernen?')) return;
+  try {
+    await api('/api/assets/'+assetId+'/files/'+fileId, { method:'DELETE' });
+    showToast('Datei entfernt','success');
+    openAssetModal(assetId);
+  } catch(e) { showToast('Fehler: '+e.message,'error'); }
+}
+
+async function toggleAsset(id) {
+  try { await api('/api/assets/'+id+'/toggle', { method:'PATCH' }); showToast('Status ge&auml;ndert','success'); renderAssets(); }
+  catch(e) { showToast('Fehler: '+e.message,'error'); }
+}
+
+async function changeAssetStatus(id, status) {
+  try { await api('/api/assets/'+id+'/status', { method:'PATCH', body:JSON.stringify({status}) }); showToast('Status: '+status,'success'); renderAssets(); }
+  catch(e) { showToast('Fehler: '+e.message,'error'); }
+}
+
+async function deleteAsset(id) {
+  if (!confirm('Asset wirklich loschen? Alle Dateien werden mit entfernt.')) return;
+  try { await api('/api/assets/'+id, { method:'DELETE' }); showToast('Asset gel&ouml;scht','success'); renderAssets(); }
+  catch(e) { showToast('Fehler: '+e.message,'error'); }
+}
+
+// ===== Cosmetics ===== (de-emojified)
 async function renderCosmetics() {
   const el = document.getElementById('page-cosmetics');
   el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
@@ -631,43 +1030,37 @@ async function renderCosmetics() {
     const data = await api('/api/cosmetics?limit=500');
     cosmeticsCache = data.data || [];
     el.innerHTML = `
-      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
-        <div><h1>✨ Cosmetics</h1><p>${cosmeticsCache.length} Cosmetic(s) im Katalog</p></div>
-        <button class="btn btn-primary" onclick="openCosmeticModal()">+ Neu</button>
+      <div class="page-header">
+        <div><h1>${ico('ico-sparkles')}Cosmetics</h1><p>${cosmeticsCache.length} Cosmetic(s) im Katalog</p></div>
+        <button class="btn btn-primary" onclick="openCosmeticModal()">${ico('ico-plus')}Neu</button>
       </div>
-      <div class="card">
-        <div class="card-body">
-          ${cosmeticsCache.length === 0 ? '<div class="empty-state"><div class="icon">✨</div><p>Keine Cosmetics vorhanden</p></div>' : `
-          <table>
-            <thead><tr><th>Slug</th><th>Name</th><th>Typ</th><th>Seltenheit</th><th>Status</th><th>Aktionen</th></tr></thead>
-            <tbody>
-              ${cosmeticsCache.map(c => `
-                <tr>
-                  <td style="font-family:monospace;font-size:12px;color:#64748b">${c.slug}</td>
-                  <td style="font-weight:600">${c.name}</td>
-                  <td><span class="badge-type ${c.type}">${c.type}</span></td>
-                  <td><span class="badge-rarity ${c.rarity}">${c.rarity}</span></td>
-                  <td><span class="status-dot ${c.isActive ? 'active' : 'inactive'}"></span>${c.isActive ? 'Aktiv' : 'Inaktiv'}</td>
-                  <td>
-                    <button class="btn btn-ghost btn-sm" onclick="editCosmetic('${c.id}')">✏️</button>
-                    <button class="btn btn-sm ${c.isActive ? 'btn-ghost' : 'btn-primary'}" onclick="toggleCosmetic('${c.id}')">${c.isActive ? 'Deaktivieren' : 'Aktivieren'}</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteCosmetic('${c.id}')">🗑️</button>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>`}
-        </div>
-      </div>
+      <div class="card"><div class="card-body">
+        ${cosmeticsCache.length===0 ? `<div class="empty-state">${ico('ico-sparkles')}<p>Keine Cosmetics vorhanden</p></div>` : `
+        <table class="data-table">
+          <thead><tr><th>Slug</th><th>Name</th><th>Typ</th><th>Seltenheit</th><th>Status</th><th>Aktionen</th></tr></thead>
+          <tbody>${cosmeticsCache.map(c => `
+            <tr>
+              <td style="font-family:monospace;font-size:12px;color:var(--text-muted)">${escapeHtml(c.slug)}</td>
+              <td style="font-weight:600">${escapeHtml(c.name)}</td>
+              <td><span class="badge-type badge-${c.type}">${c.type}</span></td>
+              <td><span class="badge-rarity ${c.rarity}">${c.rarity}</span></td>
+              <td><span class="status-dot ${c.isActive?'active':'inactive'}"></span>${c.isActive?'Aktiv':'Inaktiv'}</td>
+              <td>
+                <button class="btn btn-ghost btn-xs" onclick="editCosmetic('${c.id}')">${icosm('ico-edit')}</button>
+                <button class="btn btn-xs ${c.isActive?'btn-ghost':'btn-primary'}" onclick="toggleCosmetic('${c.id}')">${c.isActive?'Deaktivieren':'Aktivieren'}</button>
+                <button class="btn btn-danger btn-xs" onclick="deleteCosmetic('${c.id}')">${icosm('ico-trash')}</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`}
+      </div></div>
     `;
-  } catch(e) {
-    el.innerHTML = `<div class="empty-state"><p>⚠️ ${e.message}</p></div>`;
-  }
+  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
 }
 
+// Original cosmetic functions (de-emojified)
 function openCosmeticModal(item) {
   document.getElementById('cosmetic-modal-title').textContent = item ? 'Cosmetic bearbeiten' : 'Neues Cosmetic';
-  document.getElementById('cosmetic-modal-sub').textContent = item ? 'Bearbeite das kosmetische Item' : 'Erstelle ein neues kosmetisches Item';
   document.getElementById('cosmetic-id').value = item ? item.id : '';
   document.getElementById('cosmetic-slug').value = item ? item.slug : '';
   document.getElementById('cosmetic-name').value = item ? item.name : '';
@@ -677,58 +1070,21 @@ function openCosmeticModal(item) {
   document.getElementById('cosmetic-preview').value = item ? item.previewUrl : '';
   document.getElementById('cosmetic-modal').classList.add('open');
 }
-
-function editCosmetic(id) {
-  const item = cosmeticsCache.find(c => c.id === id);
-  if (item) openCosmeticModal(item);
-}
-
+function editCosmetic(id) { const item = cosmeticsCache.find(c => c.id === id); if (item) openCosmeticModal(item); }
 async function saveCosmetic() {
   const id = document.getElementById('cosmetic-id').value;
-  const body = {
-    slug: document.getElementById('cosmetic-slug').value,
-    name: document.getElementById('cosmetic-name').value,
-    description: document.getElementById('cosmetic-desc').value,
-    type: document.getElementById('cosmetic-type').value,
-    rarity: document.getElementById('cosmetic-rarity').value,
-    previewUrl: document.getElementById('cosmetic-preview').value,
-  };
-  if (!body.slug || !body.name) { showToast('Slug und Name sind erforderlich', 'error'); return; }
+  const body = { slug:document.getElementById('cosmetic-slug').value, name:document.getElementById('cosmetic-name').value, description:document.getElementById('cosmetic-desc').value, type:document.getElementById('cosmetic-type').value, rarity:document.getElementById('cosmetic-rarity').value, previewUrl:document.getElementById('cosmetic-preview').value };
+  if (!body.slug||!body.name) { showToast('Slug und Name erforderlich','error'); return; }
   try {
-    if (id) {
-      await api('/api/cosmetics/' + id, { method: 'PUT', body: JSON.stringify(body) });
-      showToast('Cosmetic aktualisiert', 'success');
-    } else {
-      await api('/api/cosmetics', { method: 'POST', body: JSON.stringify(body) });
-      showToast('Cosmetic erstellt', 'success');
-    }
-    closeModal('cosmetic-modal');
-    renderCosmetics();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
+    if (id) { await api('/api/cosmetics/'+id,{method:'PUT',body:JSON.stringify(body)}); showToast('Cosmetic aktualisiert','success'); }
+    else { await api('/api/cosmetics',{method:'POST',body:JSON.stringify(body)}); showToast('Cosmetic erstellt','success'); }
+    closeModal('cosmetic-modal'); renderCosmetics();
+  } catch(e) { showToast('Fehler: '+e.message,'error'); }
 }
-
-async function toggleCosmetic(id) {
-  try {
-    await api('/api/cosmetics/' + id + '/toggle', { method: 'PATCH' });
-    showToast('Status geändert', 'success');
-    renderCosmetics();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
-}
-
-async function deleteCosmetic(id) {
-  if (!confirm('Wirklich löschen?')) return;
-  try {
-    await api('/api/cosmetics/' + id, { method: 'DELETE' });
-    showToast('Cosmetic gelöscht', 'success');
-    renderCosmetics();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
-}
-
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+async function toggleCosmetic(id) { try { await api('/api/cosmetics/'+id+'/toggle',{method:'PATCH'}); showToast('Status ge&auml;ndert','success'); renderCosmetics(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
+async function deleteCosmetic(id) { if (!confirm('Wirklich loschen?')) return; try { await api('/api/cosmetics/'+id,{method:'DELETE'}); showToast('Cosmetic gel&ouml;scht','success'); renderCosmetics(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
 
 // ===== News =====
-let newsCache = [];
-
 async function renderNews() {
   const el = document.getElementById('page-news');
   el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
@@ -736,103 +1092,62 @@ async function renderNews() {
     const data = await api('/api/news?limit=50');
     newsCache = data.data || [];
     el.innerHTML = `
-      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
-        <div><h1>📰 News</h1><p>${newsCache.length} News-Einträge</p></div>
-        <button class="btn btn-primary" onclick="openNewsModal()">+ Neu</button>
+      <div class="page-header">
+        <div><h1>${ico('ico-newspaper')}News</h1><p>${newsCache.length} News-Eintr&auml;ge</p></div>
+        <button class="btn btn-primary" onclick="openNewsModal()">${ico('ico-plus')}Neu</button>
       </div>
       <div class="card"><div class="card-body">
-        ${newsCache.length === 0 ? '<div class="empty-state"><p>Keine News vorhanden</p></div>' : `
-        <table>
+        ${newsCache.length===0 ? `<div class="empty-state">${ico('ico-newspaper')}<p>Keine News vorhanden</p></div>` : `
+        <table class="data-table">
           <thead><tr><th>Titel</th><th>Kategorie</th><th>Status</th><th>Datum</th><th>Aktionen</th></tr></thead>
-          <tbody>
-            ${newsCache.map(n => `
-              <tr>
-                <td style="font-weight:600">${n.title}${n.isPinned ? ' 📌' : ''}</td>
-                <td><span style="font-size:11px;color:#64748b">${n.category || 'general'}</span></td>
-                <td><span class="status-dot ${n.isVisible ? 'active' : 'inactive'}"></span>${n.isVisible ? 'Sichtbar' : 'Versteckt'}</td>
-                <td style="color:#64748b;font-size:12px">${n.publishedAt ? new Date(n.publishedAt).toLocaleDateString() : '—'}</td>
-                <td>
-                  <button class="btn btn-ghost btn-sm" onclick="editNews('${n.id}')">✏️</button>
-                  <button class="btn btn-sm ${n.isVisible ? 'btn-ghost' : 'btn-primary'}" onclick="toggleNews('${n.id}')">${n.isVisible ? 'Verstecken' : 'Zeigen'}</button>
-                  <button class="btn btn-danger btn-sm" onclick="deleteNews('${n.id}')">🗑️</button>
-                </td>
-              </tr>
-            `).join('')}
+          <tbody>${newsCache.map(n => `
+            <tr>
+              <td style="font-weight:600">${escapeHtml(n.title)}${n.isPinned?' '+icosm('ico-tag'):''}</td>
+              <td><span style="font-size:11px;color:var(--text-muted)">${escapeHtml(n.category||'general')}</span></td>
+              <td><span class="status-dot ${n.isVisible?'active':'inactive'}"></span>${n.isVisible?'Sichtbar':'Versteckt'}</td>
+              <td style="color:var(--text-muted);font-size:12px">${n.publishedAt?new Date(n.publishedAt).toLocaleDateString():'—'}</td>
+              <td>
+                <button class="btn btn-ghost btn-xs" onclick="editNews('${n.id}')">${icosm('ico-edit')}</button>
+                <button class="btn btn-xs ${n.isVisible?'btn-ghost':'btn-primary'}" onclick="toggleNews('${n.id}')">${n.isVisible?'Verstecken':'Zeigen'}</button>
+                <button class="btn btn-danger btn-xs" onclick="deleteNews('${n.id}')">${icosm('ico-trash')}</button>
+              </td>
+            </tr>`).join('')}
           </tbody>
         </table>`}
       </div></div>
     `;
-  } catch(e) { el.innerHTML = `<div class="empty-state"><p>⚠️ ${e.message}</p></div>`; }
+  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
 }
-
+// Original news functions (de-emojified)
 function openNewsModal(item) {
   document.getElementById('news-modal-title').textContent = item ? 'News bearbeiten' : 'Neuer News-Eintrag';
-  document.getElementById('news-modal-sub').textContent = item ? 'Bearbeite den News-Artikel' : 'Erstelle einen neuen News-Artikel';
   document.getElementById('news-id').value = item ? item.id : '';
   document.getElementById('news-title').value = item ? item.title : '';
   document.getElementById('news-subtitle').value = item ? item.subtitle : '';
   document.getElementById('news-content').value = item ? item.content : '';
   document.getElementById('news-category').value = item ? item.category : 'general';
   document.getElementById('news-banner').value = item ? item.bannerUrl : '';
-  document.getElementById('news-published').value = item && item.publishedAt ? new Date(item.publishedAt).toISOString().slice(0,16) : new Date().toISOString().slice(0,16);
+  document.getElementById('news-published').value = item&&item.publishedAt ? new Date(item.publishedAt).toISOString().slice(0,16) : new Date().toISOString().slice(0,16);
   document.getElementById('news-version').value = item ? item.gameVersion : '';
   document.getElementById('news-visible').checked = item ? item.isVisible : true;
   document.getElementById('news-pinned').checked = item ? item.isPinned : false;
   document.getElementById('news-modal').classList.add('open');
 }
-
-function editNews(id) {
-  const item = newsCache.find(n => n.id === id);
-  if (item) openNewsModal(item);
-}
-
+function editNews(id) { const item = newsCache.find(n => n.id===id); if (item) openNewsModal(item); }
 async function saveNews() {
   const id = document.getElementById('news-id').value;
-  const body = {
-    title: document.getElementById('news-title').value,
-    subtitle: document.getElementById('news-subtitle').value,
-    content: document.getElementById('news-content').value,
-    category: document.getElementById('news-category').value || 'general',
-    bannerUrl: document.getElementById('news-banner').value,
-    publishedAt: document.getElementById('news-published').value || new Date().toISOString(),
-    gameVersion: document.getElementById('news-version').value,
-    isVisible: document.getElementById('news-visible').checked,
-    isPinned: document.getElementById('news-pinned').checked,
-  };
-  if (!body.title) { showToast('Titel ist erforderlich', 'error'); return; }
+  const body = { title:document.getElementById('news-title').value, subtitle:document.getElementById('news-subtitle').value, content:document.getElementById('news-content').value, category:document.getElementById('news-category').value||'general', bannerUrl:document.getElementById('news-banner').value, publishedAt:document.getElementById('news-published').value||new Date().toISOString(), gameVersion:document.getElementById('news-version').value, isVisible:document.getElementById('news-visible').checked, isPinned:document.getElementById('news-pinned').checked };
+  if (!body.title) { showToast('Titel erforderlich','error'); return; }
   try {
-    if (id) {
-      await api('/api/news/' + id, { method: 'PUT', body: JSON.stringify(body) });
-      showToast('News aktualisiert', 'success');
-    } else {
-      await api('/api/news', { method: 'POST', body: JSON.stringify(body) });
-      showToast('News erstellt', 'success');
-    }
-    closeModal('news-modal');
-    renderNews();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
+    if (id) { await api('/api/news/'+id,{method:'PUT',body:JSON.stringify(body)}); showToast('News aktualisiert','success'); }
+    else { await api('/api/news',{method:'POST',body:JSON.stringify(body)}); showToast('News erstellt','success'); }
+    closeModal('news-modal'); renderNews();
+  } catch(e) { showToast('Fehler: '+e.message,'error'); }
 }
-
-async function toggleNews(id) {
-  try {
-    await api('/api/news/' + id + '/visibility', { method: 'PATCH' });
-    showToast('Sichtbarkeit geändert', 'success');
-    renderNews();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
-}
-
-async function deleteNews(id) {
-  if (!confirm('Diesen News-Artikel wirklich löschen?')) return;
-  try {
-    await api('/api/news/' + id, { method: 'DELETE' });
-    showToast('News gelöscht', 'success');
-    renderNews();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
-}
+async function toggleNews(id) { try { await api('/api/news/'+id+'/visibility',{method:'PATCH'}); showToast('Sichtbarkeit ge&auml;ndert','success'); renderNews(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
+async function deleteNews(id) { if (!confirm('Wirklich loschen?')) return; try { await api('/api/news/'+id,{method:'DELETE'}); showToast('News gel&ouml;scht','success'); renderNews(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
 
 // ===== Events =====
-let eventsCache = [];
-
 async function renderEvents() {
   const el = document.getElementById('page-events');
   el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
@@ -840,108 +1155,65 @@ async function renderEvents() {
     const data = await api('/api/events?limit=50');
     eventsCache = data.data || [];
     el.innerHTML = `
-      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
-        <div><h1>📅 Events</h1><p>${eventsCache.length} Events</p></div>
-        <button class="btn btn-primary" onclick="openEventModal()">+ Neu</button>
+      <div class="page-header">
+        <div><h1>${ico('ico-calendar')}Events</h1><p>${eventsCache.length} Events</p></div>
+        <button class="btn btn-primary" onclick="openEventModal()">${ico('ico-plus')}Neu</button>
       </div>
       <div class="card"><div class="card-body">
-        ${eventsCache.length === 0 ? '<div class="empty-state"><p>Keine Events vorhanden</p></div>' : `
-        <table>
+        ${eventsCache.length===0 ? `<div class="empty-state">${ico('ico-calendar')}<p>Keine Events vorhanden</p></div>` : `
+        <table class="data-table">
           <thead><tr><th>Titel</th><th>Kategorie</th><th>Start</th><th>Ende</th><th>Status</th><th>Aktionen</th></tr></thead>
-          <tbody>
-            ${eventsCache.map(e => `
-              <tr>
-                <td style="font-weight:600">${e.title}</td>
-                <td style="color:#64748b;font-size:12px">${e.category || 'general'}</td>
-                <td style="color:#64748b;font-size:12px">${new Date(e.startDate).toLocaleDateString()}</td>
-                <td style="color:#64748b;font-size:12px">${e.endDate ? new Date(e.endDate).toLocaleDateString() : '—'}</td>
-                <td><span class="status-dot ${e.isActive ? 'active' : 'inactive'}"></span>${e.isActive ? 'Aktiv' : 'Inaktiv'}</td>
-                <td>
-                  <button class="btn btn-ghost btn-sm" onclick="editEvent('${e.id}')">✏️</button>
-                  <button class="btn btn-sm ${e.isActive ? 'btn-ghost' : 'btn-primary'}" onclick="toggleEvent('${e.id}')">${e.isActive ? 'Deaktiv.' : 'Aktivieren'}</button>
-                  <button class="btn btn-danger btn-sm" onclick="deleteEvent('${e.id}')">🗑️</button>
-                </td>
-              </tr>
-            `).join('')}
+          <tbody>${eventsCache.map(e => `
+            <tr>
+              <td style="font-weight:600">${escapeHtml(e.title)}</td>
+              <td style="color:var(--text-muted);font-size:12px">${escapeHtml(e.category||'general')}</td>
+              <td style="color:var(--text-muted);font-size:12px">${new Date(e.startDate).toLocaleDateString()}</td>
+              <td style="color:var(--text-muted);font-size:12px">${e.endDate?new Date(e.endDate).toLocaleDateString():'—'}</td>
+              <td><span class="status-dot ${e.isActive?'active':'inactive'}"></span>${e.isActive?'Aktiv':'Inaktiv'}</td>
+              <td>
+                <button class="btn btn-ghost btn-xs" onclick="editEvent('${e.id}')">${icosm('ico-edit')}</button>
+                <button class="btn btn-xs ${e.isActive?'btn-ghost':'btn-primary'}" onclick="toggleEvent('${e.id}')">${e.isActive?'Deaktiv.':'Aktivieren'}</button>
+                <button class="btn btn-danger btn-xs" onclick="deleteEvent('${e.id}')">${icosm('ico-trash')}</button>
+              </td>
+            </tr>`).join('')}
           </tbody>
         </table>`}
       </div></div>
     `;
-  } catch(e) { el.innerHTML = `<div class="empty-state"><p>⚠️ ${e.message}</p></div>`; }
+  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
 }
-
+// Original events functions (de-emojified)
 function openEventModal(item) {
   document.getElementById('events-modal-title').textContent = item ? 'Event bearbeiten' : 'Neues Event';
-  document.getElementById('events-modal-sub').textContent = item ? 'Bearbeite das Event' : 'Erstelle ein neues Event';
   document.getElementById('event-id').value = item ? item.id : '';
   document.getElementById('event-title').value = item ? item.title : '';
   document.getElementById('event-subtitle').value = item ? item.subtitle : '';
   document.getElementById('event-desc').value = item ? item.description : '';
   document.getElementById('event-category').value = item ? item.category : 'general';
   document.getElementById('event-banner').value = item ? item.bannerUrl : '';
-  document.getElementById('event-start').value = item && item.startDate ? new Date(item.startDate).toISOString().slice(0,16) : '';
-  document.getElementById('event-end').value = item && item.endDate ? new Date(item.endDate).toISOString().slice(0,16) : '';
+  document.getElementById('event-start').value = item&&item.startDate ? new Date(item.startDate).toISOString().slice(0,16) : '';
+  document.getElementById('event-end').value = item&&item.endDate ? new Date(item.endDate).toISOString().slice(0,16) : '';
   document.getElementById('event-priority').value = item ? item.priority : 0;
   document.getElementById('event-author').value = item ? item.author : 'Bamboo Team';
   document.getElementById('event-active').checked = item ? item.isActive : true;
   document.getElementById('event-visible').checked = item ? item.isVisible : true;
   document.getElementById('events-modal').classList.add('open');
 }
-
-function editEvent(id) {
-  const item = eventsCache.find(e => e.id === id);
-  if (item) openEventModal(item);
-}
-
+function editEvent(id) { const item = eventsCache.find(e => e.id===id); if (item) openEventModal(item); }
 async function saveEvent() {
   const id = document.getElementById('event-id').value;
-  const body = {
-    title: document.getElementById('event-title').value,
-    subtitle: document.getElementById('event-subtitle').value,
-    description: document.getElementById('event-desc').value,
-    category: document.getElementById('event-category').value || 'general',
-    bannerUrl: document.getElementById('event-banner').value,
-    startDate: document.getElementById('event-start').value || new Date().toISOString(),
-    endDate: document.getElementById('event-end').value || null,
-    priority: parseInt(document.getElementById('event-priority').value) || 0,
-    author: document.getElementById('event-author').value || 'Bamboo Team',
-    isActive: document.getElementById('event-active').checked,
-    isVisible: document.getElementById('event-visible').checked,
-  };
-  if (!body.title) { showToast('Titel ist erforderlich', 'error'); return; }
+  const body = { title:document.getElementById('event-title').value, subtitle:document.getElementById('event-subtitle').value, description:document.getElementById('event-desc').value, category:document.getElementById('event-category').value||'general', bannerUrl:document.getElementById('event-banner').value, startDate:document.getElementById('event-start').value||new Date().toISOString(), endDate:document.getElementById('event-end').value||null, priority:parseInt(document.getElementById('event-priority').value)||0, author:document.getElementById('event-author').value||'Bamboo Team', isActive:document.getElementById('event-active').checked, isVisible:document.getElementById('event-visible').checked };
+  if (!body.title) { showToast('Titel erforderlich','error'); return; }
   try {
-    if (id) {
-      await api('/api/events/' + id, { method: 'PUT', body: JSON.stringify(body) });
-      showToast('Event aktualisiert', 'success');
-    } else {
-      await api('/api/events', { method: 'POST', body: JSON.stringify(body) });
-      showToast('Event erstellt', 'success');
-    }
-    closeModal('events-modal');
-    renderEvents();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
+    if (id) { await api('/api/events/'+id,{method:'PUT',body:JSON.stringify(body)}); showToast('Event aktualisiert','success'); }
+    else { await api('/api/events',{method:'POST',body:JSON.stringify(body)}); showToast('Event erstellt','success'); }
+    closeModal('events-modal'); renderEvents();
+  } catch(e) { showToast('Fehler: '+e.message,'error'); }
 }
-
-async function toggleEvent(id) {
-  try {
-    await api('/api/events/' + id + '/toggle', { method: 'PATCH' });
-    showToast('Status geändert', 'success');
-    renderEvents();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
-}
-
-async function deleteEvent(id) {
-  if (!confirm('Dieses Event wirklich löschen?')) return;
-  try {
-    await api('/api/events/' + id, { method: 'DELETE' });
-    showToast('Event gelöscht', 'success');
-    renderEvents();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
-}
+async function toggleEvent(id) { try { await api('/api/events/'+id+'/toggle',{method:'PATCH'}); showToast('Status ge&auml;ndert','success'); renderEvents(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
+async function deleteEvent(id) { if (!confirm('Wirklich loschen?')) return; try { await api('/api/events/'+id,{method:'DELETE'}); showToast('Event gel&ouml;scht','success'); renderEvents(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
 
 // ===== Banners =====
-let bannersCache = [];
-
 async function renderBanners() {
   const el = document.getElementById('page-banners');
   el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
@@ -949,38 +1221,35 @@ async function renderBanners() {
     const data = await api('/api/banners');
     bannersCache = data.data || [];
     el.innerHTML = `
-      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
-        <div><h1>🖼 Banners</h1><p>${bannersCache.length} Banner(s)</p></div>
-        <button class="btn btn-primary" onclick="openBannerModal()">+ Neu</button>
+      <div class="page-header">
+        <div><h1>${ico('ico-image')}Banners</h1><p>${bannersCache.length} Banner(s)</p></div>
+        <button class="btn btn-primary" onclick="openBannerModal()">${ico('ico-plus')}Neu</button>
       </div>
       <div class="card"><div class="card-body">
-        ${bannersCache.length === 0 ? '<div class="empty-state"><p>Keine Banners vorhanden</p></div>' : `
-        <table>
+        ${bannersCache.length===0 ? `<div class="empty-state">${ico('ico-image')}<p>Keine Banners vorhanden</p></div>` : `
+        <table class="data-table">
           <thead><tr><th>Titel</th><th>Vorschau</th><th>Sortierung</th><th>Status</th><th>Aktionen</th></tr></thead>
-          <tbody>
-            ${bannersCache.map(b => `
-              <tr>
-                <td style="font-weight:600">${b.title}</td>
-                <td>${b.imageUrl ? '<img src="'+b.imageUrl+'" style="height:36px;border-radius:6px;object-fit:cover" onerror="this.style.display=\'none\'">' : '<span style="color:#64748b">—</span>'}</td>
-                <td style="color:#64748b;font-size:12px">${b.sortOrder || 0}</td>
-                <td><span class="status-dot ${b.isActive ? 'active' : 'inactive'}"></span>${b.isActive ? 'Aktiv' : 'Inaktiv'}</td>
-                <td>
-                  <button class="btn btn-ghost btn-sm" onclick="editBanner('${b.id}')">✏️</button>
-                  <button class="btn btn-sm ${b.isActive ? 'btn-ghost' : 'btn-primary'}" onclick="toggleBanner('${b.id}')">${b.isActive ? 'Deaktiv.' : 'Aktivieren'}</button>
-                  <button class="btn btn-danger btn-sm" onclick="deleteBanner('${b.id}')">🗑️</button>
-                </td>
-              </tr>
-            `).join('')}
+          <tbody>${bannersCache.map(b => `
+            <tr>
+              <td style="font-weight:600">${escapeHtml(b.title)}</td>
+              <td>${b.imageUrl?'<img src="'+b.imageUrl+'" style="height:36px;border-radius:6px;object-fit:cover" onerror="this.style.display=\\'none\\'">':'<span style="color:var(--text-muted)">—</span>'}</td>
+              <td style="color:var(--text-muted);font-size:12px">${b.sortOrder||0}</td>
+              <td><span class="status-dot ${b.isActive?'active':'inactive'}"></span>${b.isActive?'Aktiv':'Inaktiv'}</td>
+              <td>
+                <button class="btn btn-ghost btn-xs" onclick="editBanner('${b.id}')">${icosm('ico-edit')}</button>
+                <button class="btn btn-xs ${b.isActive?'btn-ghost':'btn-primary'}" onclick="toggleBanner('${b.id}')">${b.isActive?'Deaktiv.':'Aktivieren'}</button>
+                <button class="btn btn-danger btn-xs" onclick="deleteBanner('${b.id}')">${icosm('ico-trash')}</button>
+              </td>
+            </tr>`).join('')}
           </tbody>
         </table>`}
       </div></div>
     `;
-  } catch(e) { el.innerHTML = `<div class="empty-state"><p>⚠️ ${e.message}</p></div>`; }
+  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
 }
-
+// Original banners functions (de-emojified)
 function openBannerModal(item) {
   document.getElementById('banners-modal-title').textContent = item ? 'Banner bearbeiten' : 'Neues Banner';
-  document.getElementById('banners-modal-sub').textContent = item ? 'Bearbeite das Banner' : 'Erstelle ein neues Banner';
   document.getElementById('banner-id').value = item ? item.id : '';
   document.getElementById('banner-title').value = item ? item.title : '';
   document.getElementById('banner-image').value = item ? item.imageUrl : '';
@@ -992,355 +1261,42 @@ function openBannerModal(item) {
   document.getElementById('banner-active').checked = item ? item.isActive : true;
   document.getElementById('banners-modal').classList.add('open');
 }
-
-function editBanner(id) {
-  const item = bannersCache.find(b => b.id === id);
-  if (item) openBannerModal(item);
-}
-
+function editBanner(id) { const item = bannersCache.find(b => b.id===id); if (item) openBannerModal(item); }
 async function saveBanner() {
   const id = document.getElementById('banner-id').value;
-  const body = {
-    title: document.getElementById('banner-title').value,
-    imageUrl: document.getElementById('banner-image').value,
-    description: document.getElementById('banner-desc').value,
-    clickTarget: document.getElementById('banner-target').value,
-    clickType: document.getElementById('banner-clicktype').value,
-    sortOrder: parseInt(document.getElementById('banner-sort').value) || 0,
-    priority: parseInt(document.getElementById('banner-priority').value) || 0,
-    isActive: document.getElementById('banner-active').checked,
-  };
-  if (!body.title) { showToast('Titel ist erforderlich', 'error'); return; }
-  if (!body.imageUrl) { showToast('Bild-URL ist erforderlich', 'error'); return; }
+  const body = { title:document.getElementById('banner-title').value, imageUrl:document.getElementById('banner-image').value, description:document.getElementById('banner-desc').value, clickTarget:document.getElementById('banner-target').value, clickType:document.getElementById('banner-clicktype').value, sortOrder:parseInt(document.getElementById('banner-sort').value)||0, priority:parseInt(document.getElementById('banner-priority').value)||0, isActive:document.getElementById('banner-active').checked };
+  if (!body.title) { showToast('Titel erforderlich','error'); return; }
+  if (!body.imageUrl) { showToast('Bild-URL erforderlich','error'); return; }
   try {
-    if (id) {
-      await api('/api/banners/' + id, { method: 'PUT', body: JSON.stringify(body) });
-      showToast('Banner aktualisiert', 'success');
-    } else {
-      await api('/api/banners', { method: 'POST', body: JSON.stringify(body) });
-      showToast('Banner erstellt', 'success');
-    }
-    closeModal('banners-modal');
-    renderBanners();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
+    if (id) { await api('/api/banners/'+id,{method:'PUT',body:JSON.stringify(body)}); showToast('Banner aktualisiert','success'); }
+    else { await api('/api/banners',{method:'POST',body:JSON.stringify(body)}); showToast('Banner erstellt','success'); }
+    closeModal('banners-modal'); renderBanners();
+  } catch(e) { showToast('Fehler: '+e.message,'error'); }
 }
+async function toggleBanner(id) { try { await api('/api/banners/'+id+'/toggle',{method:'PATCH'}); showToast('Status ge&auml;ndert','success'); renderBanners(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
+async function deleteBanner(id) { if (!confirm('Wirklich loschen?')) return; try { await api('/api/banners/'+id,{method:'DELETE'}); showToast('Banner gel&ouml;scht','success'); renderBanners(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
 
-async function toggleBanner(id) {
-  try {
-    await api('/api/banners/' + id + '/toggle', { method: 'PATCH' });
-    showToast('Status geändert', 'success');
-    renderBanners();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
-}
-
-async function deleteBanner(id) {
-  if (!confirm('Dieses Banner wirklich löschen?')) return;
-  try {
-    await api('/api/banners/' + id, { method: 'DELETE' });
-    showToast('Banner gelöscht', 'success');
-    renderBanners();
-  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
-}
-
-// ===== Content Management =====
-let contentRepoData = null;
-let contentBrowsePath = '';
-
-async function renderContent() {
-  const el = document.getElementById('page-content');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-
-  try {
-    const [repoRes, dbStatusRes] = await Promise.all([
-      fetch(API + '/api/content/repo-status', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.json()),
-      api('/api/content/status').catch(() => ({}))
-    ]);
-    contentRepoData = repoRes.data || {};
-    const manifest = contentRepoData.manifest || {};
-    const git = contentRepoData.git || {};
-    const dirTree = contentRepoData.directoryTree || {};
-    const dbStatus = dbStatusRes || {};
-
-    const categories = Object.keys(dirTree).sort();
-    const totalFiles = Object.values(dirTree).reduce((sum, v) => sum + (v.files || 0) + (v.subdirs || 0), 0);
-
-    const uploadCategories = [
-      { value: 'cosmetics', label: '✨ Cosmetics' },
-      { value: 'themes', label: '🎨 Themes' },
-      { value: 'banners', label: '🖼 Banners' },
-      { value: 'news', label: '📰 News' },
-      { value: 'events', label: '📅 Events' },
-      { value: 'assets', label: '🧩 Assets' },
-      { value: 'textures', label: '🖌 Textures' },
-      { value: 'Blockbench Models', label: '🧊 Blockbench' },
-      { value: 'cosmetic_models', label: '👤 Cosmetic Models' },
-    ];
-
-    el.innerHTML = `
-      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
-        <div>
-          <h1>📦 Content Management</h1>
-          <p>Asset Repository: <code style="font-size:11px;color:#10b981">${contentRepoData.repoPath || '—'}</code></p>
-        </div>
-      </div>
-
-      <!-- Stats -->
-      <div class="stats-row">
-        <div class="stat-card">
-          <div class="stat-value">${manifest.fileCount || 0}</div>
-          <div class="stat-label">📋 Manifest Files</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">v${manifest.version || '—'}</div>
-          <div class="stat-label">🏷 Manifest Version</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${formatBytes(manifest.totalSize || 0)}</div>
-          <div class="stat-label">💾 Total Size</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${categories.length}</div>
-          <div class="stat-label">📁 Categories</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${git.hasUncommittedChanges ? '⚠️' : '✅'}</div>
-          <div class="stat-label">📝 Git Status</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${dbStatus.totalFiles || '—'}</div>
-          <div class="stat-label">🗄️ DB Files</div>
-        </div>
-      </div>
-
-      <!-- Action Buttons -->
-      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="generateManifest()" id="btn-gen-manifest">🔄 Manifest generieren</button>
-        <button class="btn btn-primary" style="background:#6366f1" onclick="gitPush()" id="btn-git-push">📤 Git Push</button>
-        <button class="btn btn-ghost" onclick="refreshContent()">🔄 Refresh</button>
-        ${git.hasUncommittedChanges ? '<span style="color:#f59e0b;font-size:12px;display:flex;align-items:center;gap:4px">⚠️ ' + (git.changedFiles || 0) + ' uncommittete Änderungen</span>' : ''}
-        ${git.lastCommit ? '<span style="color:#64748b;font-size:11px;display:flex;align-items:center">📝 ' + git.lastCommit + '</span>' : ''}
-      </div>
-
-      <!-- File Upload -->
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-header"><h3>📤 Dateien hochladen</h3></div>
-        <div class="card-body">
-          <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">
-            <label style="font-size:13px;font-weight:600;color:#94a3b8">Kategorie:</label>
-            <select id="upload-category" style="padding:6px 12px;border-radius:8px;border:1px solid #1e293b;background:#0f172a;color:#e2e8f0;font-size:13px">
-              ${uploadCategories.map(c => `<option value="${c.value}">${c.label}</option>`).join('')}
-            </select>
-            <label style="font-size:13px;font-weight:600;color:#94a3b8;margin-left:8px">oder neuer Ordner:</label>
-            <input type="text" id="upload-category-custom" placeholder="custom-folder" style="padding:6px 12px;border-radius:8px;border:1px solid #1e293b;background:#0f172a;color:#e2e8f0;font-size:13px;width:150px">
-          </div>
-          <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-            <div class="icon-upload">📁</div>
-            <p><strong>Klicke zum Auswählen</strong> oder ziehe Dateien hierher</p>
-            <p>Max. 100MB pro Datei</p>
-            <div class="upload-progress" id="upload-progress"><div class="fill" id="upload-progress-fill"></div></div>
-          </div>
-          <input type="file" id="file-input" multiple style="display:none" onchange="handleFileSelect(event)">
-          <div id="upload-status" style="margin-top:8px;font-size:12px;color:#64748b"></div>
-        </div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <!-- File Browser -->
-        <div class="card">
-          <div class="card-header">
-            <h3>📂 Dateien</h3>
-            <span class="badge">${totalFiles} items</span>
-          </div>
-          <div class="card-body" style="max-height:400px;overflow-y:auto;padding:0">
-            ${categories.length === 0 ? '<div class="empty-state"><p>Keine Dateien gefunden</p></div>' :
-              categories.map(cat => {
-                const info = dirTree[cat];
-                return `
-                  <div class="file-list-item">
-                    <span class="icon">${info.type === 'directory' ? '📁' : '📄'}</span>
-                    <span class="name">${cat}${info.type === 'file' ? '' : '/'}</span>
-                    <span class="size">${info.type === 'directory' ? (info.files || 0) + ' files' : formatBytes(info.size || 0)}</span>
-                    <span class="actions">
-                      ${info.type === 'file'
-                        ? `<button class="btn btn-danger btn-sm" onclick="deleteContentFile('${cat}')" title="Löschen">🗑️</button>`
-                        : ''}
-                    </span>
-                  </div>
-                `;
-              }).join('')
-            }
-          </div>
-        </div>
-
-        <!-- Manifest Preview -->
-        <div class="card">
-          <div class="card-header"><h3>📋 Manifest.json</h3><span class="badge">v${manifest.version || '—'}</span></div>
-          <div class="card-body" style="padding:0">
-            <div class="json-view" id="manifest-preview">${manifest.fileCount
-              ? JSON.stringify({ schemaVersion: manifest.schemaVersion, version: manifest.version, updatedAt: manifest.updatedAt, fileCount: manifest.fileCount, totalSize: manifest.totalSize }, null, 2)
-              : '// Kein Manifest vorhanden\n// Klicke "Manifest generieren"'}</div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    // Setup drag & drop
-    setupUploadZone();
-  } catch(e) {
-    el.innerHTML = `<div class="empty-state"><p>⚠️ ${e.message}</p></div>`;
-  }
-}
-
-function setupUploadZone() {
-  const zone = document.getElementById('upload-zone');
-  if (!zone) return;
-
-  ['dragenter', 'dragover'].forEach(evt => {
-    zone.addEventListener(evt, (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-  });
-  ['dragleave', 'drop'].forEach(evt => {
-    zone.addEventListener(evt, (e) => { e.preventDefault(); zone.classList.remove('drag-over'); });
-  });
-
-  zone.addEventListener('drop', (e) => {
-    const files = e.dataTransfer.files;
-    if (files.length > 0) uploadFiles(files);
-  });
-}
-
-function handleFileSelect(event) {
-  const files = event.target.files;
-  if (files.length > 0) uploadFiles(files);
-  event.target.value = '';
-}
-
-async function uploadFiles(fileList) {
-  const category = (document.getElementById('upload-category-custom')?.value?.trim())
-    || document.getElementById('upload-category')?.value
-    || 'assets';
-
-  const progressFill = document.getElementById('upload-progress-fill');
-  const progressBar = document.getElementById('upload-progress');
-  const statusEl = document.getElementById('upload-status');
-
-  progressBar.classList.add('active');
-  progressFill.style.width = '0%';
-  statusEl.textContent = `Lade ${fileList.length} Datei(en) hoch...`;
-
-  const formData = new FormData();
-  formData.append('category', category);
-  for (const f of fileList) {
-    formData.append(fileList.length === 1 ? 'file' : 'files', f);
-  }
-
-  const endpoint = fileList.length === 1 ? '/api/content/upload' : '/api/content/upload-multiple';
-
-  try {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', API + endpoint);
-    xhr.setRequestHeader('Authorization', 'Bearer ' + token);
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        progressFill.style.width = pct + '%';
-      }
-    };
-
-    await new Promise((resolve, reject) => {
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
-        else reject(new Error(xhr.responseText));
-      };
-      xhr.onerror = () => reject(new Error('Network error'));
-      xhr.send(formData);
-    });
-
-    progressFill.style.width = '100%';
-    const count = fileList.length;
-    statusEl.innerHTML = `<span style="color:#10b981">✅ ${count} Datei(en) erfolgreich hochgeladen in "${category}/"</span>`;
-    showToast(`${count} Datei(en) hochgeladen`, 'success');
-
-    // Refresh after short delay
-    setTimeout(() => renderContent(), 1500);
-  } catch(e) {
-    statusEl.innerHTML = `<span style="color:#ef4444">❌ Upload fehlgeschlagen: ${e.message}</span>`;
-    showToast('Upload fehlgeschlagen', 'error');
-  } finally {
-    setTimeout(() => progressBar.classList.remove('active'), 1000);
-  }
-}
-
-async function generateManifest() {
-  const btn = document.getElementById('btn-gen-manifest');
-  btn.disabled = true; btn.textContent = '⏳ Generiere...';
-  try {
-    const res = await fetch(API + '/api/content/generate-manifest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({})
-    });
-    const data = await res.json();
-    if (data.success) {
-      showToast(`Manifest v${data.manifest?.version || '?'} generiert (${data.manifest?.files?.length || 0} Dateien)`, 'success');
-      setTimeout(() => renderContent(), 500);
-    } else {
-      showToast('Fehler: ' + (data.error || 'Unknown'), 'error');
-    }
-  } catch(e) {
-    showToast('Fehler: ' + e.message, 'error');
-  }
-  btn.disabled = false; btn.textContent = '🔄 Manifest generieren';
-}
-
-async function gitPush() {
-  const message = prompt('Commit-Nachricht:', 'Update content from admin panel');
-  if (!message) return;
-
-  const btn = document.getElementById('btn-git-push');
-  btn.disabled = true; btn.textContent = '⏳ Pushing...';
-  try {
-    const res = await fetch(API + '/api/content/git-push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ message })
-    });
-    const data = await res.json();
-    if (data.success) {
-      showToast(data.message || 'Git push erfolgreich', 'success');
-      setTimeout(() => renderContent(), 500);
-    } else {
-      showToast('Fehler: ' + (data.error || 'Unknown'), 'error');
-    }
-  } catch(e) {
-    showToast('Fehler: ' + e.message, 'error');
-  }
-  btn.disabled = false; btn.textContent = '📤 Git Push';
-}
-
-async function deleteContentFile(filePath) {
-  if (!confirm(`Datei "${filePath}" wirklich löschen?`)) return;
-  try {
-    const res = await fetch(API + '/api/content/file', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ path: filePath })
-    });
-    const data = await res.json();
-    if (data.success) {
-      showToast('Datei gelöscht', 'success');
-      renderContent();
-    } else {
-      showToast('Fehler: ' + (data.error || 'Unknown'), 'error');
-    }
-  } catch(e) {
-    showToast('Fehler: ' + e.message, 'error');
-  }
-}
-
-function refreshContent() {
-  renderContent();
-}
+// ===== CSS for status dots & rarity badges (preserved from original) =====
+const extraStyle = document.createElement('style');
+extraStyle.textContent = `
+  .status-dot { display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px; }
+  .status-dot.active { background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.4); }
+  .status-dot.inactive { background:#64748b; }
+  .badge-rarity { display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px; }
+  .badge-rarity.common { background:rgba(148,163,184,0.1);color:#94a3b8;border:1px solid rgba(148,163,184,0.2); }
+  .badge-rarity.rare { background:rgba(96,165,250,0.1);color:#93c5fd;border:1px solid rgba(96,165,250,0.2); }
+  .badge-rarity.epic { background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.2); }
+  .badge-rarity.legendary { background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.2); }
+  .badge-rarity.mythic { background:rgba(251,146,60,0.1);color:#fb923c;border:1px solid rgba(251,146,60,0.2); }
+  .badge-type.cape { background:rgba(99,102,241,0.1);color:#818cf8;border:1px solid rgba(99,102,241,0.2); }
+  .badge-type.aura { background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.2); }
+  .badge-type.hat { background:rgba(245,158,11,0.1);color:#fbbf24;border:1px solid rgba(245,158,11,0.2); }
+  .badge-type.ear { background:rgba(236,72,153,0.1);color:#f472b6;border:1px solid rgba(236,72,153,0.2); }
+  .badge-type.wings { background:rgba(14,165,233,0.1);color:#38bdf8;border:1px solid rgba(14,165,233,0.2); }
+  .badge-type.rank { background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.2); }
+  .badge-type.other { background:rgba(148,163,184,0.1);color:#94a3b8;border:1px solid rgba(148,163,184,0.2); }
+`;
+document.head.appendChild(extraStyle);
 </script>
 </body>
 </html>

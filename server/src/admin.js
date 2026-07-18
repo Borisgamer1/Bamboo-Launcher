@@ -119,6 +119,18 @@ async function initDatabase() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_content_manifests_type ON content_manifests(content_type_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_content_manifests_version ON content_manifests(version);`);
 
+    // === Assets (Phase 3 – Unified Asset Management) ===
+    await pool.query(`CREATE TABLE IF NOT EXISTS assets (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), slug VARCHAR(128) UNIQUE NOT NULL, name VARCHAR(256) NOT NULL, description TEXT NOT NULL DEFAULT '', asset_type VARCHAR(64) NOT NULL DEFAULT 'cosmetic' CHECK(asset_type IN ('cosmetic','theme','background','icon','ui_asset','music','shader','resource_pack','font','other')), category VARCHAR(64) NOT NULL DEFAULT 'general', status VARCHAR(32) NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','archived')), version INTEGER NOT NULL DEFAULT 1, tags TEXT[] DEFAULT '{}', thumbnail_url VARCHAR(1024) DEFAULT '', preview_url VARCHAR(1024) DEFAULT '', metadata JSONB DEFAULT '{}'::jsonb, is_active BOOLEAN NOT NULL DEFAULT true, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(asset_type);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_assets_category ON assets(category);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_assets_slug ON assets(slug);`);
+
+    // === Asset Files (files belonging to an asset) ===
+    await pool.query(`CREATE TABLE IF NOT EXISTS asset_files (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE, file_path VARCHAR(512) NOT NULL, file_name VARCHAR(256) NOT NULL, file_type VARCHAR(64) NOT NULL DEFAULT 'other' CHECK(file_type IN ('texture','model','icon','preview','manifest','audio','shader','font','config','other')), file_hash VARCHAR(64) NOT NULL DEFAULT '', file_size BIGINT NOT NULL DEFAULT 0, mime_type VARCHAR(128) DEFAULT 'application/octet-stream', disk_path VARCHAR(1024) DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(asset_id, file_name));`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_asset_files_asset ON asset_files(asset_id);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_asset_files_type ON asset_files(file_type);`);
+
     // === Default admin user
     const result = await pool.query('SELECT COUNT(*) FROM admin_users');
     if (parseInt(result.rows[0].count) === 0) {
@@ -142,6 +154,25 @@ async function initDatabase() {
         await pool.query('INSERT INTO content_types (slug, name, description, file_pattern) VALUES ($1, $2, $3, $4) ON CONFLICT (slug) DO NOTHING', [slug, name, desc, pattern]);
       }
       console.log('[admin] Default content types seeded');
+    }
+
+    // Seed default assets if empty (sample demo assets)
+    const assetCount = await pool.query('SELECT COUNT(*) FROM assets');
+    if (parseInt(assetCount.rows[0].count) === 0) {
+      const defaultAssets = [
+        ['duck-crown', 'Duck Crown', 'A majestic crown for your duck character', 'cosmetic', 'hats', 'published', 1, '{crown,royal,gold}'],
+        ['bamboo-green-theme', 'Bamboo Green Theme', 'A fresh green theme inspired by bamboo forests', 'theme', 'green', 'published', 1, '{theme,green,nature}'],
+        ['cherry-blossom-theme', 'Cherry Blossom Theme', 'Beautiful cherry blossom pink theme', 'theme', 'pink', 'published', 1, '{theme,pink,spring}'],
+        ['default-background', 'Default Background', 'The default launcher background', 'background', 'default', 'published', 1, '{background,default}'],
+        ['dragon-wings', 'Dragon Wings', 'Epic dragon wings cosmetic', 'cosmetic', 'wings', 'draft', 1, '{wings,dragon,epic}'],
+      ];
+      for (const [slug, name, desc, type, cat, status, ver, tags] of defaultAssets) {
+        await pool.query(
+          'INSERT INTO assets (slug, name, description, asset_type, category, status, version, tags) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (slug) DO NOTHING',
+          [slug, name, desc, type, cat, status, ver, tags]
+        );
+      }
+      console.log('[admin] Default sample assets seeded');
     }
 
     dbConnected = true;
@@ -1379,6 +1410,10 @@ app.delete('/api/content/file', authenticateAdmin, (req, res) => {
 
 // ===== Multer Error Handler (must be after routes that use multer) =====
 app.use(handleMulterErrors);
+
+// ===== Asset Management Routes (Phase 3) =====
+const assetRoutes = require('./assetRoutes');
+assetRoutes(app, { pool, dbConnected, authenticateAdmin, uuidv4 });
 
 // ===== Serve Admin Panel UI =====
 app.get('/', (req, res) => {
