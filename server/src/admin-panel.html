@@ -1108,7 +1108,8 @@ async function loadAvailableTextures() {
   if (!container) return;
   try {
     container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Lade verfügbare Texturen...</div>';
-    const r = await fetch(API + '/api/content/files?type=texture&limit=100', {
+    // Use empty search to recursively find all .png files in the repo
+    const r = await fetch(API + '/api/content/files?type=texture&q=.png&limit=200', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const data = await r.json();

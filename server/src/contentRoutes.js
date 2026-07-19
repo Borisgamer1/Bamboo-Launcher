@@ -157,9 +157,8 @@ module.exports = function contentRoutes(app, ctx) {
     if (!fs.existsSync(dir) || depth > 10) return results;
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
-      if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === 'Thumbs.db' || entry.name === '.DS_Store') continue;
+      const fullPath = path.join(dir, entry.name);const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+       if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === 'Thumbs.db' || entry.name === '.DS_Store') continue;
       if (entry.isDirectory()) {
         results.push(...walkDir(fullPath, baseDir, depth + 1));
       } else if (entry.isFile()) {
@@ -734,9 +733,8 @@ module.exports = function contentRoutes(app, ctx) {
           // Sort thumbnails: pick first image as thumbnail
           if (!item.thumbnail_url && !item.preview_url) {
             const images = addedFiles.filter(f => /\.(png|jpg|jpeg|webp|gif)$/i.test(f.fileName));
-            if (images.length > 0) {
-              const thumb = path.join(assetType + 's', item.slug, images[0].fileName).replace(/\\/g, '/');
-              try {
+            if (images.length > 0) {              const thumb = path.join(assetType + 's', item.slug, images[0].fileName).replace(/\\/g, '/');
+               try {
                 await pool.query('UPDATE assets SET thumbnail_url = $1, preview_url = $1, updated_at = NOW() WHERE id = $2', [thumb, item.id]);
               } catch {}
             }
@@ -1071,6 +1069,8 @@ module.exports = function contentRoutes(app, ctx) {
       };
 
       for (const row of r.rows) {
+        // Skip deprecated 'background' type (now part of themes)
+        if (row.asset_type === 'background') continue;
         types.push({
           type: row.asset_type,
           name: typeNames[row.asset_type] || row.asset_type,
