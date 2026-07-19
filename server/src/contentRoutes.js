@@ -29,6 +29,10 @@ module.exports = function contentRoutes(app, ctx) {
   const GITHUB_CONTENT_BRANCH = process.env.GITHUB_CONTENT_BRANCH || 'main';
   // Cache for GitHub API responses (avoids rate-limit issues)
   let _githubCache = { data: null, timestamp: 0, ttlMs: 30 * 1000 }; // 30s cache
+  // GitHub API status tracking for debug endpoint
+  let _githubApiStatus = { lastAttempt: null, lastSuccess: null, lastError: null, errorCount: 0 };
+  // Server build time
+  const _buildTime = new Date().toISOString();
 
   // Allowed content types (mapped to asset_type in the assets table)
   // Backgrounds are part of themes — not a standalone content type.
@@ -321,8 +325,44 @@ module.exports = function contentRoutes(app, ctx) {
       console.log('[content] GitHub tree fetched:', items.length, 'files,', dirs.size, 'directories');
       return result;
     } catch (err) {
-      console.warn('[content] GitHub API error:', err.message);
-      return { files: [], dirs: [] };
+      // Classify the error for debugging
+      const isNetworkError = err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT';
+      const isRateLimit = err.message && (err.message.includes('403') || err.message.includes('rate limit') || err.message.includes('API rate limit'));
+      const isNotFound = err.message && (err.message.includes('404') || err.message.includes('Not Found'));
+      const isInvalidRepo = err.message && err.message.includes('Not Found');
+      const errorType = isRateLimit ? 'rate_limit'
+        : isNotFound ? 'not_found'
+        : isNetworkError ? 'network_error'
+        : 'unknown';
+
+      const errorDetail = {
+        type: errorType,
+        message: err.message,
+        code: err.code || null,
+        repo: GITHUB_CONTENT_REPO,
+        branch: GITHUB_CONTENT_BRANCH,
+        url: `https://api.github.com/repos/${GITHUB_CONTENT_REPO}/git/trees/${GITHUB_CONTENT_BRANCH}?recursive=1`,
+        timestamp: new Date().toISOString(),
+      };
+
+      _githubApiStatus = {
+        lastAttempt: new Date().toISOString(),
+        lastSuccess: _githubApiStatus.lastSuccess,
+        lastError: errorDetail,
+        errorCount: _githubApiStatus.errorCount + 1,
+      };
+
+      console.error('[content] GitHub API FEHLER — Typ:', errorType);
+      console.error('[content]   Details:', err.message);
+      console.error('[content]   Repo:', GITHUB_CONTENT_REPO);
+      console.error('[content]   Branch:', GITHUB_CONTENT_BRANCH);
+      if (err.code) console.error('[content]   Code:', err.code);
+
+      // THROW instead of returning empty — the handler decides how to respond
+      const apiError = new Error(`GitHub API ${errorType}: ${err.message}`);
+      apiError.statusCode = 502;
+      apiError.githubDetail = errorDetail;
+      throw apiError;
     }
   }
 
@@ -330,6 +370,112 @@ module.exports = function contentRoutes(app, ctx) {
   function getGitHubRawUrl(filePath) {
     return `https://raw.githubusercontent.com/${GITHUB_CONTENT_REPO}/${GITHUB_CONTENT_BRANCH}/${filePath}`;
   }
+
+  // ===== GET /api/content/debug — Server-Status & Diagnose ==========
+  // Zeigt den aktuellen Commit, Build-Zeit, NODE_ENV, Repository-Info,
+  // GitHub API Status, Cache-Status und Datei-Statistiken.
+  // Authentifizierung erforderlich (sonst könnte jeder die Konfiguration sehen).
+  app.get('/api/content/debug', authenticateAdmin, async (req, res) => {
+    try {
+      // Try to get commit hash
+      let commitHash = 'unknown';
+      let commitMessage = '';
+      try {
+        const { execSync } = require('child_process');
+        commitHash = execSync('git rev-parse HEAD', { cwd: path.resolve(__dirname, '..'), timeout: 3000 }).toString().trim();
+        commitMessage = execSync('git log --oneline -1', { cwd: path.resolve(__dirname, '..'), timeout: 3000 }).toString().trim();
+      } catch { /* not a git repo or git not available */ }
+
+      // Check GitHub API connectivity
+      let githubReachable = false;
+      let githubResponseTime = null;
+      try {
+        const https = require('https');
+        const start = Date.now();
+        await new Promise((resolve, reject) => {
+          const req = https.get(
+            `https://api.github.com/repos/${GITHUB_CONTENT_REPO}`,
+            { headers: { 'User-Agent': 'Bamboo-Launcher/1.0' }, timeout: 5000 },
+            (res) => {
+              let b = '';
+              res.on('data', c => b += c);
+              res.on('end', () => {
+                githubResponseTime = Date.now() - start;
+                if (res.statusCode === 200) {
+                  try {
+                    const d = JSON.parse(b);
+                    githubReachable = true;
+                  } catch { githubReachable = true; }
+                } else if (res.statusCode === 403) {
+                  githubReachable = false;
+                } else {
+                  githubReachable = true; // found the repo but different status
+                }
+                resolve();
+              });
+            }
+          );
+          req.on('error', () => { githubReachable = false; resolve(); });
+          req.on('timeout', () => { req.destroy(); githubReachable = false; resolve(); });
+        });
+      } catch { githubReachable = false; }
+
+      // Check local content root
+      let localFiles = 0;
+      let localDirs = 0;
+      try {
+        if (fs.existsSync(CONTENT_ROOT)) {
+          const entries = fs.readdirSync(CONTENT_ROOT, { withFileTypes: true });
+          for (const e of entries) {
+            if (e.name === '.git' || e.name === 'node_modules') continue;
+            if (e.isDirectory()) localDirs++;
+            else localFiles++;
+          }
+        }
+      } catch {}
+
+      // Count cached files
+      const cachedFiles = _githubCache.data ? _githubCache.data.files.length : 0;
+      const cachedDirs = _githubCache.data ? _githubCache.data.dirs.length : 0;
+      const cacheAge = _githubCache.timestamp ? (Date.now() - _githubCache.timestamp) / 1000 : null;
+
+      return res.json({
+        success: true,
+        server: {
+          buildTime: _buildTime,
+          nodeEnv: process.env.NODE_ENV || 'not set',
+          nodeVersion: process.version,
+          platform: process.platform,
+        },
+        version: {
+          commit: commitHash,
+          commitMessage: commitMessage,
+        },
+        github: {
+          repository: GITHUB_CONTENT_REPO,
+          branch: GITHUB_CONTENT_BRANCH,
+          reachable: githubReachable,
+          responseTimeMs: githubResponseTime,
+          apiStatus: _githubApiStatus,
+        },
+        cache: {
+          active: _githubCache.data !== null,
+          fileCount: cachedFiles,
+          dirCount: cachedDirs,
+          ageSeconds: cacheAge,
+          ttlSeconds: _githubCache.ttlMs / 1000,
+        },
+        filesystem: {
+          contentRoot: CONTENT_ROOT,
+          exists: fs.existsSync(CONTENT_ROOT),
+          localFiles: localFiles,
+          localDirs: localDirs,
+        },
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
 
   /** Validate content type */
   function validateType(assetType) {
@@ -449,7 +595,40 @@ module.exports = function contentRoutes(app, ctx) {
       // ---- STEP 2: If no local files, fall back to GitHub API ----
       if (allItems.length === 0) {
         source = 'github';
-        const ghData = await fetchGithubFileTree();
+        let ghData;
+        try {
+          ghData = await fetchGithubFileTree();
+          // Update success status
+          _githubApiStatus.lastSuccess = new Date().toISOString();
+          _githubApiStatus.lastAttempt = new Date().toISOString();
+          _githubApiStatus.lastError = null;
+          _githubApiStatus.errorCount = 0;
+        } catch (ghErr) {
+          // Log the full error details
+          console.error('[content] Datei-Browser: GitHub API fehlgeschlagen:', ghErr.message);
+          if (ghErr.githubDetail) {
+            console.error('[content]   Typ:', ghErr.githubDetail.type);
+            console.error('[content]   Repo:', ghErr.githubDetail.repo);
+          }
+          // Return a proper error instead of silently returning empty items
+          return res.status(ghErr.statusCode || 502).json({
+            success: false,
+            error: 'Dateien konnten nicht aus dem GitHub Repository geladen werden.',
+            detail: {
+              type: ghErr.githubDetail?.type || 'unknown',
+              message: ghErr.message,
+              repo: GITHUB_CONTENT_REPO,
+              branch: GITHUB_CONTENT_BRANCH,
+              tip: ghErr.githubDetail?.type === 'rate_limit'
+                ? 'GitHub API Rate Limit erreicht. Bitte warte einige Minuten und versuche es erneut.'
+                : ghErr.githubDetail?.type === 'not_found'
+                ? 'Repository oder Branch nicht gefunden. Überprüfe GITHUB_CONTENT_REPO und GITHUB_CONTENT_BRANCH.'
+                : ghErr.githubDetail?.type === 'network_error'
+                ? 'Netzwerkfehler — GitHub ist möglicherweise nicht erreichbar.'
+                : 'Unbekannter Fehler. Siehe Server-Log für Details.',
+            },
+          });
+        }
 
         if (searchQuery) {
           // Recursive search through all files matching the query
