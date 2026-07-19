@@ -1073,7 +1073,7 @@ function fillFilePicker(fieldId, value) {
   if (preview) {
     const isImage = value && /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(value);
     preview.style.display = isImage ? 'block' : 'none';
-    if (isImage) preview.src = '/api/content/files/preview?path=' + encodeURIComponent(value);
+    if (isImage) preview.src = '/api/content/files/serve?path=' + encodeURIComponent(value);
   }
 }
 
@@ -1108,7 +1108,7 @@ async function loadAvailableTextures() {
   if (!container) return;
   try {
     container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Lade verfügbare Texturen...</div>';
-    const r = await fetch(API + '/api/content/files?type=image&limit=100', {
+    const r = await fetch(API + '/api/content/files?type=texture&limit=100', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const data = await r.json();

@@ -1004,44 +1004,6 @@ app.post('/api/content/git-push', authenticateAdmin, (req, res) => {
 });
 
 // ---------------------------------------------------------------
-// GET /api/content/browse — Browse files in the content repo
-//   Query: ?dir=cosmetics/subfolder (relative to repo root)
-// ---------------------------------------------------------------
-app.get('/api/content/browse', authenticateAdmin, (req, res) => {
-  try {
-    const subDir = (req.query.dir || '').replace(/\\/g, '/').replace(/\.\./g, '');
-    const browsePath = subDir ? path.join(BAMBOO_CONTENT_REPO, subDir) : BAMBOO_CONTENT_REPO;
-
-    // Security
-    const resolved = path.resolve(browsePath);
-    const resolvedRoot = path.resolve(BAMBOO_CONTENT_REPO);
-    if (!resolved.startsWith(resolvedRoot)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    if (!fs.existsSync(browsePath)) {
-      return res.status(404).json({ error: 'Directory not found' });
-    }
-
-    const entries = fs.readdirSync(browsePath, { withFileTypes: true });
-    const items = entries
-      .filter(e => e.name !== '.git' && e.name !== 'manifest.json')
-      .map(e => ({
-        name: e.name,
-        type: e.isDirectory() ? 'directory' : 'file',
-        ...(e.isFile() ? { size: fs.statSync(path.join(browsePath, e.name)).size } : {}),
-      }));
-
-    return res.json({
-      success: true,
-      path: subDir || '/',
-      items,
-      count: items.length,
-    });
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-// ---------------------------------------------------------------
 // DELETE /api/content/file — Delete a file from the content repo
 //   Body: { path: "cosmetics/my-file.png" }
 // ---------------------------------------------------------------

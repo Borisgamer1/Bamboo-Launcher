@@ -251,6 +251,209 @@ module.exports = function contentRoutes(app, ctx) {
   }
 
   // ====================================================================
+  // === FILE/ASSET BROWSING API (must be BEFORE content type routes!) ===
+  // ====================================================================
+  // These routes MUST be registered before /api/content/:type to prevent
+  // Express from matching "files" as a content type parameter.
+  // ====================================================================
+
+  // ===== GET /api/content/files — Browse/search files in the repo =====
+  app.get('/api/content/files', authenticateAdmin, (req, res) => {
+    try {
+      if (!fs.existsSync(CONTENT_ROOT)) {
+        return res.json({ success: true, items: [], path: '/', total: 0, page: 1, limit: 50 });
+      }
+
+      const subDir = (req.query.dir || '').replace(/\\\\/g, '/').replace(/\.\./g, '');
+      const searchQuery = (req.query.q || '').trim().toLowerCase();
+      const typeFilter = (req.query.type || 'all').toLowerCase();
+      const page = Math.max(1, parseInt(req.query.page || '1'));
+      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit || '50')));
+
+      const browsePath = subDir ? path.join(CONTENT_ROOT, subDir) : CONTENT_ROOT;
+
+      const resolved = path.resolve(browsePath);
+      const resolvedRoot = path.resolve(CONTENT_ROOT);
+      if (!resolved.startsWith(resolvedRoot)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      if (!fs.existsSync(browsePath)) {
+        return res.status(404).json({ error: 'Directory not found' });
+      }
+
+      const typeMatch = {
+        image: f => /\.(png|jpg|jpeg|webp|gif|svg|ico)$/i.test(f),
+        model: f => /\.(glb|gltf|bbmodel|json)$/i.test(f),
+        audio: f => /\.(mp3|ogg|wav)$/i.test(f),
+        json: f => /\.json$/i.test(f),
+        font: f => /\.(ttf|otf|woff2)$/i.test(f),
+        archive: f => /\.zip$/i.test(f),
+        // Context-specific filters for the Asset Browser
+        texture: f => /\.(png)$/i.test(f),
+        glb: f => /\.(glb|gltf|bbmodel|json)$/i.test(f),
+        icon: f => /\.(png|jpg|jpeg|webp|gif|svg|ico)$/i.test(f),
+      };
+
+      let allItems = [];
+
+      if (searchQuery) {
+        const walkDir = (dir, baseDir, depth) => {
+          if (depth > 8) return;
+          let entries;
+          try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+          for (const e of entries) {
+            if (e.name === '.git' || e.name === 'node_modules' || e.name === 'manifest.json') continue;
+            const full = path.join(dir, e.name);
+            const rel = path.relative(baseDir, full).replace(/\\\\/g, '/');
+            if (e.isDirectory()) {
+              walkDir(full, baseDir, depth + 1);
+            } else if (e.isFile()) {
+              if (rel.toLowerCase().includes(searchQuery)) {
+                try {
+                  const stat = fs.statSync(full);
+                  allItems.push({ name: e.name, path: rel, type: 'file', size: stat.size, mtime: stat.mtime.toISOString() });
+                } catch {}
+              }
+            }
+          }
+        };
+        walkDir(browsePath, CONTENT_ROOT, 0);
+      } else {
+        const entries = fs.readdirSync(browsePath, { withFileTypes: true });
+        for (const e of entries) {
+          if (e.name === '.git' || e.name === 'node_modules' || e.name === 'manifest.json') continue;
+          const full = path.join(browsePath, e.name);
+          const rel = path.relative(CONTENT_ROOT, full).replace(/\\\\/g, '/');
+          if (e.isDirectory()) {
+            let childCount = 0;
+            try { childCount = fs.readdirSync(full).filter(x => !x.startsWith('.')).length; } catch {}
+            allItems.push({ name: e.name, path: rel, type: 'directory', fileCount: childCount });
+          } else if (e.isFile()) {
+            try {
+              const stat = fs.statSync(full);
+              allItems.push({ name: e.name, path: rel, type: 'file', size: stat.size, mtime: stat.mtime.toISOString() });
+            } catch {}
+          }
+        }
+
+        allItems.sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+      }
+
+      if (typeFilter !== 'all' && typeMatch[typeFilter]) {
+        allItems = allItems.filter(i => i.type === 'directory' || typeMatch[typeFilter](i.name));
+      }
+
+      const total = allItems.length;
+      const offset = (page - 1) * limit;
+      const items = allItems.slice(offset, offset + limit);
+      const parentDir = subDir ? subDir.split('/').slice(0, -1).join('/') : null;
+
+      return res.json({
+        success: true,
+        path: subDir || '/',
+        parentDir: parentDir || null,
+        items,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ===== GET /api/content/files/preview — Get file preview data =======
+  app.get('/api/content/files/preview', authenticateAdmin, (req, res) => {
+    try {
+      const filePath = (req.query.path || '').replace(/\\\\/g, '/').replace(/\.\./g, '');
+      if (!filePath) return res.status(400).json({ error: 'File path required' });
+
+      const fullPath = path.join(CONTENT_ROOT, filePath);
+      const resolved = path.resolve(fullPath);
+      const resolvedRoot = path.resolve(CONTENT_ROOT);
+      if (!resolved.startsWith(resolvedRoot)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      if (!fs.existsSync(fullPath)) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+
+      const stat = fs.statSync(fullPath);
+      const ext = path.extname(filePath).toLowerCase();
+      const isImage = /^\.(png|jpg|jpeg|webp|gif|svg|ico)$/i.test(ext);
+
+      const preview = {
+        name: path.basename(filePath),
+        path: filePath,
+        size: stat.size,
+        mtime: stat.mtime.toISOString(),
+        ext,
+        isImage,
+      };
+
+      if (isImage) {
+        const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+        preview.mimeType = mimeMap[ext] || 'image/png';
+        if (stat.size < 1024 * 1024) {
+          const data = fs.readFileSync(fullPath);
+          preview.base64 = `data:${preview.mimeType};base64,${data.toString('base64')}`;
+        }
+      }
+
+      // Also return a direct URL for image serving in the browser
+      if (isImage) {
+        preview.url = `/api/content/files/serve?path=${encodeURIComponent(filePath)}`;
+      }
+
+      return res.json({ success: true, data: preview });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ===== GET /api/content/files/serve — Direct file serving ===========
+  app.get('/api/content/files/serve', authenticateAdmin, (req, res) => {
+    try {
+      const filePath = (req.query.path || '').replace(/\\\\/g, '/').replace(/\.\./g, '');
+      if (!filePath) return res.status(400).json({ error: 'File path required' });
+
+      const fullPath = path.join(CONTENT_ROOT, filePath);
+      const resolved = path.resolve(fullPath);
+      const resolvedRoot = path.resolve(CONTENT_ROOT);
+      if (!resolved.startsWith(resolvedRoot)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      if (!fs.existsSync(fullPath)) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeMap = {
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+        '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+        '.json': 'application/json', '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json',
+        '.bbmodel': 'application/octet-stream',
+      };
+      const mimeType = mimeMap[ext] || 'application/octet-stream';
+
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      const stream = fs.createReadStream(fullPath);
+      stream.pipe(res);
+      stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ====================================================================
   // === GET /api/content/:type — List items of a content type ==========
   // ====================================================================
   app.get('/api/content/:type', async (req, res) => {
@@ -758,178 +961,7 @@ module.exports = function contentRoutes(app, ctx) {
   });
 
   // ====================================================================
-  // === GET /api/content/files — Browse/search files in the repo =====
-  // ====================================================================
-  // Query params:
-  //   dir   - directory to browse (relative to repo root)
-  //   q     - search query (searches file names recursively)
-  //   type  - file type filter (image, model, audio, json, all)
-  //   page  - page number (default 1)
-  //   limit - items per page (default 50)
-  // ====================================================================
-  app.get('/api/content/files', authenticateAdmin, (req, res) => {
-    try {
-      if (!fs.existsSync(CONTENT_ROOT)) {
-        return res.json({ success: true, items: [], path: '/', total: 0, page: 1, limit: 50 });
-      }
-
-      const subDir = (req.query.dir || '').replace(/\\\\/g, '/').replace(/\.\./g, '');
-      const searchQuery = (req.query.q || '').trim().toLowerCase();
-      const typeFilter = (req.query.type || 'all').toLowerCase();
-      const page = Math.max(1, parseInt(req.query.page || '1'));
-      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit || '50')));
-
-      const browsePath = subDir ? path.join(CONTENT_ROOT, subDir) : CONTENT_ROOT;
-
-      // Security: prevent traversal
-      const resolved = path.resolve(browsePath);
-      const resolvedRoot = path.resolve(CONTENT_ROOT);
-      if (!resolved.startsWith(resolvedRoot)) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-
-      if (!fs.existsSync(browsePath)) {
-        return res.status(404).json({ error: 'Directory not found' });
-      }
-
-      // File type filter helpers
-      const typeMatch = {
-        image: f => /\.(png|jpg|jpeg|webp|gif|svg|ico)$/i.test(f),
-        model: f => /\.(glb|gltf|bbmodel)$/i.test(f),
-        audio: f => /\.(mp3|ogg|wav)$/i.test(f),
-        json: f => /\.json$/i.test(f),
-        font: f => /\.(ttf|otf|woff2)$/i.test(f),
-        archive: f => /\.zip$/i.test(f),
-      };
-
-      let allItems = [];
-
-      if (searchQuery) {
-        // Recursive search
-        const walkDir = (dir, baseDir, depth) => {
-          if (depth > 8) return;
-          let entries;
-          try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-          for (const e of entries) {
-            if (e.name === '.git' || e.name === 'node_modules' || e.name === 'manifest.json') continue;
-            const full = path.join(dir, e.name);
-            const rel = path.relative(baseDir, full).replace(/\\\\/g, '/');
-            if (e.isDirectory()) {
-              walkDir(full, baseDir, depth + 1);
-            } else if (e.isFile()) {
-              if (rel.toLowerCase().includes(searchQuery)) {
-                try {
-                  const stat = fs.statSync(full);
-                  allItems.push({ name: e.name, path: rel, type: 'file', size: stat.size, mtime: stat.mtime.toISOString() });
-                } catch {}
-              }
-            }
-          }
-        };
-        walkDir(browsePath, CONTENT_ROOT, 0);
-      } else {
-        // Directory listing
-        const entries = fs.readdirSync(browsePath, { withFileTypes: true });
-        for (const e of entries) {
-          if (e.name === '.git' || e.name === 'node_modules' || e.name === 'manifest.json') continue;
-          const full = path.join(browsePath, e.name);
-          const rel = path.relative(CONTENT_ROOT, full).replace(/\\\\/g, '/');
-          if (e.isDirectory()) {
-            let childCount = 0;
-            try { childCount = fs.readdirSync(full).filter(x => !x.startsWith('.')).length; } catch {}
-            allItems.push({ name: e.name, path: rel, type: 'directory', fileCount: childCount });
-          } else if (e.isFile()) {
-            try {
-              const stat = fs.statSync(full);
-              allItems.push({ name: e.name, path: rel, type: 'file', size: stat.size, mtime: stat.mtime.toISOString() });
-            } catch {}
-          }
-        }
-
-        // Sort: directories first, then files alphabetically
-        allItems.sort((a, b) => {
-          if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
-      }
-
-      // Apply type filter (only for files)
-      if (typeFilter !== 'all' && typeMatch[typeFilter]) {
-        allItems = allItems.filter(i => i.type === 'directory' || typeMatch[typeFilter](i.name));
-      }
-
-      const total = allItems.length;
-      const offset = (page - 1) * limit;
-      const items = allItems.slice(offset, offset + limit);
-
-      // Determine parent directory for breadcrumb
-      const parentDir = subDir ? subDir.split('/').slice(0, -1).join('/') : null;
-
-      return res.json({
-        success: true,
-        path: subDir || '/',
-        parentDir: parentDir || null,
-        items,
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      });
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
-    }
-  });
-
-  // ====================================================================
-  // === GET /api/content/files/preview — Get file preview data ========
-  // ====================================================================
-  app.get('/api/content/files/preview', authenticateAdmin, (req, res) => {
-    try {
-      const filePath = (req.query.path || '').replace(/\\\\/g, '/').replace(/\.\./g, '');
-      if (!filePath) return res.status(400).json({ error: 'File path required' });
-
-      const fullPath = path.join(CONTENT_ROOT, filePath);
-      const resolved = path.resolve(fullPath);
-      const resolvedRoot = path.resolve(CONTENT_ROOT);
-      if (!resolved.startsWith(resolvedRoot)) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-
-      if (!fs.existsSync(fullPath)) {
-        return res.status(404).json({ error: 'File not found' });
-      }
-
-      const stat = fs.statSync(fullPath);
-      const ext = path.extname(filePath).toLowerCase();
-      const isImage = /^\.(png|jpg|jpeg|webp|gif|svg|ico)$/i.test(ext);
-
-      const preview = {
-        name: path.basename(filePath),
-        path: filePath,
-        size: stat.size,
-        mtime: stat.mtime.toISOString(),
-        ext,
-        isImage,
-      };
-
-      if (isImage) {
-        const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
-        preview.mimeType = mimeMap[ext] || 'image/png';
-        // Read first bytes to check if valid image, and return base64 preview for small images
-        if (stat.size < 1024 * 1024) {
-          const data = fs.readFileSync(fullPath);
-          preview.base64 = `data:${preview.mimeType};base64,${data.toString('base64')}`;
-        }
-      }
-
-      return res.json({ success: true, data: preview });
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
-    }
-  });
-
-  // ====================================================================
-  // === POST /api/content/assign-files — Assign files to a content item
+  // === POST /api/content/:type/:id/assign-files — Assign files to a content item
   // ====================================================================
   app.post('/api/content/:type/:id/assign-files', authenticateAdmin, async (req, res) => {
     try {
