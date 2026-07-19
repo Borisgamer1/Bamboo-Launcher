@@ -337,12 +337,12 @@ const [showSavedToast, setShowSavedToast] = useState(false);
     };
   }, []);
 
+  // Force re-render when theme service notifies of new themes loaded
+  const [themeVersion, setThemeVersion] = useState(0);
+
   // Theme selector - loaded from ThemeService (data-driven, CDN-backed)
   // Uses useMemo to rebuild theme list when themes change or language changes
   const themesList = useMemo(() => buildThemeList(themeService.getThemes(), lang), [themeVersion, lang]);
-
-  // Force re-render when theme service notifies of new themes loaded
-  const [themeVersion, setThemeVersion] = useState(0);
 
   // Subscribe to theme service updates
   useEffect(() => {
