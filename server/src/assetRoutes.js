@@ -3,7 +3,7 @@
 // ======================================================================
 
 module.exports = function assetRoutes(app, ctx) {
-  const { pool, dbConnected, authenticateAdmin, uuidv4 } = ctx;
+  const { pool, dbState, authenticateAdmin, uuidv4 } = ctx;
 
   function mapAssetRow(r) {
     return {
@@ -31,7 +31,7 @@ module.exports = function assetRoutes(app, ctx) {
   // GET /api/assets — List all assets with search, filter, sort
   app.get('/api/assets', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const { search, assetType, category, status, page = 1, limit = 50, sortBy = 'updatedAt', sortDir = 'desc' } = req.query;
       const off = (parseInt(page) - 1) * parseInt(limit);
       let q = 'SELECT * FROM assets WHERE 1=1'; const p = []; let i = 1;
@@ -58,7 +58,7 @@ module.exports = function assetRoutes(app, ctx) {
   // GET /api/assets/stats — Asset statistics
   app.get('/api/assets/stats', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const [total, byType, byStatus] = await Promise.all([
         pool.query('SELECT COUNT(*) FROM assets'),
         pool.query('SELECT asset_type, COUNT(*) as count FROM assets GROUP BY asset_type ORDER BY count DESC'),
@@ -71,7 +71,7 @@ module.exports = function assetRoutes(app, ctx) {
   // GET /api/assets/categories — List distinct categories
   app.get('/api/assets/categories', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const r = await pool.query('SELECT DISTINCT category FROM assets ORDER BY category');
       return res.json(r.rows.map(x => x.category));
     } catch (err) { return res.status(500).json({ error: err.message }); }
@@ -80,7 +80,7 @@ module.exports = function assetRoutes(app, ctx) {
   // GET /api/assets/:id — Get single asset with files
   app.get('/api/assets/:id', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const r = await pool.query('SELECT * FROM assets WHERE id=$1', [req.params.id]);
       if (!r.rows.length) return res.status(404).json({ error: 'Asset not found' });
       const files = await pool.query('SELECT * FROM asset_files WHERE asset_id=$1 ORDER BY sort_order, file_name', [req.params.id]);
@@ -91,7 +91,7 @@ module.exports = function assetRoutes(app, ctx) {
   // POST /api/assets — Create new asset
   app.post('/api/assets', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const { slug, name, description, assetType, category, status, tags, thumbnailUrl, previewUrl, metadata } = req.body;
       if (!slug || !name) return res.status(400).json({ error: 'Slug and name required' });
       if (typeof slug !== 'string' || slug.length > 128) return res.status(400).json({ error: 'Slug must be 1-128 characters' });
@@ -117,7 +117,7 @@ module.exports = function assetRoutes(app, ctx) {
   // PUT /api/assets/:id — Update asset
   app.put('/api/assets/:id', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const ex = await pool.query('SELECT * FROM assets WHERE id=$1', [req.params.id]);
       if (!ex.rows.length) return res.status(404).json({ error: 'Asset not found' });
       const { slug, name, description, assetType, category, status, version, tags, thumbnailUrl, previewUrl, metadata, isActive, sortOrder } = req.body;
@@ -132,7 +132,7 @@ module.exports = function assetRoutes(app, ctx) {
   // DELETE /api/assets/:id — Delete asset (cascades to files)
   app.delete('/api/assets/:id', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const r = await pool.query('DELETE FROM assets WHERE id=$1 RETURNING id', [req.params.id]);
       if (!r.rows.length) return res.status(404).json({ error: 'Asset not found' });
       return res.json({ success: true });
@@ -142,7 +142,7 @@ module.exports = function assetRoutes(app, ctx) {
   // PATCH /api/assets/:id/toggle — Toggle active
   app.patch('/api/assets/:id/toggle', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const r = await pool.query('UPDATE assets SET is_active=NOT is_active,updated_at=NOW() WHERE id=$1 RETURNING *', [req.params.id]);
       if (!r.rows.length) return res.status(404).json({ error: 'Asset not found' });
       return res.json(mapAssetRow(r.rows[0]));
@@ -152,7 +152,7 @@ module.exports = function assetRoutes(app, ctx) {
   // PATCH /api/assets/:id/status — Change status
   app.patch('/api/assets/:id/status', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const { status } = req.body;
       if (!['draft','published','archived'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
       const r = await pool.query('UPDATE assets SET status=$2,updated_at=NOW() WHERE id=$1 RETURNING *', [req.params.id, status]);
@@ -164,7 +164,7 @@ module.exports = function assetRoutes(app, ctx) {
   // POST /api/assets/:id/files — Add/manage files for an asset
   app.post('/api/assets/:id/files', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const ex = await pool.query('SELECT * FROM assets WHERE id=$1', [req.params.id]);
       if (!ex.rows.length) return res.status(404).json({ error: 'Asset not found' });
       const { fileName, filePath, fileType, fileHash, fileSize, mimeType, diskPath } = req.body;
@@ -186,7 +186,7 @@ module.exports = function assetRoutes(app, ctx) {
   // DELETE /api/assets/:id/files/:fileId — Remove file from asset
   app.delete('/api/assets/:id/files/:fileId', authenticateAdmin, async (req, res) => {
     try {
-      if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const r = await pool.query('DELETE FROM asset_files WHERE id=$1 AND asset_id=$2 RETURNING id', [req.params.fileId, req.params.id]);
       if (!r.rows.length) return res.status(404).json({ error: 'File not found' });
       return res.json({ success: true });

@@ -14,7 +14,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'bamboo-admin-secret-2026';
 
 // ===== PostgreSQL Connection (graceful fallback if pg not installed) =====
 let pool = null;
-let dbConnected = false;
+
+// Use a mutable object so that dbState.connected is shared by reference
+// (not passed by value) to sub-modules like assetRoutes.js.
+const dbState = { connected: false };
 
 try {
   const { Pool } = require('pg');
@@ -175,7 +178,7 @@ async function initDatabase() {
       console.log('[admin] Default sample assets seeded');
     }
 
-    dbConnected = true;
+    dbState.connected = true;
     console.log('[admin] PostgreSQL connected, all tables initialized');
   } catch (err) {
     console.error('[admin] PostgreSQL initialization FAILED:', err.message);
@@ -343,7 +346,7 @@ app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ success: false, error: 'Username and password required' });
   try {
-    if (!dbConnected) return res.status(503).json({ success: false, error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ success: false, error: 'Database not available' });
     const r = await pool.query('SELECT * FROM admin_users WHERE username = $1', [username]);
     if (r.rows.length === 0) return res.status(401).json({ success: false, error: 'Invalid credentials' });
     const u = r.rows[0];
@@ -359,7 +362,7 @@ app.get('/api/auth/verify', authenticateAdmin, (req, res) => {
 });
 
 app.get('/api/health', async (req, res) => {
-  if (!dbConnected) return res.status(503).json({ status: 'error', database: 'disconnected', backendVersion: '0.1.0' });
+  if (!dbState.connected) return res.status(503).json({ status: 'error', database: 'disconnected', backendVersion: '0.1.0' });
   let dbStatus = 'disconnected';
   try { await pool.query('SELECT 1'); dbStatus = 'connected'; } catch {}
   res.json({ status: 'ok', database: dbStatus, backendVersion: '0.1.0' });
@@ -387,7 +390,7 @@ app.get('/api/news', async (req, res) => {
   try {
     const { category, search, pinned, visible, page = 1, limit = 20 } = req.query;
     const off = (parseInt(page)-1)*parseInt(limit);
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     let q = 'SELECT * FROM news WHERE 1=1'; const p = []; let i = 1;
     if (visible==='true') { q += ' AND is_visible=true AND published_at IS NOT NULL AND published_at <= NOW()'; } else if (visible==='false') { q += ' AND is_visible=false'; }
     if (pinned==='true') q += ' AND is_pinned=true';
@@ -403,7 +406,7 @@ app.get('/api/news', async (req, res) => {
 
 app.get('/api/news/categories', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('SELECT DISTINCT category FROM news ORDER BY category');
     return res.json(r.rows.map(x=>x.category));
   } catch (err) { return res.status(500).json({ error: err.message }); }
@@ -411,7 +414,7 @@ app.get('/api/news/categories', async (req, res) => {
 
 app.get('/api/news/:id', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('SELECT * FROM news WHERE id=$1',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'News not found'}); return res.json(mapNewsRow(r.rows[0]));
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
@@ -423,7 +426,7 @@ app.post('/api/news', authenticateAdmin, async (req, res) => {
     if (title.length > 256) return res.status(400).json({ error: 'Title too long' });
     const sc = sanitizeHtml(content || '');
     const id = uuidv4();
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query(`INSERT INTO news (id,title,subtitle,content,banner_url,category,author,published_at,is_visible,is_pinned,game_version,tags,sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [id,title,subtitle||'',sc,bannerUrl||'',category||'general',author||'Bamboo Team',publishedAt?new Date(publishedAt):null,isVisible===true,isPinned===true,gameVersion||'',tags||[],sortOrder||0]);
     return res.status(201).json(mapNewsRow(r.rows[0]));
@@ -433,7 +436,7 @@ app.post('/api/news', authenticateAdmin, async (req, res) => {
 app.put('/api/news/:id', authenticateAdmin, async (req, res) => {
   try {
     const { title, subtitle, content, bannerUrl, category, author, publishedAt, isVisible, isPinned, gameVersion, tags, sortOrder } = req.body;
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const ex = await pool.query('SELECT * FROM news WHERE id=$1',[req.params.id]); if(!ex.rows.length) return res.status(404).json({error:'News not found'});
     const r = await pool.query(`UPDATE news SET title=COALESCE($2,title),subtitle=COALESCE($3,subtitle),content=COALESCE($4,content),banner_url=COALESCE($5,banner_url),category=COALESCE($6,category),author=COALESCE($7,author),published_at=COALESCE($8,published_at),is_visible=COALESCE($9,is_visible),is_pinned=COALESCE($10,is_pinned),game_version=COALESCE($11,game_version),tags=COALESCE($12,tags),sort_order=COALESCE($13,sort_order),updated_at=NOW() WHERE id=$1 RETURNING *`,
       [req.params.id,title,subtitle,content,bannerUrl,category,author,publishedAt?new Date(publishedAt):null,isVisible!==undefined?isVisible:null,isPinned!==undefined?isPinned:null,gameVersion,tags,sortOrder]);
@@ -443,21 +446,21 @@ app.put('/api/news/:id', authenticateAdmin, async (req, res) => {
 
 app.delete('/api/news/:id', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('DELETE FROM news WHERE id=$1 RETURNING id',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'News not found'}); return res.json({success:true});
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
 
 app.patch('/api/news/:id/pin', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('UPDATE news SET is_pinned=NOT is_pinned,updated_at=NOW() WHERE id=$1 RETURNING *',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'News not found'}); return res.json(mapNewsRow(r.rows[0]));
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
 
 app.patch('/api/news/:id/visibility', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('UPDATE news SET is_visible=NOT is_visible,updated_at=NOW() WHERE id=$1 RETURNING *',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'News not found'}); return res.json(mapNewsRow(r.rows[0]));
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
@@ -472,7 +475,7 @@ app.get('/api/events', async (req, res) => {
     const { category, search, active, visible, page = 1, limit = 20 } = req.query;
     const off = (parseInt(page)-1)*parseInt(limit);
     const now = new Date();
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     let q = 'SELECT * FROM events WHERE 1=1'; const p = []; let i = 1;
     if (active==='true') { q += ' AND is_active=true AND start_date <= NOW() AND (end_date IS NULL OR end_date >= NOW())'; }
     else if (active==='false') { q += ' AND (is_active=false OR start_date > NOW() OR (end_date IS NOT NULL AND end_date < NOW()))'; }
@@ -489,7 +492,7 @@ app.get('/api/events', async (req, res) => {
 
 app.get('/api/events/:id', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('SELECT * FROM events WHERE id=$1',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'Event not found'}); return res.json(mapEventRow(r.rows[0]));
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
@@ -500,7 +503,7 @@ app.post('/api/events', authenticateAdmin, async (req, res) => {
     if (!title || typeof title !== 'string') return res.status(400).json({ error: 'Title required' });
     if (title.length > 256) return res.status(400).json({ error: 'Title too long' });
     const id = uuidv4();
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query(`INSERT INTO events (id,title,subtitle,description,banner_url,category,start_date,end_date,is_active,is_visible,priority,author) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [id,title,subtitle||'',description||'',bannerUrl||'',category||'general',startDate?new Date(startDate):new Date(),endDate?new Date(endDate):null,isActive!==false,isVisible!==false,priority||0,author||'Bamboo Team']);
     return res.status(201).json(mapEventRow(r.rows[0]));
@@ -510,7 +513,7 @@ app.post('/api/events', authenticateAdmin, async (req, res) => {
 app.put('/api/events/:id', authenticateAdmin, async (req, res) => {
   try {
     const { title, subtitle, description, bannerUrl, category, startDate, endDate, isActive, isVisible, priority, author } = req.body;
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const ex = await pool.query('SELECT * FROM events WHERE id=$1',[req.params.id]); if(!ex.rows.length) return res.status(404).json({error:'Event not found'});
     const r = await pool.query(`UPDATE events SET title=COALESCE($2,title),subtitle=COALESCE($3,subtitle),description=COALESCE($4,description),banner_url=COALESCE($5,banner_url),category=COALESCE($6,category),start_date=COALESCE($7,start_date),end_date=COALESCE($8,end_date),is_active=COALESCE($9,is_active),is_visible=COALESCE($10,is_visible),priority=COALESCE($11,priority),author=COALESCE($12,author),updated_at=NOW() WHERE id=$1 RETURNING *`,
       [req.params.id,title,subtitle,description,bannerUrl,category,startDate?new Date(startDate):null,endDate!==undefined?(endDate?new Date(endDate):null):undefined,isActive!==undefined?isActive:null,isVisible!==undefined?isVisible:null,priority,author]);
@@ -520,14 +523,14 @@ app.put('/api/events/:id', authenticateAdmin, async (req, res) => {
 
 app.delete('/api/events/:id', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('DELETE FROM events WHERE id=$1 RETURNING id',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'Event not found'}); return res.json({success:true});
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
 
 app.patch('/api/events/:id/toggle', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('UPDATE events SET is_active=NOT is_active,updated_at=NOW() WHERE id=$1 RETURNING *',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'Event not found'}); return res.json(mapEventRow(r.rows[0]));
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
@@ -540,7 +543,7 @@ function mapBannerRow(r) { return { id: r.id, title: r.title, imageUrl: r.image_
 app.get('/api/banners', async (req, res) => {
   try {
     const { active } = req.query;
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     let q = 'SELECT * FROM banners WHERE 1=1'; const p = [];
     if (active==='true') {
       q += ' AND is_active=true AND (start_date IS NULL OR start_date <= NOW()) AND (end_date IS NULL OR end_date >= NOW())';
@@ -553,7 +556,7 @@ app.get('/api/banners', async (req, res) => {
 
 app.get('/api/banners/:id', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('SELECT * FROM banners WHERE id=$1',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'Banner not found'}); return res.json(mapBannerRow(r.rows[0]));
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
@@ -564,7 +567,7 @@ app.post('/api/banners', authenticateAdmin, async (req, res) => {
     if (!title || typeof title !== 'string') return res.status(400).json({ error: 'Title required' });
     if (!imageUrl) return res.status(400).json({ error: 'Image URL required' });
     const id = uuidv4();
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query(`INSERT INTO banners (id,title,image_url,description,click_target,click_type,sort_order,is_active,start_date,end_date,priority) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [id,title,imageUrl,description||'',clickTarget||'',clickType||'external',sortOrder||0,isActive!==false,startDate?new Date(startDate):null,endDate?new Date(endDate):null,priority||0]);
     return res.status(201).json(mapBannerRow(r.rows[0]));
@@ -574,7 +577,7 @@ app.post('/api/banners', authenticateAdmin, async (req, res) => {
 app.put('/api/banners/:id', authenticateAdmin, async (req, res) => {
   try {
     const { title, imageUrl, description, clickTarget, clickType, sortOrder, isActive, startDate, endDate, priority } = req.body;
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const ex = await pool.query('SELECT * FROM banners WHERE id=$1',[req.params.id]); if(!ex.rows.length) return res.status(404).json({error:'Banner not found'});
     const r = await pool.query(`UPDATE banners SET title=COALESCE($2,title),image_url=COALESCE($3,image_url),description=COALESCE($4,description),click_target=COALESCE($5,click_target),click_type=COALESCE($6,click_type),sort_order=COALESCE($7,sort_order),is_active=COALESCE($8,is_active),start_date=COALESCE($9,start_date),end_date=COALESCE($10,end_date),priority=COALESCE($11,priority),updated_at=NOW() WHERE id=$1 RETURNING *`,
       [req.params.id,title,imageUrl,description,clickTarget,clickType,sortOrder,isActive!==undefined?isActive:null,startDate!==undefined?(startDate?new Date(startDate):null):undefined,endDate!==undefined?(endDate?new Date(endDate):null):undefined,priority]);
@@ -584,14 +587,14 @@ app.put('/api/banners/:id', authenticateAdmin, async (req, res) => {
 
 app.delete('/api/banners/:id', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('DELETE FROM banners WHERE id=$1 RETURNING id',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'Banner not found'}); return res.json({success:true});
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
 
 app.patch('/api/banners/:id/toggle', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('UPDATE banners SET is_active=NOT is_active,updated_at=NOW() WHERE id=$1 RETURNING *',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'Banner not found'}); return res.json(mapBannerRow(r.rows[0]));
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
@@ -600,7 +603,7 @@ app.patch('/api/banners/reorder', authenticateAdmin, async (req, res) => {
   try {
     const { orderedIds } = req.body;
     if (!Array.isArray(orderedIds)) return res.status(400).json({ error: 'orderedIds array required' });
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     for (let i = 0; i < orderedIds.length; i++) {
       await pool.query('UPDATE banners SET sort_order=$1,updated_at=NOW() WHERE id=$2', [i, orderedIds[i]]);
     }
@@ -636,7 +639,7 @@ function mapCosmeticRow(r) {
 // GET /api/cosmetics — List all cosmetics
 app.get('/api/cosmetics', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const { type, rarity, active, page = 1, limit = 50 } = req.query;
     const off = (parseInt(page) - 1) * parseInt(limit);
     let q = 'SELECT * FROM cosmetics WHERE 1=1';
@@ -667,7 +670,7 @@ app.get('/api/cosmetics/rarities', (req, res) => {
 // GET /api/cosmetics/:id — Get single cosmetic
 app.get('/api/cosmetics/:id', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('SELECT * FROM cosmetics WHERE id=$1', [req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'Cosmetic not found' });
     return res.json(mapCosmeticRow(r.rows[0]));
@@ -677,7 +680,7 @@ app.get('/api/cosmetics/:id', async (req, res) => {
 // POST /api/cosmetics — Create new cosmetic
 app.post('/api/cosmetics', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const { slug, name, description, type, rarity, previewUrl, imageUrl, modelUrl, accentColor, isActive, sortOrder } = req.body;
     if (!slug || typeof slug !== 'string') return res.status(400).json({ error: 'Slug required' });
     if (!name || typeof name !== 'string') return res.status(400).json({ error: 'Name required' });
@@ -699,7 +702,7 @@ app.post('/api/cosmetics', authenticateAdmin, async (req, res) => {
 // PUT /api/cosmetics/:id — Update cosmetic
 app.put('/api/cosmetics/:id', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const { slug, name, description, type, rarity, previewUrl, imageUrl, modelUrl, accentColor, isActive, sortOrder } = req.body;
     const ex = await pool.query('SELECT * FROM cosmetics WHERE id=$1', [req.params.id]);
     if (!ex.rows.length) return res.status(404).json({ error: 'Cosmetic not found' });
@@ -712,7 +715,7 @@ app.put('/api/cosmetics/:id', authenticateAdmin, async (req, res) => {
 // DELETE /api/cosmetics/:id — Delete cosmetic
 app.delete('/api/cosmetics/:id', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('DELETE FROM cosmetics WHERE id=$1 RETURNING id', [req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'Cosmetic not found' });
     return res.json({ success: true });
@@ -722,7 +725,7 @@ app.delete('/api/cosmetics/:id', authenticateAdmin, async (req, res) => {
 // PATCH /api/cosmetics/:id/toggle — Toggle active state
 app.patch('/api/cosmetics/:id/toggle', authenticateAdmin, async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('UPDATE cosmetics SET is_active=NOT is_active,updated_at=NOW() WHERE id=$1 RETURNING *', [req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'Cosmetic not found' });
     return res.json(mapCosmeticRow(r.rows[0]));
@@ -734,7 +737,7 @@ app.patch('/api/cosmetics/reorder', authenticateAdmin, async (req, res) => {
   try {
     const { orderedIds } = req.body;
     if (!Array.isArray(orderedIds)) return res.status(400).json({ error: 'orderedIds array required' });
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     for (let i = 0; i < orderedIds.length; i++) {
       await pool.query('UPDATE cosmetics SET sort_order=$1,updated_at=NOW() WHERE id=$2', [i, orderedIds[i]]);
     }
@@ -755,7 +758,7 @@ app.get('/api/cosmetics/:slug/image', async (req, res) => {
     if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
       return res.status(400).json({ error: 'Invalid cosmetic slug' });
     }
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     // Get cosmetic name from DB to find the matching folder on disk
     const dbResult = await pool.query('SELECT name FROM cosmetics WHERE slug = $1', [slug]);
     if (!dbResult.rows.length) {
@@ -852,7 +855,7 @@ function mapManifestRow(r) {
 // ---------------------------------------------------------------
 app.get('/api/content/types', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const r = await pool.query('SELECT * FROM content_types WHERE is_active = true ORDER BY slug');
     return res.json({ data: r.rows.map(mapContentTypeRow) });
   } catch (err) { return res.status(500).json({ error: err.message }); }
@@ -863,7 +866,7 @@ app.get('/api/content/types', async (req, res) => {
 // ---------------------------------------------------------------
 app.get('/api/content/manifest', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const types = await pool.query('SELECT * FROM content_types WHERE is_active = true ORDER BY slug');
     const manifest = [];
     for (const ct of types.rows) {
@@ -887,7 +890,7 @@ app.get('/api/content/manifest', async (req, res) => {
 // ---------------------------------------------------------------
 app.post('/api/content/check', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const clientVersions = req.body.versions || {};
     const updates = [];
     const types = await pool.query('SELECT * FROM content_types WHERE is_active = true');
@@ -919,7 +922,7 @@ app.post('/api/content/check', async (req, res) => {
 // ---------------------------------------------------------------
 app.get('/api/content/files/:type', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const typeSlug = req.params.type;
     const ct = await pool.query('SELECT * FROM content_types WHERE slug = $1 AND is_active = true', [typeSlug]);
     if (!ct.rows.length) return res.status(404).json({ error: 'Content type not found' });
@@ -987,7 +990,7 @@ app.post('/api/content/publish', authenticateAdmin, async (req, res) => {
       return res.status(400).json({ error: 'typeSlug, version, and files array required' });
     }
 
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const ct = await pool.query('SELECT * FROM content_types WHERE slug = $1', [typeSlug]);
     if (!ct.rows.length) return res.status(404).json({ error: 'Content type not found' });
 
@@ -1015,7 +1018,7 @@ app.post('/api/content/publish', authenticateAdmin, async (req, res) => {
 // ---------------------------------------------------------------
 app.get('/api/content/status', async (req, res) => {
   try {
-    if (!dbConnected) return res.status(503).json({ error: 'Database not available' });
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
     const types = await pool.query('SELECT slug, name, current_version, updated_at FROM content_types WHERE is_active = true ORDER BY slug');
     const totalFiles = await pool.query('SELECT COUNT(*) as count FROM content_manifests');
     const totalSize = await pool.query('SELECT COALESCE(SUM(file_size), 0) as total FROM content_manifests');
@@ -1413,7 +1416,7 @@ app.use(handleMulterErrors);
 
 // ===== Asset Management Routes (Phase 3) =====
 const assetRoutes = require('./assetRoutes');
-assetRoutes(app, { pool, dbConnected, authenticateAdmin, uuidv4 });
+assetRoutes(app, { pool, dbState, authenticateAdmin, uuidv4 });
 
 // ===== Serve Admin Panel UI =====
 app.get('/', (req, res) => {
