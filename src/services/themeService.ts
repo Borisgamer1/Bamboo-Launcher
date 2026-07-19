@@ -95,7 +95,7 @@ class ThemeService {
     const backendThemes: ThemeDefinition[] = [];
 
     try {
-      const res = await fetch(`${API_BASE}/content/theme?limit=250`, {
+      const res = await fetch(`${API_BASE}/content/theme?status=published&limit=250`, {
         headers: { ...getLauncherHeaders(), 'Accept': 'application/json' },
       });
 
