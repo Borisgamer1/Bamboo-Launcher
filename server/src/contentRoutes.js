@@ -1214,7 +1214,7 @@ module.exports = function contentRoutes(app, ctx) {
 
       // Step 3: If thumbnail_url is set as a local path, proxy from GitHub
       if (imageUrl) {
-        const githubUrl = `https://raw.githubusercontent.com/${GITHUB_CONTENT_REPO}/${GITHUB_CONTENT_BRANCH}/${imageUrl.replace(/^\\/+/, '')}`;
+        const githubUrl = `https://raw.githubusercontent.com/${GITHUB_CONTENT_REPO}/${GITHUB_CONTENT_BRANCH}/${imageUrl.replace(/^\/+/, '')}`;
         try {
           const https = require('https');
           https.get(githubUrl, { headers: { 'User-Agent': 'Bamboo-Launcher/1.0' } }, (ghRes) => {
