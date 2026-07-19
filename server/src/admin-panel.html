@@ -1109,13 +1109,24 @@ async function loadAvailableTextures() {
   try {
     container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Lade verfügbare Texturen...</div>';
     // Use empty search to recursively find all .png files in the repo
-    const r = await fetch(API + '/api/content/files?type=texture&q=.png&limit=200', {
+    const texUrl = API + '/api/content/files?type=texture&q=.png&limit=200';
+    console.log('🔍 [DEBUG] loadAvailableTextures URL:', texUrl);
+
+    const r = await fetch(texUrl, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const data = await r.json();
+    console.log('🔍 [DEBUG] loadAvailableTextures status:', r.status);
+    console.log('🔍 [DEBUG] loadAvailableTextures success:', data.success);
+    console.log('🔍 [DEBUG] loadAvailableTextures items.length:', data.items ? data.items.length : 0);
+    console.log('🔍 [DEBUG] loadAvailableTextures total:', data.total);
+    console.log('🔍 [DEBUG] loadAvailableTextures source:', data.source);
+
     if (!data.success) throw new Error(data.error);
     const images = data.items.filter(i => i.type === 'file');
+    console.log('🔍 [DEBUG] loadAvailableTextures after type===file filter:', images.length);
     if (images.length === 0) {
+      console.log('🔍 [DEBUG] loadAvailableTextures -> NO TEXTURES FOUND');
       container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Keine Texturen im Repository gefunden. Dateien im Content Repository ablegen.</div>';
       return;
     }
@@ -1170,21 +1181,56 @@ async function loadMediaBrowser() {
     if (mediaBrowserState.search) params.set('q', mediaBrowserState.search);
     if (mediaBrowserState.type !== 'all') params.set('type', mediaBrowserState.type);
 
-    const r = await fetch(API + '/api/content/files?' + params, {
+    const requestUrl = API + '/api/content/files?' + params;
+    console.log('🔍 [DEBUG] loadMediaBrowser REQUEST URL:', requestUrl);
+
+    const r = await fetch(requestUrl, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
-    const data = await r.json();
+    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE status:', r.status);
+    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE content-type:', r.headers.get('content-type'));
+
+    // Log raw text first in case JSON parsing fails
+    const rawText = await r.text();
+    console.log('🔍 [DEBUG] loadMediaBrowser RAW response (first 500 chars):', rawText.substring(0, 500));
+
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.error('🔍 [DEBUG] loadMediaBrowser JSON PARSE ERROR:', parseErr.message);
+      console.error('🔍 [DEBUG] Full raw response:', rawText);
+      throw new Error('Ungültige Server-Antwort: ' + rawText.substring(0, 200));
+    }
+
+    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE success:', data.success);
+    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE items.length:', data.items ? data.items.length : 'N/A');
+    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE total:', data.total);
+    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE source:', data.source);
+    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE first 3 items:', data.items ? data.items.slice(0, 3).map(i => i.type + ':' + i.name).join(', ') : 'NONE');
 
     if (!data.success) throw new Error(data.error);
 
     renderMediaBrowser(data);
   } catch (e) {
+    console.error('🔍 [DEBUG] loadMediaBrowser ERROR:', e.message);
     container.innerHTML = `<div class="empty-state"><h3>Fehler</h3><p>${e.message}</p></div>`;
   }
 }
 
 function renderMediaBrowser(data) {
   const container = document.getElementById('media-browser-content');
+  console.log('🔍 [DEBUG] renderMediaBrowser CALLED');
+  console.log('🔍 [DEBUG]   data.success:', data.success);
+  console.log('🔍 [DEBUG]   data.total:', data.total);
+  console.log('🔍 [DEBUG]   data.items.length:', data.items ? data.items.length : 0);
+  console.log('🔍 [DEBUG]   data.path:', data.path);
+  console.log('🔍 [DEBUG]   data.source:', data.source);
+  console.log('🔍 [DEBUG]   mediaBrowserState.dir:', mediaBrowserState.dir);
+  console.log('🔍 [DEBUG]   mediaBrowserState.search:', mediaBrowserState.search);
+  console.log('🔍 [DEBUG]   mediaBrowserState.type:', mediaBrowserState.type);
+  console.log('🔍 [DEBUG]   mediaBrowserState.view:', mediaBrowserState.view);
+  console.log('🔍 [DEBUG]   mediaBrowserState.mode:', mediaBrowserState.mode);
 
   // Build breadcrumb
   const parts = data.path ? data.path.split('/').filter(Boolean) : [];
