@@ -65,10 +65,10 @@ interface ParticleBackgroundProps {
   bgBrightness?: number;
   /** Blur of background image in px (0–20, default 0) */
   bgBlur?: number;
-  /** Scale multiplier for sprite particles (default 8) */
-  particleSpriteSize?: number;
-  /** Number of particles on screen (default 40) */
-  particleCount?: number;
+  /** Sprite particle size multiplier from theme metadata (default 8) */
+  particleSize?: number;
+  /** Number of particles from theme metadata (default 40) */
+  particleFrequency?: number;
 }
 
 export const ParticleBackground = React.memo(function ParticleBackground({
@@ -81,8 +81,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   showCursorGlow = true,
   bgBrightness = 35,
   bgBlur = 0,
-  particleSpriteSize = 8,
-  particleCount = 40,
+  particleSize = 8,
+  particleFrequency = 40,
 }: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -94,13 +94,13 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   const shapesRef = useRef(particleShapes);
   const spriteImgRef = useRef<HTMLImageElement | null>(null);
   const spriteLoadedRef = useRef(false);
-  const spriteSizeRef = useRef(particleSpriteSize);
-  const particleCountRef = useRef(particleCount);
+  const spriteSizeRef = useRef(particleSize);
+  const particleCountRef = useRef(particleFrequency);
 
   useEffect(() => { accentRef.current = accent; }, [accent]);
   useEffect(() => { shapesRef.current = particleShapes; }, [particleShapes]);
-  useEffect(() => { spriteSizeRef.current = particleSpriteSize; }, [particleSpriteSize]);
-  useEffect(() => { particleCountRef.current = particleCount; }, [particleCount]);
+  useEffect(() => { spriteSizeRef.current = particleSize; }, [particleSize]);
+  useEffect(() => { particleCountRef.current = particleFrequency; }, [particleFrequency]);
 
   // Load particle sprite image
   useEffect(() => {

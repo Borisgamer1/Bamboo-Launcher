@@ -26,6 +26,10 @@ export interface ThemeDefinition {
   particleShapes?: number[][][];
   /** PNG sprite path for particle shapes — loaded and tinted with accent color */
   particleImage?: string;
+  /** Particle sprite size multiplier (default 8) */
+  particleSize?: number;
+  /** Number of particles (default 40) */
+  particleFrequency?: number;
 }
 
 // ===== Theme Service =====
@@ -143,6 +147,8 @@ class ThemeService {
           bgImage: meta.bgImage || undefined,
           particleShapes: meta.particleShapes || undefined,
           particleImage: meta.particleImage || undefined,
+          particleSize: meta.particleSize !== undefined ? Number(meta.particleSize) : undefined,
+          particleFrequency: meta.particleFrequency !== undefined ? Number(meta.particleFrequency) : undefined,
         };
         backendThemes.push(theme);
       }
@@ -220,6 +226,8 @@ class ThemeService {
             bgImage: cdnTheme.bgImage,
             particleShapes: cdnTheme.particleShapes || undefined,
             particleImage: cdnTheme.particleImage || undefined,
+            particleSize: cdnTheme.particleSize !== undefined ? Number(cdnTheme.particleSize) : undefined,
+            particleFrequency: cdnTheme.particleFrequency !== undefined ? Number(cdnTheme.particleFrequency) : undefined,
           };
           cdnThemes.push(theme);
         } catch (err) {

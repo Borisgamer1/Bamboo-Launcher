@@ -1044,6 +1044,13 @@ async function openEditEditor(type, id) {
       fillFilePicker('theme-bg-image', meta.bgImage || '');
       // Load particle image
       fillFilePicker('theme-particle-image', meta.particleImage || '');
+      // Load particle size + frequency
+      const pSize = meta.particleSize !== undefined ? Number(meta.particleSize) : 8;
+      const pFreq = meta.particleFrequency !== undefined ? Number(meta.particleFrequency) : 40;
+      document.getElementById('theme-particle-size').value = pSize;
+      document.getElementById('theme-particle-size-val').textContent = pSize;
+      document.getElementById('theme-particle-frequency').value = pFreq;
+      document.getElementById('theme-particle-frequency-val').textContent = pFreq;
       // Load particle shapes (legacy)
       const shapes = meta.particleShapes || [];
       document.getElementById('theme-particle-shapes').value = JSON.stringify(shapes);
@@ -1115,6 +1122,8 @@ async function saveContent() {
       data.metadata.bgImage = getFilePickerValue('theme-bg-image');
       // Save particle image
       data.metadata.particleImage = getFilePickerValue('theme-particle-image');
+      data.metadata.particleSize = parseInt(document.getElementById('theme-particle-size').value) || 8;
+      data.metadata.particleFrequency = parseInt(document.getElementById('theme-particle-frequency').value) || 40;
       // Save particle shapes (legacy)
       const shapesRaw = document.getElementById('theme-particle-shapes').value;
       if (shapesRaw) {
@@ -1864,6 +1873,24 @@ function buildTypeFields() {
           <button type="button" class="btn btn-ghost btn-sm" onclick="shapeEditor.clearAll()">Alle löschen</button>
         </div>
         <div id="theme-shape-status" style="font-size:11px;color:var(--text-muted);margin-top:6px">Keine Formen definiert. Klicke in den Canvas, um ein Polygon zu zeichnen.</div>
+
+      <div style="margin-top:16px;border-top:1px solid var(--border-subtle);padding-top:14px">
+        <label>Partikel-Sprite-Größe <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Skalierung der PNG-Partikel (1–30)</span></label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input type="range" id="theme-particle-size" min="1" max="30" value="8" style="flex:1;accent-color:var(--accent);height:4px;border-radius:2px;cursor:pointer"
+            oninput="document.getElementById('theme-particle-size-val').textContent=this.value">
+          <span id="theme-particle-size-val" style="font-size:13px;font-weight:700;font-family:var(--font-mono);color:var(--text-primary);min-width:28px;text-align:right">8</span>
+        </div>
+        <div class="help-text">Standard: 8 — Größere Werte = größere Sprites im Hintergrund.</div>
+
+        <label style="margin-top:14px">Partikel-Häufigkeit <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Anzahl der Partikel auf dem Bildschirm (5–200)</span></label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input type="range" id="theme-particle-frequency" min="5" max="200" value="40" style="flex:1;accent-color:var(--accent);height:4px;border-radius:2px;cursor:pointer"
+            oninput="document.getElementById('theme-particle-frequency-val').textContent=this.value">
+          <span id="theme-particle-frequency-val" style="font-size:13px;font-weight:700;font-family:var(--font-mono);color:var(--text-primary);min-width:28px;text-align:right">40</span>
+        </div>
+        <div class="help-text">Standard: 40 — Höhere Werte = mehr fliegende Partikel.</div>
+      </div>
       </div>
             <input type="hidden" id="theme-particle-shapes" value="">
     </div>

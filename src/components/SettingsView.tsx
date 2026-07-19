@@ -48,10 +48,6 @@ interface SettingsViewProps {
   setBgBrightness: (v: number) => void;
   bgBlur: number;
   setBgBlur: (v: number) => void;
-  particleSpriteSize: number;
-  setParticleSpriteSize: (v: number) => void;
-  particleCount: number;
-  setParticleCount: (v: number) => void;
 }
 
 type SettingsCategory = "general" | "ingame" | "themes" | "accounts";
@@ -77,10 +73,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setBgBrightness,
   bgBlur,
   setBgBlur,
-  particleSpriteSize,
-  setParticleSpriteSize,
-  particleCount,
-  setParticleCount,
 }) => {
   const t = translations[lang];
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>(() => {
@@ -1301,154 +1293,64 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                 </div>
                 <p className="text-xs text-slate-400 leading-normal">Select a launcher aesthetic theme. Changing themes instantly updates the background image, accent colors, glowing indicators, and particle configurations globally.</p>
 
-                {/* Background / Particle Toggles */}
-                <div className="flex flex-col gap-3 p-4 bg-slate-900/15 border border-slate-800/40 rounded-2xl">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Hintergrund-Optionen</span>
-
-                  {/* Show/hide background image */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="block text-xs font-bold text-slate-200">Hintergrundbild anzeigen</span>
-                      <span className="text-[10px] text-slate-400 mt-0.5 block leading-normal">Theme-Hintergrundbild ein-/ausblenden (dunkler Fallback)</span>
+                {/* Background Options — compact accordion panel */}
+                <details className="group bg-slate-900/15 border border-slate-800/40 rounded-2xl overflow-hidden">
+                  <summary className="flex items-center justify-between p-3.5 cursor-pointer text-xs font-bold text-slate-300 hover:text-slate-100 transition-colors select-none list-none">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-slate-500 group-open:rotate-90 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                      Hintergrund-Optionen
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowBgImage(!showBgImage)}
-                      className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${
-                        showBgImage ? "theme-bg" : "bg-slate-800"
-                      }`}
-                    >
-                      <div
-                        className="w-5 h-5 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300"
-                        style={{ transform: showBgImage ? "translateX(20px)" : "translateX(0)" }}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Show/hide particles */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="block text-xs font-bold text-slate-200">Fliegende Formen anzeigen</span>
-                      <span className="text-[10px] text-slate-400 mt-0.5 block leading-normal">Partikel-Formen im Hintergrund ein-/ausblenden</span>
+                    <span className="text-[10px] text-slate-500">Helligkeit · Unschärfe · Toggles</span>
+                  </summary>
+                  <div className="px-3.5 pb-3.5 flex flex-col gap-2.5">
+                    {/* Row 1: 3 toggles inline */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {/* Show/hide background image */}
+                      <div className="flex flex-col items-center gap-1.5 bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5">
+                        <span className="text-[10px] font-bold text-slate-400 text-center leading-tight">Bild</span>
+                        <button type="button" onClick={() => setShowBgImage(!showBgImage)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showBgImage ? 'theme-bg' : 'bg-slate-800'}`}>
+                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showBgImage ? 'translateX(14px)' : 'translateX(0)' }} />
+                        </button>
+                      </div>
+                      {/* Show/hide particles */}
+                      <div className="flex flex-col items-center gap-1.5 bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5">
+                        <span className="text-[10px] font-bold text-slate-400 text-center leading-tight">Partikel</span>
+                        <button type="button" onClick={() => setShowParticles(!showParticles)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showParticles ? 'theme-bg' : 'bg-slate-800'}`}>
+                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showParticles ? 'translateX(14px)' : 'translateX(0)' }} />
+                        </button>
+                      </div>
+                      {/* Show/hide cursor glow */}
+                      <div className="flex flex-col items-center gap-1.5 bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5">
+                        <span className="text-[10px] font-bold text-slate-400 text-center leading-tight">Cursor</span>
+                        <button type="button" onClick={() => setShowCursorGlow(!showCursorGlow)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showCursorGlow ? 'theme-bg' : 'bg-slate-800'}`}>
+                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showCursorGlow ? 'translateX(14px)' : 'translateX(0)' }} />
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowParticles(!showParticles)}
-                      className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${
-                        showParticles ? "theme-bg" : "bg-slate-800"
-                      }`}
-                    >
-                      <div
-                        className="w-5 h-5 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300"
-                        style={{ transform: showParticles ? "translateX(20px)" : "translateX(0)" }}
-                      />
-                    </button>
-                  </div>
 
-                  {/* Show/hide cursor glow */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="block text-xs font-bold text-slate-200">Cursor-Glow anzeigen</span>
-                      <span className="text-[10px] text-slate-400 mt-0.5 block leading-normal">Den Leuchteffekt um den Mauszeiger ein-/ausblenden</span>
+                    {/* Row 2: Brightness + Blur sliders side by side */}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {/* Brightness */}
+                      <div className="bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5 flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400">Helligkeit</span>
+                          <span className="text-[10px] font-mono font-black theme-text">{bgBrightness}%</span>
+                        </div>
+                        <input type="range" min={5} max={100} value={bgBrightness} onChange={(e) => setBgBrightness(parseInt(e.target.value))} className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1 rounded-lg cursor-pointer" />
+                      </div>
+                      {/* Blur */}
+                      <div className="bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5 flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400">Unschärfe</span>
+                          <span className="text-[10px] font-mono font-black theme-text">{bgBlur > 0 ? `${bgBlur}px` : 'Aus'}</span>
+                        </div>
+                        <input type="range" min={0} max={20} value={bgBlur} onChange={(e) => setBgBlur(parseInt(e.target.value))} className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1 rounded-lg cursor-pointer" />
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowCursorGlow(!showCursorGlow)}
-                      className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${
-                        showCursorGlow ? "theme-bg" : "bg-slate-800"
-                      }`}
-                    >
-                      <div
-                        className="w-5 h-5 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300"
-                        style={{ transform: showCursorGlow ? "translateX(20px)" : "translateX(0)" }}
-                      />
-                    </button>
                   </div>
-                </div>
+                </details>
 
-                {/* Background brightness slider */}
-                <div className="bg-slate-900/20 border border-slate-800/40 p-4 rounded-2xl flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-200">Hintergrund-Helligkeit</span>
-                    <span className="text-xs font-mono font-black theme-text">{bgBrightness}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={5}
-                    max={100}
-                    value={bgBrightness}
-                    onChange={(e) => setBgBrightness(parseInt(e.target.value))}
-                    className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1.5 rounded-lg cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                    <span>Dunkel</span>
-                    <span>Hell</span>
-                  </div>
-                </div>
-
-                {/* Background blur slider */}
-                <div className="bg-slate-900/20 border border-slate-800/40 p-4 rounded-2xl flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-200">Hintergrund-Unschärfe</span>
-                    <span className="text-xs font-mono font-black theme-text">{bgBlur > 0 ? `${bgBlur}px` : 'Aus'}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={20}
-                    value={bgBlur}
-                    onChange={(e) => setBgBlur(parseInt(e.target.value))}
-                    className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1.5 rounded-lg cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                    <span>Scharf</span>
-                    <span>Unscharf</span>
-                  </div>
-                </div>
-
-                {/* Particle sprite size slider */}
-                <div className="bg-slate-900/20 border border-slate-800/40 p-4 rounded-2xl flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-200">Partikel-Sprite-Größe</span>
-                    <span className="text-xs font-mono font-black theme-text">{particleSpriteSize}{particleSpriteSize === 8 ? ' (Standard)' : ''}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={1}
-                    max={30}
-                    value={particleSpriteSize}
-                    onChange={(e) => setParticleSpriteSize(parseInt(e.target.value))}
-                    className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1.5 rounded-lg cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                    <span>Klein</span>
-                    <span>|•| Standard: 8</span>
-                    <span>Groß</span>
-                  </div>
-                </div>
-
-                {/* Particle count/frequency slider */}
-                <div className="bg-slate-900/20 border border-slate-800/40 p-4 rounded-2xl flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-200">Partikel-Häufigkeit</span>
-                    <span className="text-xs font-mono font-black theme-text">{particleCount}{particleCount === 40 ? ' (Standard)' : ''}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={5}
-                    max={200}
-                    value={particleCount}
-                    onChange={(e) => setParticleCount(parseInt(e.target.value))}
-                    className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1.5 rounded-lg cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                    <span>Wenig</span>
-                    <span>|•| Standard: 40</span>
-                    <span>Viel</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {themesList.map((t) => {
                     const isSelected = themeId === t.id;
                     return (
