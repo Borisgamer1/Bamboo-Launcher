@@ -352,9 +352,12 @@ const [showSavedToast, setShowSavedToast] = useState(false);
     return unsub;
   }, []);
 
-  // Load CDN themes on mount
+  // Load CDN themes + backend themes on mount
   useEffect(() => {
-    themeService.loadCdnThemes().then(() => {
+    Promise.all([
+      themeService.loadCdnThemes(),
+      themeService.loadBackendThemes(),
+    ]).then(() => {
       setThemeVersion(v => v + 1);
     });
   }, []);

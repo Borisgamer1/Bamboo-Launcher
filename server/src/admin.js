@@ -170,12 +170,23 @@ async function initDatabase() {
     
     // Also upsert any missing theme slugs (syncs on every restart, handles new themes)
     const builtinThemeSlugs = ['bamboo', 'cherry', 'frozen', 'nether', 'end', 'warden', 'copper', 'obsidian'];
+    const themeMetaMap = {
+      bamboo:    { accent:'#22c55e', accentLight:'#34d399', accentDark:'#16a34a', glowColor:'rgba(52,211,153,0.5)', bgImage:'/images/bamboo_forest.png', themeType:'bamboo' },
+      cherry:    { accent:'#f43f5e', accentLight:'#fb7185', accentDark:'#e11d48', glowColor:'rgba(244,63,94,0.5)', bgImage:'/images/cherry_blossom.png', themeType:'cherry' },
+      frozen:    { accent:'#0ea5e9', accentLight:'#38bdf8', accentDark:'#0284c7', glowColor:'rgba(14,165,233,0.5)', bgImage:'/images/frozen_ice.png', themeType:'frozen' },
+      nether:    { accent:'#ef4444', accentLight:'#f87171', accentDark:'#dc2626', glowColor:'rgba(239,68,68,0.5)', bgImage:'/images/nether_amber.png', themeType:'nether' },
+      end:       { accent:'#a855f7', accentLight:'#c084fc', accentDark:'#7c3aed', glowColor:'rgba(168,85,247,0.5)', bgImage:'/images/nether_amber.png', themeType:'end' },
+      warden:    { accent:'#14b8a6', accentLight:'#2dd4bf', accentDark:'#0d9488', glowColor:'rgba(20,184,166,0.5)', bgImage:'/images/frozen_ice.png', themeType:'warden' },
+      copper:    { accent:'#d97706', accentLight:'#f59e0b', accentDark:'#b45309', glowColor:'rgba(217,119,6,0.5)', bgImage:'/images/nether_amber.png', themeType:'copper' },
+      obsidian:  { accent:'#a78bfa', accentLight:'#c4b5fd', accentDark:'#8b5cf6', glowColor:'rgba(167,139,250,0.5)', bgImage:'/images/bamboo_forest.png', themeType:'obsidian' },
+    };
     for (const slug of builtinThemeSlugs) {
+      const meta = themeMetaMap[slug] || {};
       await pool.query(`
-        INSERT INTO assets (slug, name, description, asset_type, category, status, version, tags)
-        VALUES ($1, $2, $3, 'theme', $4, 'published', 1, $5)
+        INSERT INTO assets (slug, name, description, asset_type, category, status, version, tags, metadata)
+        VALUES ($1, $2, $3, 'theme', $4, 'published', 1, $5, $6::jsonb)
         ON CONFLICT (slug) DO NOTHING
-      `, [slug, slug.charAt(0).toUpperCase() + slug.slice(1), slug + ' theme', slug, '{theme}']);
+      `, [slug, slug.charAt(0).toUpperCase() + slug.slice(1), slug + ' theme', slug, '{theme}', JSON.stringify(meta)]);
     }
     
     if (parseInt(assetCount.rows[0].count) === 0) {
@@ -183,19 +194,19 @@ async function initDatabase() {
         ['duck-crown', 'Duck Crown', 'A majestic crown for your duck character', 'cosmetic', 'hats', 'published', 1, '{crown,royal,gold}'],
         ['dragon-wings', 'Dragon Wings', 'Epic dragon wings cosmetic', 'cosmetic', 'wings', 'draft', 1, '{wings,dragon,epic}'],
         // Built-in themes synced from the launcher
-        ['bamboo', 'Bamboo', 'Bamboo green theme - fresh & natural', 'theme', 'green', 'published', 1, '{theme,green,nature}'],
-        ['cherry', 'Cherry', 'Cherry blossom pink theme', 'theme', 'pink', 'published', 1, '{theme,pink,spring}'],
-        ['frozen', 'Icy Blue', 'Ice blue frozen theme', 'theme', 'blue', 'published', 1, '{theme,blue,ice}'],
-        ['nether', 'Nether Red', 'Dark red nether theme', 'theme', 'red', 'published', 1, '{theme,red,nether}'],
-        ['end', 'End Purple', 'Mystical purple end theme', 'theme', 'purple', 'published', 1, '{theme,purple,end}'],
-        ['warden', 'Warden Cyan', 'Modern cyan warden theme', 'theme', 'cyan', 'published', 1, '{theme,cyan,warden}'],
-        ['copper', 'Copper Orange', 'Warm orange copper theme', 'theme', 'orange', 'published', 1, '{theme,orange,copper}'],
-        ['obsidian', 'Obsidian Violet', 'Dark violet obsidian theme', 'theme', 'violet', 'published', 1, '{theme,violet,obsidian}'],
+        ['bamboo', 'Bamboo', 'Bamboo green theme - fresh & natural', 'theme', 'green', 'published', 1, '{theme,green,nature}', '{"accent":"#22c55e","accentLight":"#34d399","accentDark":"#16a34a","glowColor":"rgba(52,211,153,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"bamboo"}'],
+        ['cherry', 'Cherry', 'Cherry blossom pink theme', 'theme', 'pink', 'published', 1, '{theme,pink,spring}', '{"accent":"#f43f5e","accentLight":"#fb7185","accentDark":"#e11d48","glowColor":"rgba(244,63,94,0.5)","bgImage":"/images/cherry_blossom.png","themeType":"cherry"}'],
+        ['frozen', 'Icy Blue', 'Ice blue frozen theme', 'theme', 'blue', 'published', 1, '{theme,blue,ice}', '{"accent":"#0ea5e9","accentLight":"#38bdf8","accentDark":"#0284c7","glowColor":"rgba(14,165,233,0.5)","bgImage":"/images/frozen_ice.png","themeType":"frozen"}'],
+        ['nether', 'Nether Red', 'Dark red nether theme', 'theme', 'red', 'published', 1, '{theme,red,nether}', '{"accent":"#ef4444","accentLight":"#f87171","accentDark":"#dc2626","glowColor":"rgba(239,68,68,0.5)","bgImage":"/images/nether_amber.png","themeType":"nether"}'],
+        ['end', 'End Purple', 'Mystical purple end theme', 'theme', 'purple', 'published', 1, '{theme,purple,end}', '{"accent":"#a855f7","accentLight":"#c084fc","accentDark":"#7c3aed","glowColor":"rgba(168,85,247,0.5)","bgImage":"/images/nether_amber.png","themeType":"end"}'],
+        ['warden', 'Warden Cyan', 'Modern cyan warden theme', 'theme', 'cyan', 'published', 1, '{theme,cyan,warden}', '{"accent":"#14b8a6","accentLight":"#2dd4bf","accentDark":"#0d9488","glowColor":"rgba(20,184,166,0.5)","bgImage":"/images/frozen_ice.png","themeType":"warden"}'],
+        ['copper', 'Copper Orange', 'Warm orange copper theme', 'theme', 'orange', 'published', 1, '{theme,orange,copper}', '{"accent":"#d97706","accentLight":"#f59e0b","accentDark":"#b45309","glowColor":"rgba(217,119,6,0.5)","bgImage":"/images/nether_amber.png","themeType":"copper"}'],
+        ['obsidian', 'Obsidian Violet', 'Dark violet obsidian theme', 'theme', 'violet', 'published', 1, '{theme,violet,obsidian}', '{"accent":"#a78bfa","accentLight":"#c4b5fd","accentDark":"#8b5cf6","glowColor":"rgba(167,139,250,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"obsidian"}'],
       ];
-      for (const [slug, name, desc, type, cat, status, ver, tags] of defaultAssets) {
+      for (const [slug, name, desc, type, cat, status, ver, tags, metadata] of defaultAssets) {
         await pool.query(
-          'INSERT INTO assets (slug, name, description, asset_type, category, status, version, tags) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (slug) DO NOTHING',
-          [slug, name, desc, type, cat, status, ver, tags]
+          'INSERT INTO assets (slug, name, description, asset_type, category, status, version, tags, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ON CONFLICT (slug) DO NOTHING',
+          [slug, name, desc, type, cat, status, ver, tags, metadata]
         );
       }
       console.log('[admin] Default sample assets seeded');

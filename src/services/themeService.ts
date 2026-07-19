@@ -6,6 +6,7 @@
 
 import { getCachedAssetText, getCachedAssetUrl } from "./assetCache";
 import type { ThemeType } from "../components/ParticleBackground";
+import { API_BASE, getLauncherHeaders } from "./api";
 
 // ===== Theme Definition Types =====
 
@@ -149,7 +150,9 @@ const BUILTIN_THEMES: ThemeDefinition[] = [
 
 class ThemeService {
   private _cdnThemes: ThemeDefinition[] | null = null;
+  private _backendThemes: ThemeDefinition[] | null = null;
   private _loading = false;
+  private _backendLoading = false;
   private _listeners: Set<() => void> = new Set();
 
   subscribe(listener: () => void): () => void {
@@ -161,10 +164,11 @@ class ThemeService {
     this._listeners.forEach((fn) => fn());
   }
 
-  /** Get all available themes (built-in + CDN) */
+  /** Get all available themes (built-in + CDN + backend) */
   getThemes(): ThemeDefinition[] {
     const cdn = this._cdnThemes || [];
-    // CDN themes override built-in by ID
+    const backend = this._backendThemes || [];
+    // Merge: built-in first, then CDN overrides, then backend overrides
     const merged = [...BUILTIN_THEMES];
     for (const cdnTheme of cdn) {
       const existingIdx = merged.findIndex((t) => t.id === cdnTheme.id);
@@ -172,6 +176,14 @@ class ThemeService {
         merged[existingIdx] = cdnTheme;
       } else {
         merged.push(cdnTheme);
+      }
+    }
+    for (const backendTheme of backend) {
+      const existingIdx = merged.findIndex((t) => t.id === backendTheme.id);
+      if (existingIdx >= 0) {
+        merged[existingIdx] = backendTheme;
+      } else {
+        merged.push(backendTheme);
       }
     }
     return merged;
@@ -287,6 +299,83 @@ class ThemeService {
     this._loading = false;
     this.notify();
     return cdnThemes;
+  }
+
+  /**
+   * Load themes from the backend API (unified content manager).
+   * Fetches published themes from /api/content/theme and parses metadata.
+   */
+  async loadBackendThemes(): Promise<ThemeDefinition[]> {
+    if (this._backendThemes !== null) return this._backendThemes;
+    if (this._backendLoading) {
+      return new Promise((resolve) => {
+        const check = () => {
+          if (this._backendThemes !== null) {
+            resolve(this._backendThemes);
+            this._listeners.delete(check);
+          }
+        };
+        this._listeners.add(check);
+      });
+    }
+
+    this._backendLoading = true;
+
+    const backendThemes: ThemeDefinition[] = [];
+
+    try {
+      const res = await fetch(`${API_BASE}/content/theme?status=published&limit=100`, {
+        headers: { ...getLauncherHeaders(), 'Accept': 'application/json' },
+      });
+
+      if (!res.ok) {
+        console.warn(`[ThemeService] Backend themes fetch failed: ${res.status}`);
+        this._backendLoading = false;
+        return [];
+      }
+
+      const data = await res.json();
+      const items = data.data || data.items || data || [];
+      const list = Array.isArray(items) ? items : (Array.isArray(items.data) ? items.data : []);
+
+      for (const item of list) {
+        const slug = item.slug || item.id;
+        if (!slug) continue;
+
+        const meta = item.metadata || {};
+        const theme: ThemeDefinition = {
+          id: slug,
+          name: item.name || slug,
+          desc: meta.desc || item.description || slug + ' theme',
+          category: 'cdn',
+          themeType: (meta.themeType as ThemeType) || 'bamboo',
+          bgImage: meta.bgImage || undefined,
+          accent: meta.accent || '#22c55e',
+          accentLight: meta.accentLight || '#34d399',
+          accentDark: meta.accentDark || '#16a34a',
+          glowColor: meta.glowColor || 'rgba(52,211,153,0.5)',
+          fontFamily: meta.fontFamily,
+          fromCdn: false, // comes from backend, not CDN cache
+        };
+        backendThemes.push(theme);
+      }
+
+      if (backendThemes.length > 0) {
+        console.log(`[ThemeService] Loaded ${backendThemes.length} themes from backend`);
+      }
+    } catch (err) {
+      console.warn('[ThemeService] Failed to load backend themes:', err);
+    }
+
+    this._backendThemes = backendThemes;
+    this._backendLoading = false;
+    this.notify();
+    return backendThemes;
+  }
+
+  /** Check if backend themes have been loaded */
+  get backendThemesLoaded(): boolean {
+    return this._backendThemes !== null;
   }
 
   /**
