@@ -32,7 +32,6 @@
   --accent-glow: rgba(16, 185, 129, 0.2);
   --danger: #ef4444;
   --danger-dim: rgba(239, 68, 68, 0.12);
-  --danger-hover: rgba(239, 68, 68, 0.2);
   --warning: #f59e0b;
   --warning-dim: rgba(245, 158, 11, 0.12);
   --info: #6366f1;
@@ -59,13 +58,17 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-
-/* ===== SVG Icons ===== */
 .ico { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ico-sm { width: 14px; height: 14px; }
 .ico-lg { width: 22px; height: 22px; }
 .ico-xl { width: 28px; height: 28px; }
 .ico-2xl { width: 36px; height: 36px; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 /* ===== Login ===== */
 #login-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 40%, #0a0b18 0%, #04050d 100%); }
@@ -80,7 +83,6 @@ body {
 .login-card .error { color: var(--danger); font-size: 12px; margin-top: -10px; margin-bottom: 14px; display: none; }
 .login-card button { width: 100%; padding: 13px; border: none; border-radius: var(--radius-md); background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: white; font-size: 14px; font-weight: 700; cursor: pointer; transition: all var(--transition); }
 .login-card button:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3); }
-.login-card button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
 /* ===== Layout ===== */
 #app { display: none; }
@@ -117,38 +119,41 @@ body {
 
 .main { flex: 1; padding: 28px 32px; overflow-y: auto; max-height: 100vh; background: radial-gradient(ellipse at 0% 0%, #0a0b18 0%, transparent 60%), var(--bg-primary); }
 
-/* ===== Page Header ===== */
+/* ===== Page ===== */
+#app-content .page { display: none; }
+#app-content .page.active { display: block; }
+
 .page-header { margin-bottom: 24px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
 .page-header hgroup { flex: 1; }
-.page-header h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.4px; display: flex; align-items: center; gap: 12px; }
+.page-header h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.4px; display: flex; align-items: center; gap: 12px; }
 .page-header h1 .ico { color: var(--accent); }
 .page-header .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
-.page-header .actions { display: flex; gap: 8px; align-items: center; }
+.page-header .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
-/* ===== Stats Row ===== */
-.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 24px; }
-.stat-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 16px 20px; transition: all var(--transition); }
+/* ===== Stats ===== */
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 28px; }
+.stat-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 18px 22px; transition: all var(--transition); }
 .stat-card:hover { border-color: var(--border-default); transform: translateY(-1px); box-shadow: var(--shadow-card); }
-.stat-card .stat-value { font-size: 28px; font-weight: 800; letter-spacing: -0.3px; }
+.stat-card .stat-value { font-size: 30px; font-weight: 800; letter-spacing: -0.3px; }
 .stat-card .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
 
-/* ===== Content Type Grid (Dashboard) ===== */
-.type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+/* ===== Dashboard Type Grid ===== */
+.type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
 .type-card {
-  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
-  padding: 22px; cursor: pointer; transition: all var(--transition); position: relative; overflow: hidden;
+  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl);
+  padding: 26px; cursor: pointer; transition: all var(--transition); position: relative; overflow: hidden;
 }
 .type-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--accent), var(--accent-hover)); opacity: 0; transition: opacity var(--transition); }
-.type-card:hover { border-color: var(--border-default); transform: translateY(-2px); box-shadow: var(--shadow-card); }
+.type-card:hover { border-color: var(--border-default); transform: translateY(-3px); box-shadow: var(--shadow-card); }
 .type-card:hover::before { opacity: 1; }
-.type-card .type-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
-.type-card .type-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
-.type-card .type-count { font-size: 12px; color: var(--text-muted); }
+.type-card .type-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+.type-card .type-name { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+.type-card .type-count { font-size: 13px; color: var(--text-muted); }
 .type-card .type-count strong { color: var(--text-primary); }
-.type-card .draft-badge { position: absolute; top: 14px; right: 14px; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: var(--warning-dim); color: var(--warning); }
+.type-card .draft-badge { position: absolute; top: 14px; right: 14px; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; background: var(--warning-dim); color: var(--warning); }
 
 /* ===== Content Grid ===== */
-.content-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.content-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
 
 .content-card {
   background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl);
@@ -157,35 +162,35 @@ body {
 .content-card:hover { border-color: var(--border-default); transform: translateY(-2px); box-shadow: var(--shadow-card); }
 
 .content-card .card-preview {
-  height: 120px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center;
+  height: 140px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center;
   overflow: hidden; position: relative;
 }
 .content-card .card-preview img { width: 100%; height: 100%; object-fit: cover; }
-.content-card .card-preview .placeholder-icon { width: 40px; height: 40px; color: var(--text-muted); opacity: 0.4; }
+.content-card .card-preview .placeholder-icon { width: 44px; height: 44px; color: var(--text-muted); opacity: 0.4; }
 .content-card .card-preview .status-badge {
-  position: absolute; top: 10px; right: 10px; font-size: 10px; font-weight: 700;
-  padding: 3px 10px; border-radius: 20px; backdrop-filter: blur(8px);
+  position: absolute; top: 12px; right: 12px; font-size: 10px; font-weight: 700;
+  padding: 4px 12px; border-radius: 20px; backdrop-filter: blur(8px);
 }
 .status-published { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
 .status-draft { background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.3); }
 .status-archived { background: rgba(139, 143, 168, 0.2); color: #a5a9c2; border: 1px solid rgba(139, 143, 168, 0.3); }
 
-.content-card .card-body { padding: 16px 18px; }
-.content-card .card-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.content-card .card-body { padding: 18px 20px; }
+.content-card .card-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
 .content-card .card-title .rarity-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.content-card .card-desc { font-size: 12px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 10px; line-height: 1.4; }
-.content-card .card-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.content-card .card-desc { font-size: 13px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 12px; line-height: 1.4; }
+.content-card .card-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 
 .content-card .card-footer {
-  padding: 12px 18px; border-top: 1px solid var(--border-subtle);
+  padding: 14px 20px; border-top: 1px solid var(--border-subtle);
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
 .content-card .card-footer .footer-left { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
 .content-card .card-footer .footer-actions { display: flex; gap: 4px; opacity: 0; transition: opacity var(--transition); }
 .content-card:hover .card-footer .footer-actions { opacity: 1; }
 
-/* ===== Tags / Badges ===== */
-.tag { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
+/* ===== Tags ===== */
+.tag { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 6px; }
 .tag-cape { background: rgba(99, 102, 241, 0.12); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.2); }
 .tag-aura { background: rgba(168, 85, 247, 0.12); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.2); }
 .tag-hat { background: rgba(236, 72, 153, 0.12); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.2); }
@@ -201,8 +206,8 @@ body {
 
 /* ===== Buttons ===== */
 .btn {
-  padding: 8px 16px; border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 600;
-  cursor: pointer; transition: all var(--transition); display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 18px; border: none; border-radius: var(--radius-md); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all var(--transition); display: inline-flex; align-items: center; gap: 7px;
   white-space: nowrap;
 }
 .btn:active { transform: scale(0.97); }
@@ -215,85 +220,140 @@ body {
 .btn-danger { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
 .btn-danger:hover { background: var(--danger-hover); }
 .btn-warning { background: var(--warning-dim); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.2); }
-.btn-warning:hover { background: rgba(245, 158, 11, 0.2); }
-.btn-sm { padding: 5px 10px; font-size: 11px; border-radius: 6px; }
-.btn-xs { padding: 3px 8px; font-size: 10px; border-radius: 5px; }
-.btn-icon { padding: 6px; border-radius: var(--radius-sm); }
+.btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; }
+.btn-xs { padding: 4px 9px; font-size: 10px; border-radius: 5px; }
+.btn-icon { padding: 7px; border-radius: var(--radius-sm); }
 
 /* ===== Toolbar ===== */
-.toolbar { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
-.search-box { display: flex; align-items: center; gap: 8px; background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 0 14px; flex: 1; min-width: 200px; max-width: 360px; transition: border-color var(--transition); }
+.toolbar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+.search-box { display: flex; align-items: center; gap: 8px; background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 0 14px; flex: 1; min-width: 200px; max-width: 400px; transition: border-color var(--transition); }
 .search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--border-glow); }
-.search-box input { flex: 1; padding: 9px 0; border: none; background: transparent; color: var(--text-primary); font-size: 13px; outline: none; }
+.search-box input { flex: 1; padding: 10px 0; border: none; background: transparent; color: var(--text-primary); font-size: 13px; outline: none; }
 .search-box input::placeholder { color: var(--text-muted); }
 .search-box .ico { color: var(--text-muted); }
-.filter-select { padding: 9px 32px 9px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 12px; font-weight: 600; outline: none; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239296b0' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; transition: border-color var(--transition); }
+.filter-select { padding: 10px 34px 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 13px; font-weight: 600; outline: none; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239296b0' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; transition: border-color var(--transition); }
 .filter-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--border-glow); }
 
-/* ===== Modal ===== */
+/* ===== Editor Modal ===== */
 .modal-overlay { position: fixed; inset: 0; z-index: 9998; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; padding: 20px; }
 .modal-overlay.open { display: flex; }
 .modal {
   background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 20px;
-  width: 640px; max-width: 100%; max-height: 90vh; overflow: hidden;
+  width: 720px; max-width: 100%; max-height: 92vh; overflow: hidden;
   display: flex; flex-direction: column; box-shadow: var(--shadow-elevated);
   animation: modalIn 0.2s ease-out;
 }
+.modal-wide { width: 900px; }
 @keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-.modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; }
-.modal-header h2 { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
-.modal-body { padding: 24px; overflow-y: auto; flex: 1; }
-.modal-body label { font-size: 12px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 5px; margin-top: 18px; }
+.modal-header { padding: 22px 26px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; }
+.modal-header h2 { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.modal-body { padding: 26px; overflow-y: auto; flex: 1; }
+.modal-body label { font-size: 12px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 5px; margin-top: 20px; }
 .modal-body label:first-child { margin-top: 0; }
+.modal-body .form-group { margin-bottom: 0; }
 .modal-body input, .modal-body select, .modal-body textarea {
-  width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-default);
+  width: 100%; padding: 11px 15px; border-radius: var(--radius-md); border: 1px solid var(--border-default);
   background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; outline: none;
   transition: border-color var(--transition); font-family: inherit;
 }
 .modal-body input:focus, .modal-body select:focus, .modal-body textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--border-glow); }
 .modal-body textarea { min-height: 80px; resize: vertical; }
 .modal-body .help-text { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-.modal-footer { padding: 16px 24px; border-top: 1px solid var(--border-subtle); display: flex; gap: 10px; justify-content: flex-end; }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.modal-footer { padding: 18px 26px; border-top: 1px solid var(--border-subtle); display: flex; gap: 10px; justify-content: flex-end; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 
-/* ===== Drop Zone ===== */
-.drop-zone {
-  border: 2px dashed var(--border-default); border-radius: var(--radius-lg); padding: 32px;
-  text-align: center; cursor: pointer; transition: all var(--transition); margin-top: 14px;
+/* ===== File Picker ===== */
+.file-picker {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-secondary); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); padding: 0 12px; cursor: pointer;
+  transition: border-color var(--transition); min-height: 40px;
 }
-.drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: var(--accent-dim); }
-.drop-zone .drop-icon { width: 44px; height: 44px; margin: 0 auto 10px; color: var(--text-muted); }
-.drop-zone p { font-size: 13px; color: var(--text-secondary); }
-.drop-zone .drop-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
-.upload-progress { display: none; margin-top: 14px; }
-.upload-progress.show { display: block; }
-.upload-progress .progress-bar { height: 4px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; margin-top: 8px; }
-.upload-progress .progress-bar .bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-hover)); border-radius: 4px; transition: width 0.3s; width: 0%; }
-.uploaded-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.uploaded-file { font-size: 11px; padding: 4px 10px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 4px; font-family: var(--font-mono); }
+.file-picker:hover { border-color: var(--accent); }
+.file-picker .file-picker-value { flex: 1; font-size: 13px; color: var(--text-primary); padding: 8px 0; }
+.file-picker .file-picker-value.empty { color: var(--text-muted); font-style: italic; }
+.file-picker .file-picker-btn { padding: 5px 10px; border-radius: var(--radius-sm); background: var(--accent-dim); color: var(--accent); font-size: 11px; font-weight: 600; white-space: nowrap; cursor: pointer; border: none; transition: all var(--transition); }
+.file-picker .file-picker-btn:hover { background: rgba(16, 185, 129, 0.2); }
+.file-picker .file-picker-preview { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; }
+.file-checkbox-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; margin-top: 6px; }
+.file-checkbox-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); cursor: pointer; transition: all var(--transition); font-size: 12px;
+}
+.file-checkbox-item:hover { border-color: var(--border-default); background: var(--bg-card); }
+.file-checkbox-item.selected { border-color: var(--accent); background: var(--accent-dim); }
+.file-checkbox-item input { display: none; }
+.file-checkbox-item .fb-icon { width: 20px; height: 20px; flex-shrink: 0; color: var(--text-muted); }
+.file-checkbox-item .fb-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-checkbox-item .fb-size { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
 
-/* ===== Empty State ===== */
-.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-.empty-state .ico { width: 48px; height: 48px; margin: 0 auto 14px; opacity: 0.3; }
-.empty-state h3 { font-size: 16px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 600; }
+/* ===== Media Browser Modal ===== */
+.media-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.media-path { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); flex: 1; min-width: 0; overflow: hidden; }
+.media-path .path-sep { color: var(--text-muted); margin: 0 2px; }
+.media-path .path-item { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all var(--transition); white-space: nowrap; }
+.media-path .path-item:hover { background: var(--bg-card); color: var(--accent); }
+.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; max-height: 400px; overflow-y: auto; min-height: 200px; }
+.media-grid-item {
+  background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); overflow: hidden; cursor: pointer;
+  transition: all var(--transition); position: relative;
+}
+.media-grid-item:hover { border-color: var(--accent); transform: translateY(-1px); }
+.media-grid-item.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--border-glow); }
+.media-grid-item .media-thumb { width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg-secondary); }
+.media-grid-item .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.media-grid-item .media-thumb .media-icon { width: 28px; height: 28px; color: var(--text-muted); opacity: 0.5; }
+.media-grid-item .media-name { font-size: 10px; padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.media-grid-item .media-check { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 4px; background: var(--accent); display: none; align-items: center; justify-content: center; color: white; }
+.media-grid-item.selected .media-check { display: flex; }
+.media-grid-item.is-dir .media-thumb { background: rgba(16, 185, 129, 0.05); }
+
+.media-list { width: 100%; max-height: 400px; overflow-y: auto; min-height: 200px; }
+.media-list table { width: 100%; border-collapse: collapse; }
+.media-list th { text-align: left; font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); }
+.media-list td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid var(--border-subtle); }
+.media-list tr { cursor: pointer; transition: all var(--transition); }
+.media-list tr:hover { background: var(--bg-card); }
+.media-list tr.selected { background: var(--accent-dim); }
+.media-list .ml-icon { width: 20px; height: 20px; color: var(--text-muted); vertical-align: middle; margin-right: 8px; }
+.media-list .ml-name { display: flex; align-items: center; gap: 8px; }
+.media-list .ml-size { color: var(--text-muted); font-size: 12px; }
+.media-list .ml-mtime { color: var(--text-muted); font-size: 12px; }
+
+.media-preview-pane { display: flex; gap: 16px; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-subtle); }
+.media-preview-pane img { max-width: 120px; max-height: 120px; border-radius: var(--radius-sm); object-fit: contain; }
+.media-preview-pane .preview-info { flex: 1; }
+.media-preview-pane .preview-info p { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+.media-preview-pane .preview-info strong { color: var(--text-primary); }
+
+/* ===== Publish Panel ===== */
+.publish-panel {
+  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl);
+  padding: 22px 26px; margin-top: 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.publish-panel .publish-info { display: flex; align-items: center; gap: 14px; }
+.publish-panel .publish-info .ico { color: var(--warning); }
+.publish-panel .publish-info h3 { font-size: 15px; font-weight: 700; }
+.publish-panel .publish-info p { font-size: 12px; color: var(--text-muted); }
+
+/* ===== Empty & Loading ===== */
+.empty-state { text-align: center; padding: 70px 20px; color: var(--text-muted); }
+.empty-state .ico { width: 52px; height: 52px; margin: 0 auto 16px; opacity: 0.3; }
+.empty-state h3 { font-size: 17px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 600; }
 .empty-state p { font-size: 13px; max-width: 400px; margin: 0 auto; }
-
-/* ===== Loading ===== */
 .loading { text-align: center; padding: 50px; color: var(--text-muted); }
 .spinner { display: inline-block; width: 24px; height: 24px; border: 2px solid var(--border-default); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* ===== Page visibility ===== */
-#app-content .page { display: none; }
-#app-content .page.active { display: block; }
 
 /* ===== Toast ===== */
 .toast {
   position: fixed; bottom: 28px; right: 28px; z-index: 10000;
   padding: 14px 22px; border-radius: var(--radius-md); font-size: 13px; font-weight: 600;
   display: none; align-items: center; gap: 10px; box-shadow: var(--shadow-elevated);
-  max-width: 420px; animation: toastIn 0.3s ease-out;
+  max-width: 440px; animation: toastIn 0.3s ease-out;
 }
 @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .toast.show { display: flex; }
@@ -301,37 +361,25 @@ body {
 .toast.error { background: #7f1d1d; border: 1px solid var(--danger); color: #fca5a5; }
 .toast.info { background: #1e3a5f; border: 1px solid var(--info); color: #a5b4fc; }
 
-/* ===== Publish Panel ===== */
-.publish-panel {
-  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl);
-  padding: 20px 24px; margin-top: 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
-}
-.publish-panel .publish-info { display: flex; align-items: center; gap: 12px; }
-.publish-panel .publish-info .ico { color: var(--warning); }
-.publish-panel .publish-info h3 { font-size: 14px; font-weight: 700; }
-.publish-panel .publish-info p { font-size: 12px; color: var(--text-muted); }
-
-/* ===== Cosmetic Preview Color Accents ===== */
+/* ===== Rarity Colors ===== */
 .rarity-common { color: #94a3b8; }
 .rarity-rare { color: #60a5fa; }
 .rarity-epic { color: #c084fc; }
 .rarity-legendary { color: #fbbf24; }
 .rarity-mythic { color: #f87171; }
 
-/* ===== Scrollbar ===== */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+/* ===== Color Picker Style ===== */
+.color-input-row { display: flex; gap: 10px; align-items: center; }
+.color-input-row input[type="color"] { width: 44px; height: 44px; padding: 3px; border-radius: var(--radius-md); border: 1px solid var(--border-default); background: var(--bg-secondary); cursor: pointer; flex-shrink: 0; }
+.color-input-row input[type="text"] { flex: 1; }
 </style>
 </head>
 <body>
 
-<!-- ===== SVG Icons ===== -->
 <svg style="display:none" aria-hidden="true">
   <defs>
     <symbol id="ico-layout-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
-    <symbol id="ico-package" viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
+    <symbol id="ico-package" viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><polyline points="3.3 7 12 12 20.7 7"/></symbol>
     <symbol id="ico-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/></symbol>
     <symbol id="ico-newspaper" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></symbol>
     <symbol id="ico-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
@@ -356,10 +404,14 @@ body {
     <symbol id="ico-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
     <symbol id="ico-code" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
     <symbol id="ico-box" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><polyline points="3.3 7 12 12 20.7 7"/></symbol>
-    <symbol id="ico-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
     <symbol id="ico-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
     <symbol id="ico-type" viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></symbol>
     <symbol id="ico-publish" viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><path d="M12 3v15"/><path d="M5 21h14"/></symbol>
+    <symbol id="ico-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></symbol>
+    <symbol id="ico-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+    <symbol id="ico-sort" viewBox="0 0 24 24"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="M21 16l-4 4-4-4"/><path d="M17 20V4"/></symbol>
+    <symbol id="ico-tag" viewBox="0 0 24 24"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></symbol>
+    <symbol id="ico-check-square" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 12 2 2 4-4"/></symbol>
   </defs>
 </svg>
 
@@ -407,148 +459,19 @@ body {
   </main>
 </div>
 
-<!-- ===== Content Editor Modal ===== -->
-<div class="modal-overlay" id="editor-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 id="editor-modal-title">Neuer Inhalt</h2>
-      <button class="btn btn-ghost btn-sm" onclick="closeModal()"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="editor-id">
-      <input type="hidden" id="editor-type">
-
-      <!-- Common fields for all types -->
-      <label>Name</label>
-      <input type="text" id="editor-name" placeholder="z.B. Dragon Wings" maxlength="256">
-      <div class="help-text">Aus dem Namen wird automatisch eine eindeutige ID generiert.</div>
-
-      <div class="form-row">
-        <div>
-          <label>Kategorie</label>
-          <input type="text" id="editor-category" placeholder="z.B. wings">
-        </div>
-        <div>
-          <label>Status</label>
-          <select id="editor-status">
-            <option value="draft">Entwurf</option>
-            <option value="published">Veröffentlicht</option>
-            <option value="archived">Archiviert</option>
-          </select>
-        </div>
-      </div>
-
-      <label>Beschreibung (optional)</label>
-      <textarea id="editor-desc" placeholder="Kurze Beschreibung..." style="min-height:60px"></textarea>
-
-      <!-- Cosmetic-specific fields -->
-      <div id="cosmetic-fields" style="display:none">
-        <div class="form-row">
-          <div>
-            <label>Typ</label>
-            <select id="editor-cosmetic-type">
-              <option value="cape">Umhang (Cape)</option>
-              <option value="aura">Aura</option>
-              <option value="hat">Hut (Hat)</option>
-              <option value="ear">Ohren (Ears)</option>
-              <option value="rank">Rang (Rank)</option>
-              <option value="other">Andere</option>
-            </select>
-          </div>
-          <div>
-            <label>Seltenheit</label>
-            <select id="editor-rarity">
-              <option value="common">Common</option>
-              <option value="rare">Rare</option>
-              <option value="epic">Epic</option>
-              <option value="legendary">Legendary</option>
-              <option value="mythic">Mythic</option>
-            </select>
-          </div>
-        </div>
-        <label>Akzentfarbe</label>
-        <input type="text" id="editor-accent" placeholder="z.B. #10b981">
-      </div>
-
-      <!-- News-specific fields -->
-      <div id="news-fields" style="display:none">
-        <label>Untertitel</label>
-        <input type="text" id="news-subtitle" placeholder="Optionaler Untertitel">
-        <label>Inhalt</label>
-        <textarea id="news-content" placeholder="Artikelinhalt..." style="min-height:120px"></textarea>
-        <div class="form-row">
-          <div><label>Autor</label><input type="text" id="news-author" placeholder="Bamboo Team"></div>
-          <div><label>Game Version</label><input type="text" id="news-version" placeholder="z.B. 1.21"></div>
-        </div>
-      </div>
-
-      <!-- Event-specific fields -->
-      <div id="event-fields" style="display:none">
-        <label>Untertitel</label>
-        <input type="text" id="event-subtitle" placeholder="Optionaler Untertitel">
-        <div class="form-row">
-          <div><label>Startdatum</label><input type="datetime-local" id="event-start"></div>
-          <div><label>Enddatum</label><input type="datetime-local" id="event-end"></div>
-        </div>
-        <div class="form-row">
-          <div><label>Priorität</label><input type="number" id="event-priority" value="0" min="0"></div>
-          <div><label>Autor</label><input type="text" id="event-author" placeholder="Bamboo Team"></div>
-        </div>
-      </div>
-
-      <!-- Banner-specific fields -->
-      <div id="banner-fields" style="display:none">
-        <label>Link-Ziel</label>
-        <input type="text" id="banner-target" placeholder="https://...">
-        <div class="form-row">
-          <div><label>Typ</label><select id="banner-clicktype"><option value="external">Externer Link</option><option value="internal">Interner Link</option><option value="none">Kein Link</option></select></div>
-          <div><label>Priorität</label><input type="number" id="banner-priority" value="0" min="0"></div>
-        </div>
-      </div>
-
-      <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border-subtle)">
-        <!-- Upload area (shown after save) -->
-        <div id="upload-section" style="display:none">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;font-size:12px;color:var(--text-secondary)">
-            <input type="checkbox" id="toggle-upload" onchange="toggleUploadArea()"> Dateien hochladen
-          </label>
-          <div id="upload-area" style="display:none">
-            <div class="drop-zone" id="drop-zone" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleDrop(event)">
-              <svg class="ico drop-icon"><use href="#ico-upload"/></svg>
-              <p>Ordner oder Dateien hier ablegen</p>
-              <p class="drop-hint">Oder klicken, um Dateien auszuwählen</p>
-              <input type="file" id="file-input" multiple webkitdirectory style="display:none" onchange="handleFileSelect(event)">
-            </div>
-            <div class="upload-progress" id="upload-progress">
-              <p style="font-size:12px;color:var(--text-secondary)" id="upload-status">Wird hochgeladen...</p>
-              <div class="progress-bar"><div class="bar" id="progress-bar"></div></div>
-            </div>
-            <div class="uploaded-files" id="uploaded-files"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
-      <button class="btn btn-primary" id="editor-save-btn" onclick="saveContent()">
-        <svg class="ico ico-sm"><use href="#ico-check"/></svg>Speichern
-      </button>
-    </div>
-  </div>
-</div>
-
 <script>
 const API = '';
 let token = localStorage.getItem('bamboo_admin_token') || '';
 let user = JSON.parse(localStorage.getItem('bamboo_admin_user') || 'null');
 let currentPage = 'dashboard';
 let contentTypes = [];
-let contentCache = {};
 let editingItem = null;
+let fileCache = {};
 
 // ===== Helpers =====
 function ico(name) { return `<svg class="ico"><use href="#${name}"/></svg>`; }
 function icosm(name) { return `<svg class="ico ico-sm"><use href="#${name}"/></svg>`; }
+function icolg(name) { return `<svg class="ico ico-lg"><use href="#${name}"/></svg>`; }
 
 function showToast(msg, type) {
   const t = document.getElementById('toast');
@@ -573,12 +496,13 @@ function timeAgo(d) {
 
 function closeModal() {
   document.getElementById('editor-modal').classList.remove('open');
+  document.getElementById('media-browser').classList.remove('open');
   editingItem = null;
 }
 
-function toggleUploadArea() {
-  const area = document.getElementById('upload-area');
-  area.style.display = area.style.display === 'none' ? 'block' : 'none';
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ===== Auth =====
@@ -612,7 +536,7 @@ function logout() {
   document.getElementById('login-overlay').classList.remove('hidden');
 }
 
-// Auto-login with stored token
+// Auto-login
 if (token && user) {
   (async () => {
     try {
@@ -640,10 +564,7 @@ async function api(path, opts = {}) {
   });
   if (r.status === 401) { logout(); throw new Error('Session abgelaufen'); }
   const isJson = r.headers.get('content-type')?.includes('json');
-  if (!isJson) {
-    const text = await r.text();
-    try { return JSON.parse(text); } catch { throw new Error(text); }
-  }
+  if (!isJson) { const text = await r.text(); try { return JSON.parse(text); } catch { throw new Error(text); } }
   return r.json();
 }
 
@@ -658,16 +579,6 @@ async function loadContentTypes() {
   try {
     const r = await api('/api/content');
     contentTypes = r.data || [];
-    const total = contentTypes.reduce((s, t) => s + t.count, 0);
-    if (total === 0) {
-      // Seed some defaults
-      const defaults = ['cosmetic', 'news', 'event', 'banner', 'theme', 'background'];
-      for (const t of defaults) {
-        if (!contentTypes.find(ct => ct.type === t)) {
-          contentTypes.push({ type: t, name: t.charAt(0).toUpperCase() + t.slice(1) + 's', count: 0, draftCount: 0, publishedCount: 0 });
-        }
-      }
-    }
   } catch (e) {
     console.error('Failed to load content types:', e);
   }
@@ -687,7 +598,7 @@ function renderSidebar() {
 function getIconForType(type) {
   const icons = {
     cosmetic: 'sparkles', news: 'newspaper', event: 'calendar', banner: 'image',
-    theme: 'palette', background: 'image', icon: 'file', ui_asset: 'package',
+    theme: 'palette', icon: 'file', ui_asset: 'package',
     music: 'music', shader: 'code', resource_pack: 'box', font: 'type', other: 'folder'
   };
   return icons[type] || 'package';
@@ -696,116 +607,118 @@ function getIconForType(type) {
 function getColorForType(type) {
   const colors = {
     cosmetic: '#8b5cf6', news: '#10b981', event: '#06b6d4', banner: '#f59e0b',
-    theme: '#ec4899', background: '#6366f1', icon: '#f43f5e', ui_asset: '#14b8a6',
-    music: '#f59e0b', shader: '#22d3ee', resource_pack: '#3b82f6', font: '#a855f7', other: '#94a3b8'
+    theme: '#ec4899', icon: '#f43f5e', ui_asset: '#6366f1',
+    music: '#10b981', shader: '#8b5cf6', resource_pack: '#f59e0b', font: '#06b6d4', other: '#9296b0'
   };
-  return colors[type] || '#94a3b8';
+  return colors[type] || '#9296b0';
 }
 
-// ===== Navigation =====
-function switchPage(page) {
-  currentPage = page;
-
-  // Update sidebar
+// ===== Page Switching =====
+async function switchPage(page) {
   document.querySelectorAll('.sidebar nav button').forEach(b => b.classList.remove('active'));
   const btn = document.querySelector(`.sidebar nav button[data-page="${page}"]`);
   if (btn) btn.classList.add('active');
+  currentPage = page;
 
-  // Ensure page element exists
-  let el = document.getElementById('page-' + page);
-  if (!el) {
-    el = document.createElement('div');
-    el.className = 'page';
-    el.id = 'page-' + page;
-    document.getElementById('app-content').appendChild(el);
-  }
-
+  // Hide all pages
   document.querySelectorAll('#app-content .page').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
 
-  // Render page
-  if (page === 'dashboard') renderDashboard();
-  else renderContentPage(page);
+  let pageEl = document.getElementById('page-' + page);
+  if (!pageEl) {
+    pageEl = document.createElement('div');
+    pageEl.className = 'page';
+    pageEl.id = 'page-' + page;
+    document.getElementById('app-content').appendChild(pageEl);
+  }
+  pageEl.classList.add('active');
+
+  if (page === 'dashboard') {
+    await renderDashboard();
+  } else {
+    const ct = contentTypes.find(c => c.type === page);
+    if (ct) await renderContentPage(page, ct);
+  }
 }
 
 // ===== Dashboard =====
 async function renderDashboard() {
   const el = document.getElementById('page-dashboard');
-  if (!el) return;
-
-  // Refresh content types
   await loadContentTypes();
+  renderSidebar();
 
-  const totalItems = contentTypes.reduce((s, t) => s + t.count, 0);
-  const draftItems = contentTypes.reduce((s, t) => s + t.draftCount, 0);
-  const publishedItems = contentTypes.reduce((s, t) => s + t.publishedCount, 0);
+  const total = contentTypes.reduce((s, t) => s + t.count, 0);
+  const drafts = contentTypes.reduce((s, t) => s + t.draftCount, 0);
+  const published = contentTypes.reduce((s, t) => s + t.publishedCount, 0);
 
   el.innerHTML = `
     <div class="page-header">
       <hgroup>
         <h1>${ico('layout-dashboard')} Dashboard</h1>
-        <p class="subtitle">Übersicht über alle Inhalte des Bamboo Launchers</p>
+        <p class="subtitle">Content Manager — ${contentTypes.length} Inhaltstypen, ${total} Einträge</p>
       </hgroup>
-      <div class="actions">
-        <button class="btn btn-primary" onclick="publishAll()">
-          ${icosm('publish')} Alle veröffentlichen
-        </button>
-      </div>
     </div>
-
     <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-value" style="color:var(--accent)">${totalItems}</div>
-        <div class="stat-label">Inhalte gesamt</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color:var(--warning)">${draftItems}</div>
-        <div class="stat-label">Entwürfe</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color:var(--accent)">${publishedItems}</div>
-        <div class="stat-label">Veröffentlicht</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color:var(--info)">${contentTypes.length}</div>
-        <div class="stat-label">Inhaltstypen</div>
-      </div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--accent)">${total}</div><div class="stat-label">Gesamt</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--warning)">${drafts}</div><div class="stat-label">Entwürfe</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--info)">${published}</div><div class="stat-label">Veröffentlicht</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--pink)">${contentTypes.length}</div><div class="stat-label">Typen</div></div>
     </div>
-
     <div class="type-grid">
-      ${contentTypes.map(ct => `
-        <div class="type-card" onclick="switchPage('${ct.type}')">
-          <div class="type-icon" style="background:${getColorForType(ct.type)}22;color:${getColorForType(ct.type)}">
-            <svg class="ico-lg"><use href="#ico-${getIconForType(ct.type)}"/></svg>
-          </div>
+      ${contentTypes.map(ct => {
+        const color = getColorForType(ct.type);
+        return `<div class="type-card" onclick="switchPage('${ct.type}')">
+          <div class="type-icon" style="background:rgba(${hexToRgb(color)},0.1);color:${color}"><svg class="ico ico-lg"><use href="#ico-${getIconForType(ct.type)}"/></svg></div>
           <div class="type-name">${ct.name}</div>
-          <div class="type-count"><strong>${ct.count}</strong> Einträge</div>
-          ${ct.draftCount > 0 ? `<span class="draft-badge">${ct.draftCount} Entwürfe</span>` : ''}
+          <div class="type-count"><strong>${ct.count}</strong> Einträge · ${ct.draftCount} Entwürfe</div>
+          ${ct.draftCount > 0 ? `<span class="draft-badge">${ct.draftCount} Entwurf${ct.draftCount !== 1 ? 'e' : ''}</span>` : ''}
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="publish-panel">
+      <div class="publish-info">
+        <svg class="ico"><use href="#ico-publish"/></svg>
+        <div>
+          <h3>Alle Inhalte veröffentlichen</h3>
+          <p>${drafts > 0 ? `${drafts} Entwurf${drafts !== 1 ? 'e' : ''} warten auf Veröffentlichung` : 'Alle Inhalte sind veröffentlicht'}</p>
         </div>
-      `).join('')}
+      </div>
+      <button class="btn btn-primary ${drafts === 0 ? 'btn-ghost' : ''}" onclick="publishAll()" ${drafts === 0 ? 'disabled' : ''}>
+        <svg class="ico ico-sm"><use href="#ico-publish"/></svg> Alle veröffentlichen
+      </button>
     </div>
   `;
 }
 
-// ===== Content Page =====
-async function renderContentPage(type) {
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return `${r},${g},${b}`;
+}
+
+// ===== Content List Page =====
+let contentPageState = { type: null, page: 1, search: '', category: '', status: '', sortBy: 'updatedAt', sortDir: 'desc' };
+
+async function renderContentPage(type, ct) {
   const el = document.getElementById('page-' + type);
   if (!el) return;
 
-  const ct = contentTypes.find(t => t.type === type) || { name: type.charAt(0).toUpperCase() + type.slice(1) + 's', count: 0 };
+  contentPageState.type = type;
+
+  const items = await loadContentItems(type, contentPageState.page, contentPageState.search, contentPageState.category, contentPageState.status, contentPageState.sortBy, contentPageState.sortDir);
+
+  const name = ct.name || type.charAt(0).toUpperCase() + type.slice(1) + 's';
 
   el.innerHTML = `
     <div class="page-header">
       <hgroup>
-        <h1>
-          <span class="ico" style="color:${getColorForType(type)}"><use href="#ico-${getIconForType(type)}"/></svg>
-          ${ct.name}
-        </h1>
-        <p class="subtitle">Alle ${ct.name.toLowerCase()} verwalten</p>
+        <h1>${ico(getIconForType(type))} ${name}</h1>
+        <p class="subtitle"><strong>${items.total}</strong> Einträge · Seite ${items.page} von ${items.totalPages || 1}</p>
       </hgroup>
       <div class="actions">
-        <button class="btn btn-primary" onclick="openCreate('${type}')">
-          ${icosm('plus')} Neu erstellen
+        <button class="btn btn-primary" onclick="openCreateEditor('${type}')">
+          <svg class="ico ico-sm"><use href="#ico-plus"/></svg> Neu
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="openMediaBrowser('browse', null)" title="Media Browser">
+          <svg class="ico ico-sm"><use href="#ico-image"/></svg> Dateien
         </button>
       </div>
     </div>
@@ -813,111 +726,99 @@ async function renderContentPage(type) {
     <div class="toolbar">
       <div class="search-box">
         <svg class="ico ico-sm"><use href="#ico-search"/></svg>
-        <input type="text" id="search-${type}" placeholder="Suchen..." oninput="debounceSearch('${type}', this.value)">
+        <input type="text" placeholder="Suchen..." value="${escapeHtml(contentPageState.search)}" oninput="onContentSearch('${type}', this.value)">
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="loadContent('${type}')">
-        ${icosm('refresh')} Aktualisieren
-      </button>
+      <select class="filter-select" onchange="onContentFilter('${type}', 'category', this.value)">
+        <option value="">Alle Kategorien</option>
+        ${getCategories(type).map(c => `<option value="${c}" ${contentPageState.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+      </select>
+      <select class="filter-select" onchange="onContentFilter('${type}', 'status', this.value)">
+        <option value="">Alle Status</option>
+        <option value="draft" ${contentPageState.status === 'draft' ? 'selected' : ''}>Entwurf</option>
+        <option value="published" ${contentPageState.status === 'published' ? 'selected' : ''}>Veröffentlicht</option>
+        <option value="archived" ${contentPageState.status === 'archived' ? 'selected' : ''}>Archiviert</option>
+      </select>
     </div>
 
-    <div id="content-list-${type}">
-      <div class="loading"><div class="spinner"></div></div>
-    </div>
-
-    <div class="publish-panel">
-      <div class="publish-info">
-        <svg class="ico ico-lg"><use href="#ico-publish"/></svg>
-        <div>
-          <h3>Änderungen veröffentlichen</h3>
-          <p>Nach dem Veröffentlichen werden alle Änderungen im Launcher sichtbar.</p>
-        </div>
-      </div>
-      <button class="btn btn-warning" onclick="publishAll()">
-        ${icosm('publish')} Jetzt veröffentlichen
-      </button>
-    </div>
-  `;
-
-  loadContent(type);
-}
-
-async function loadContent(type) {
-  const listEl = document.getElementById('content-list-' + type);
-  if (!listEl) return;
-
-  try {
-    listEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-    const r = await api(`/api/content/${type}?limit=100`);
-    const items = r.data || [];
-
-    if (items.length === 0) {
-      listEl.innerHTML = `
-        <div class="empty-state">
+    <div class="content-grid">
+      ${items.data.length === 0 ? `
+        <div class="empty-state" style="grid-column:1/-1">
           <svg class="ico"><use href="#ico-${getIconForType(type)}"/></svg>
-          <h3>Noch keine ${type === 'cosmetic' ? 'Cosmetics' : type + 's'} vorhanden</h3>
-          <p>Erstelle den ersten Eintrag mit einem Klick auf "Neu erstellen".<br>
-          Nach dem Speichern kannst du Dateien per Drag & Drop hochladen.</p>
+          <h3>Keine Einträge gefunden</h3>
+          <p>Erstelle den ersten ${name.slice(0, -1)} mit einem Klick auf "Neu".</p>
         </div>
-      `;
-      return;
-    }
+      ` : items.data.map(item => renderContentCard(type, item)).join('')}
+    </div>
 
-    listEl.innerHTML = `<div class="content-grid">${items.map(item => renderCard(type, item)).join('')}</div>`;
-  } catch (e) {
-    listEl.innerHTML = `<div class="empty-state"><h3>Fehler beim Laden</h3><p>${e.message}</p></div>`;
-  }
+    ${items.totalPages > 1 ? `
+      <div style="display:flex;justify-content:center;gap:8px;margin-top:24px">
+        ${Array.from({length: items.totalPages}, (_, i) => i + 1).map(p =>
+          `<button class="btn btn-sm ${p === items.page ? 'btn-primary' : 'btn-ghost'}" onclick="gotoContentPage('${type}', ${p})">${p}</button>`
+        ).join('')}
+      </div>
+    ` : ''}
+  `;
 }
 
-function renderCard(type, item) {
-  const rarityColors = { common: '#94a3b8', rare: '#60a5fa', epic: '#c084fc', legendary: '#fbbf24', mythic: '#f87171' };
-  const statusClass = item.status === 'published' ? 'status-published' : item.status === 'archived' ? 'status-archived' : 'status-draft';
-  const statusLabel = item.status === 'published' ? 'Veröffentlicht' : item.status === 'archived' ? 'Archiviert' : 'Entwurf';
-  const previewUrl = item.thumbnailUrl || item.imageUrl || item.previewUrl || '';
+function getCategories(type) {
+  // Return common categories per type
+  const cats = {
+    cosmetic: ['hats', 'wings', 'capes', 'auras', 'ears', 'ranks', 'other'],
+    theme: ['green', 'pink', 'blue', 'dark', 'light', 'custom'],
+    news: ['general', 'update', 'announcement', 'event'],
+    event: ['general', 'seasonal', 'special', 'competition'],
+    banner: ['general', 'promo', 'seasonal'],
+  };
+  return cats[type] || ['general', 'custom'];
+}
 
-  // Build type-specific tags
-  let tagsHtml = '';
+function renderContentCard(type, item) {
+  const isDraft = item.status === 'draft';
+  const isPublished = item.status === 'published' || item.isActive;
+
+  let previewHtml = '';
+  if (item.thumbnailUrl) {
+    previewHtml = `<img src="/api/content/${type}/${item.id}/image" alt="" onerror="this.parentElement.innerHTML='<svg class=\\"ico placeholder-icon\\"><use href=\\"#ico-${getIconForType(type)}\\"\\/></svg>'">`;
+  } else {
+    previewHtml = `<svg class="ico placeholder-icon"><use href="#ico-${getIconForType(type)}"/></svg>`;
+  }
+
+  let extraTags = '';
   if (type === 'cosmetic') {
-    const ct = item.metadata?.cosmeticType || item.type || 'cape';
-    const rar = item.metadata?.rarity || item.rarity || 'common';
-    tagsHtml = `
-      <span class="tag tag-${ct}">${ct}</span>
-      <span class="tag tag-${rar}">${rar}</span>
-    `;
-  }
-  if (item.category && item.category !== 'general') {
-    tagsHtml += `<span class="tag tag-category">${item.category}</span>`;
-  }
-  if (item.fileCount > 0) {
-    tagsHtml += `<span class="tag tag-file-count">${item.fileCount} Dateien</span>`;
+    extraTags = `<span class="tag tag-${item.type || 'cape'}">${item.type || 'cape'}</span><span class="tag tag-${item.rarity || 'common'}">${item.rarity || 'common'}</span>`;
   }
 
   return `
-    <div class="content-card">
+    <div class="content-card" onclick="openEditEditor('${type}', '${item.id}')">
       <div class="card-preview">
-        ${previewUrl ? `<img src="${previewUrl}" alt="${item.name}" onerror="this.style.display='none'">` : `<svg class="placeholder-icon"><use href="#ico-${getIconForType(type)}"/></svg>`}
-        <span class="status-badge ${statusClass}">${statusLabel}</span>
+        ${previewHtml}
+        <span class="status-badge status-${item.status}">${item.status === 'published' ? 'Veröffentlicht' : item.status === 'draft' ? 'Entwurf' : 'Archiviert'}</span>
       </div>
       <div class="card-body">
         <div class="card-title">
-          ${item.rarity && rarityColors[item.rarity] ? `<span class="rarity-dot" style="background:${rarityColors[item.rarity]}"></span>` : ''}
-          ${item.name}
+          ${item.name || item.title || '(Unbenannt)'}
         </div>
-        ${item.description ? `<div class="card-desc">${item.description}</div>` : ''}
-        <div class="card-meta">${tagsHtml}</div>
+        <div class="card-desc">${escapeHtml(item.description || item.subtitle || '')}</div>
+        <div class="card-meta">
+          ${extraTags}
+          <span class="tag tag-category">${item.category || 'general'}</span>
+          ${item.files && item.files.length > 0 ? `<span class="tag tag-file-count">${item.files.length} Datei${item.files.length !== 1 ? 'en' : ''}</span>` : ''}
+        </div>
       </div>
       <div class="card-footer">
         <div class="footer-left">
-          ${icosm('refresh')} ${timeAgo(item.updatedAt)}
+          <svg class="ico ico-sm"><use href="#ico-${item.isActive ? 'eye' : 'eye-off'}"/></svg>
+          ${timeAgo(item.updatedAt)}
         </div>
         <div class="footer-actions">
-          <button class="btn btn-ghost btn-xs" onclick="openEdit('${type}','${item.id}')" title="Bearbeiten">
-            ${icosm('edit')}
+          <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();toggleActive('${type}','${item.id}')">
+            <svg class="ico ico-sm"><use href="#ico-${item.isActive ? 'eye-off' : 'eye'}"/></svg>
           </button>
-          <button class="btn btn-ghost btn-xs" onclick="publishItem('${type}','${item.id}')" title="Veröffentlichen">
-            ${icosm('publish')}
+          <button class="btn btn-xs btn-warning" onclick="event.stopPropagation();publishItem('${type}','${item.id}')">
+            <svg class="ico ico-sm"><use href="#ico-publish"/></svg>
           </button>
-          <button class="btn btn-danger btn-xs" onclick="deleteItem('${type}','${item.id}')" title="Löschen">
-            ${icosm('trash')}
+          <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteItem('${type}','${item.id}')">
+            <svg class="ico ico-sm"><use href="#ico-trash"/></svg>
           </button>
         </div>
       </div>
@@ -925,27 +826,45 @@ function renderCard(type, item) {
   `;
 }
 
-// ===== Search =====
-let searchTimers = {};
-function debounceSearch(type, value) {
-  clearTimeout(searchTimers[type]);
-  searchTimers[type] = setTimeout(() => {
-    const listEl = document.getElementById('content-list-' + type);
-    if (!listEl) return;
-    const items = listEl.querySelectorAll('.content-card');
-    items.forEach(card => {
-      const title = card.querySelector('.card-title')?.textContent || '';
-      const desc = card.querySelector('.card-desc')?.textContent || '';
-      const match = !value || title.toLowerCase().includes(value.toLowerCase()) || desc.toLowerCase().includes(value.toLowerCase());
-      card.style.display = match ? '' : 'none';
-    });
-  }, 200);
+async function loadContentItems(type, page, search, category, status, sortBy, sortDir) {
+  try {
+    const params = new URLSearchParams({ page, limit: 50, sortBy, sortDir });
+    if (search) params.set('search', search);
+    if (category) params.set('category', category);
+    if (status) params.set('status', status);
+    const r = await api(`/api/content/${type}?${params}`);
+    return r;
+  } catch (e) {
+    showToast('Fehler beim Laden: ' + e.message, 'error');
+    return { data: [], total: 0, page: 1, totalPages: 1 };
+  }
 }
 
-// ===== Create / Edit =====
-function openCreate(type) {
+function onContentSearch(type, value) {
+  contentPageState.search = value;
+  contentPageState.page = 1;
+  clearTimeout(contentPageState._searchTimer);
+  contentPageState._searchTimer = setTimeout(() => renderContentPage(type, contentTypes.find(c => c.type === type)), 300);
+}
+
+function onContentFilter(type, key, value) {
+  contentPageState[key] = value;
+  contentPageState.page = 1;
+  renderContentPage(type, contentTypes.find(c => c.type === type));
+}
+
+function gotoContentPage(type, page) {
+  contentPageState.page = page;
+  renderContentPage(type, contentTypes.find(c => c.type === type));
+}
+
+// ===== Editor =====
+async function openCreateEditor(type) {
   editingItem = null;
-  document.getElementById('editor-modal-title').textContent = `Neuen ${type === 'cosmetic' ? 'Eintrag' : 'Eintrag'} erstellen`;
+  const ct = contentTypes.find(c => c.type === type);
+  const title = ct ? ct.name.slice(0, -1) : type;
+
+  document.getElementById('editor-modal-title').innerHTML = `${ico('plus')} Neuer ${title}`;
   document.getElementById('editor-id').value = '';
   document.getElementById('editor-type').value = type;
   document.getElementById('editor-name').value = '';
@@ -954,70 +873,83 @@ function openCreate(type) {
   document.getElementById('editor-status').value = 'draft';
   document.getElementById('editor-save-btn').innerHTML = `${icosm('check')} Speichern`;
 
-  // Show/hide type-specific fields
-  document.getElementById('cosmetic-fields').style.display = type === 'cosmetic' ? 'block' : 'none';
-  document.getElementById('news-fields').style.display = type === 'news' ? 'block' : 'none';
-  document.getElementById('event-fields').style.display = type === 'event' ? 'block' : 'none';
-  document.getElementById('banner-fields').style.display = type === 'banner' ? 'block' : 'none';
-  document.getElementById('upload-section').style.display = 'none';
+  // Hide all type-specific fields
+  document.querySelectorAll('.type-specific-fields').forEach(el => el.style.display = 'none');
+
+  // Show type-specific fields
+  const fieldsEl = document.getElementById(`fields-${type}`);
+  if (fieldsEl) fieldsEl.style.display = 'block';
+
+  // Load available texture files for cosmetic editor
+  if (type === 'cosmetic') {
+    loadAvailableTextures();
+  }
 
   document.getElementById('editor-modal').classList.add('open');
 }
 
-async function openEdit(type, id) {
+async function openEditEditor(type, id) {
   try {
     const item = await api(`/api/content/${type}/${id}`);
     editingItem = item;
 
-    document.getElementById('editor-modal-title').textContent = `Bearbeiten: ${item.name}`;
+    document.getElementById('editor-modal-title').innerHTML = `${ico('edit')} ${escapeHtml(item.name || item.title)}`;
     document.getElementById('editor-id').value = item.id;
     document.getElementById('editor-type').value = type;
-    document.getElementById('editor-name').value = item.name || '';
+    document.getElementById('editor-name').value = item.name || item.title || '';
     document.getElementById('editor-desc').value = item.description || '';
     document.getElementById('editor-category').value = item.category || '';
     document.getElementById('editor-status').value = item.status || 'draft';
-
-    // Type-specific fields
-    document.getElementById('cosmetic-fields').style.display = type === 'cosmetic' ? 'block' : 'none';
-    if (type === 'cosmetic') {
-      document.getElementById('editor-cosmetic-type').value = item.metadata?.cosmeticType || item.type || 'cape';
-      document.getElementById('editor-rarity').value = item.metadata?.rarity || item.rarity || 'common';
-      document.getElementById('editor-accent').value = item.metadata?.accentColor || item.accentColor || '';
-    }
-
-    document.getElementById('news-fields').style.display = type === 'news' ? 'block' : 'none';
-    if (type === 'news') {
-      document.getElementById('news-subtitle').value = item.metadata?.subtitle || item.subtitle || '';
-      document.getElementById('news-content').value = item.metadata?.content || item.content || '';
-      document.getElementById('news-author').value = item.metadata?.author || item.author || 'Bamboo Team';
-      document.getElementById('news-version').value = item.metadata?.gameVersion || item.gameVersion || '';
-    }
-
-    document.getElementById('event-fields').style.display = type === 'event' ? 'block' : 'none';
-    if (type === 'event') {
-      document.getElementById('event-subtitle').value = item.metadata?.subtitle || item.subtitle || '';
-      const startDate = item.metadata?.startDate || item.startDate;
-      document.getElementById('event-start').value = startDate ? startDate.substring(0, 16) : '';
-      const endDate = item.metadata?.endDate || item.endDate;
-      document.getElementById('event-end').value = endDate ? endDate.substring(0, 16) : '';
-      document.getElementById('event-priority').value = item.metadata?.priority || item.priority || 0;
-      document.getElementById('event-author').value = item.metadata?.author || item.author || 'Bamboo Team';
-    }
-
-    document.getElementById('banner-fields').style.display = type === 'banner' ? 'block' : 'none';
-    if (type === 'banner') {
-      document.getElementById('banner-target').value = item.metadata?.clickTarget || item.clickTarget || '';
-      document.getElementById('banner-clicktype').value = item.metadata?.clickType || item.clickType || 'external';
-      document.getElementById('banner-priority').value = item.metadata?.priority || item.priority || 0;
-    }
-
-    // Show upload section
-    document.getElementById('upload-section').style.display = 'block';
-    document.getElementById('upload-area').style.display = 'none';
-    document.getElementById('toggle-upload').checked = false;
-    document.getElementById('uploaded-files').innerHTML = '';
-
     document.getElementById('editor-save-btn').innerHTML = `${icosm('check')} Aktualisieren`;
+
+    // Hide all type-specific fields
+    document.querySelectorAll('.type-specific-fields').forEach(el => el.style.display = 'none');
+
+    const fieldsEl = document.getElementById(`fields-${type}`);
+    if (fieldsEl) fieldsEl.style.display = 'block';
+
+    // Fill type-specific fields
+    if (type === 'cosmetic') {
+      document.getElementById('editor-cosmetic-type').value = item.type || 'cape';
+      document.getElementById('editor-rarity').value = item.rarity || 'common';
+      const accent = item.accentColor || (item.metadata && item.metadata.accentColor) || '';
+      document.getElementById('editor-accent').value = accent;
+      document.getElementById('editor-accent-hex').value = accent || '#10b981';
+      if (item.files) fillFilePickers(type, item);
+    } else if (type === 'theme') {
+      const meta = item.metadata || {};
+      document.getElementById('theme-accent').value = meta.accentColor || '';
+      document.getElementById('theme-accent-hex').value = meta.accentColor || '#10b981';
+      document.getElementById('theme-bg').value = meta.backgroundColor || '';
+      document.getElementById('theme-bg-hex').value = meta.backgroundColor || '#07070e';
+      fillFilePicker('theme-bg-image', meta.backgroundImage || '');
+      fillFilePicker('theme-icon', meta.iconFile || '');
+    } else if (type === 'news') {
+      const meta = item.metadata || {};
+      document.getElementById('news-subtitle').value = meta.subtitle || '';
+      document.getElementById('news-content').value = meta.content || '';
+      document.getElementById('news-author').value = meta.author || 'Bamboo Team';
+      document.getElementById('news-published-at').value = meta.publishedAt ? meta.publishedAt.slice(0, 16) : '';
+      document.getElementById('news-visibility').checked = item.isActive !== false;
+      fillFilePicker('news-image', item.thumbnailUrl || '');
+    } else if (type === 'event') {
+      const meta = item.metadata || {};
+      document.getElementById('event-subtitle').value = meta.subtitle || '';
+      document.getElementById('event-start').value = meta.startDate ? meta.startDate.slice(0, 16) : '';
+      document.getElementById('event-end').value = meta.endDate ? meta.endDate.slice(0, 16) : '';
+      document.getElementById('event-priority').value = meta.priority || 0;
+      document.getElementById('event-author').value = meta.author || 'Bamboo Team';
+      document.getElementById('event-rewards').value = meta.rewards || '';
+      document.getElementById('event-active').checked = meta.isActive !== false;
+      fillFilePicker('event-image', item.thumbnailUrl || '');
+    } else if (type === 'banner') {
+      const meta = item.metadata || {};
+      document.getElementById('banner-target').value = meta.clickTarget || '';
+      document.getElementById('banner-clicktype').value = meta.clickType || 'external';
+      document.getElementById('banner-priority').value = meta.priority || 0;
+      fillFilePicker('banner-image', item.thumbnailUrl || '');
+    }
+
     document.getElementById('editor-modal').classList.add('open');
   } catch (e) {
     showToast('Fehler beim Laden: ' + e.message, 'error');
@@ -1027,191 +959,718 @@ async function openEdit(type, id) {
 async function saveContent() {
   const type = document.getElementById('editor-type').value;
   const id = document.getElementById('editor-id').value;
-  const name = document.getElementById('editor-name').value.trim();
+  const isNew = !id;
 
-  if (!name) {
-    showToast('Bitte gib einen Namen ein.', 'error');
-    return;
-  }
-
-  const body = {
-    name,
+  const data = {
+    name: document.getElementById('editor-name').value.trim(),
     description: document.getElementById('editor-desc').value.trim(),
     category: document.getElementById('editor-category').value.trim() || 'general',
     status: document.getElementById('editor-status').value,
+    metadata: {},
+    tags: [],
   };
 
-  // Add type-specific fields
+  if (!data.name) { showToast('Bitte gib einen Namen ein', 'error'); return; }
+
+  // Gather type-specific fields
   if (type === 'cosmetic') {
-    body.type = document.getElementById('editor-cosmetic-type').value;
-    body.rarity = document.getElementById('editor-rarity').value;
-    body.accentColor = document.getElementById('editor-accent').value.trim();
-  }
-  if (type === 'news') {
-    body.metadata = {
-      subtitle: document.getElementById('news-subtitle').value.trim(),
-      content: document.getElementById('news-content').value,
-      author: document.getElementById('news-author').value.trim() || 'Bamboo Team',
-      gameVersion: document.getElementById('news-version').value.trim(),
-    };
-  }
-  if (type === 'event') {
-    body.metadata = {
-      subtitle: document.getElementById('event-subtitle').value.trim(),
-      startDate: document.getElementById('event-start').value ? new Date(document.getElementById('event-start').value).toISOString() : null,
-      endDate: document.getElementById('event-end').value ? new Date(document.getElementById('event-end').value).toISOString() : null,
-      priority: parseInt(document.getElementById('event-priority').value) || 0,
-      author: document.getElementById('event-author').value.trim() || 'Bamboo Team',
-    };
-  }
-  if (type === 'banner') {
-    body.metadata = {
-      clickTarget: document.getElementById('banner-target').value.trim(),
-      clickType: document.getElementById('banner-clicktype').value,
-      priority: parseInt(document.getElementById('banner-priority').value) || 0,
-    };
+    data.type = document.getElementById('editor-cosmetic-type').value;
+    data.rarity = document.getElementById('editor-rarity').value;
+    data.accentColor = document.getElementById('editor-accent').value;
+    data.metadata.cosmeticType = data.type;
+    data.metadata.rarity = data.rarity;
+    data.metadata.accentColor = data.accentColor;
+    // Add file assignments
+    const files = gatherFileAssignments('cosmetic');
+    if (files.length > 0) data.metadata._files = files;
+  } else if (type === 'theme') {
+    data.metadata.accentColor = document.getElementById('theme-accent').value;
+    data.metadata.backgroundColor = document.getElementById('theme-bg').value;
+    data.metadata.backgroundImage = getFilePickerValue('theme-bg-image');
+    data.metadata.iconFile = getFilePickerValue('theme-icon');
+    const files = gatherFileAssignments('theme');
+    if (files.length > 0) data.metadata._files = files;
+  } else if (type === 'news') {
+    data.metadata.subtitle = document.getElementById('news-subtitle').value;
+    data.metadata.content = document.getElementById('news-content').value;
+    data.metadata.author = document.getElementById('news-author').value || 'Bamboo Team';
+    data.metadata.publishedAt = document.getElementById('news-published-at').value ? new Date(document.getElementById('news-published-at').value).toISOString() : null;
+    data.isActive = document.getElementById('news-visibility').checked;
+    const imgPath = getFilePickerValue('news-image');
+    if (imgPath) data.metadata.bannerUrl = imgPath;    } else if (type === 'event') {
+      data.metadata.subtitle = document.getElementById('event-subtitle').value;
+      data.metadata.startDate = document.getElementById('event-start').value ? new Date(document.getElementById('event-start').value).toISOString() : null;
+      data.metadata.endDate = document.getElementById('event-end').value ? new Date(document.getElementById('event-end').value).toISOString() : null;
+      data.metadata.priority = parseInt(document.getElementById('event-priority').value) || 0;
+      data.metadata.author = document.getElementById('event-author').value || 'Bamboo Team';
+      data.metadata.rewards = document.getElementById('event-rewards').value;
+      data.metadata.isActive = document.getElementById('event-active').checked;
+    const imgPath = getFilePickerValue('event-image');
+    if (imgPath) data.metadata.bannerUrl = imgPath;
+  } else if (type === 'banner') {
+    data.metadata.clickTarget = document.getElementById('banner-target').value;
+    data.metadata.clickType = document.getElementById('banner-clicktype').value;
+    data.metadata.priority = parseInt(document.getElementById('banner-priority').value) || 0;
+    const imgPath = getFilePickerValue('banner-image');
+    if (imgPath) data.metadata.bannerUrl = imgPath;
   }
 
   try {
-    let result;
-    if (id) {
-      result = await api(`/api/content/${type}/${id}`, { method: 'PUT', body: JSON.stringify(body) });
-      showToast('Gespeichert ✅', 'success');
+    if (isNew) {
+      const r = await api(`/api/content/${type}`, { method: 'POST', body: JSON.stringify(data) });
+      // If there are files to assign, do that now
+      if (data.metadata._files && data.metadata._files.length > 0) {
+        await api(`/api/content/${type}/${r.id}/assign-files`, {
+          method: 'POST', body: JSON.stringify({ files: data.metadata._files })
+        });
+      }
+      showToast(`"${data.name}" erstellt`, 'success');
     } else {
-      result = await api(`/api/content/${type}`, { method: 'POST', body: JSON.stringify(body) });
-      showToast('Erstellt ✅', 'success');
-      // Now open the edit mode for upload
-      closeModal();
-      openEdit(type, result.id);
+      await api(`/api/content/${type}/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+      // Assign files if any
+      if (data.metadata._files && data.metadata._files.length > 0) {
+        await api(`/api/content/${type}/${id}/assign-files`, {
+          method: 'POST', body: JSON.stringify({ files: data.metadata._files })
+        });
+      }
+      showToast(`"${data.name}" aktualisiert`, 'success');
+    }
+    closeModal();
+    const ct = contentTypes.find(c => c.type === type);
+    if (ct) renderContentPage(type, ct);
+  } catch (e) {
+    showToast('Fehler beim Speichern: ' + e.message, 'error');
+  }
+}
+
+function gatherFileAssignments(type) {
+  const files = [];
+  const pickers = document.querySelectorAll(`#fields-${type} .file-picker`);
+  pickers.forEach(p => {
+    const hidden = p.querySelector('.file-picker-hidden');
+    if (hidden && hidden.value) {
+      const fileType = p.dataset.fileType || 'other';
+      files.push({ filePath: hidden.value, fileType, fileName: hidden.value.split('/').pop() });
+    }
+  });
+  const checks = document.querySelectorAll(`#fields-${type} .file-checkbox-item.selected`);
+  checks.forEach(c => {
+    const filePath = c.dataset.path;
+    if (filePath) {
+      files.push({ filePath, fileType: c.dataset.fileType || 'texture', fileName: filePath.split('/').pop() });
+    }
+  });
+  return files;
+}
+
+function fillFilePicker(fieldId, value) {
+  const display = document.getElementById(fieldId + '-display');
+  const hidden = document.getElementById(fieldId + '-hidden');
+  const preview = document.getElementById(fieldId + '-preview');
+  if (display) display.textContent = value || 'Keine Datei ausgewählt';
+  if (display) display.className = 'file-picker-value' + (value ? '' : ' empty');
+  if (hidden) hidden.value = value || '';
+  if (preview) {
+    const isImage = value && /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(value);
+    preview.style.display = isImage ? 'block' : 'none';
+    if (isImage) preview.src = '/api/content/files/preview?path=' + encodeURIComponent(value);
+  }
+}
+
+function getFilePickerValue(fieldId) {
+  const hidden = document.getElementById(fieldId + '-hidden');
+  return hidden ? hidden.value : '';
+}
+
+function fillFilePickers(type, item) {
+  const files = item.files || [];
+  // Find model file
+  const modelFile = files.find(f => f.fileType === 'model');
+  if (modelFile) fillFilePicker(`${type}-model`, modelFile.filePath);
+  // Find icon file
+  const iconFile = files.find(f => f.fileType === 'icon');
+  if (iconFile) fillFilePicker(`${type}-icon`, iconFile.filePath);
+  // Find preview file
+  const previewFile = files.find(f => f.fileType === 'preview');
+  if (previewFile) fillFilePicker(`${type}-preview`, previewFile.filePath);
+  // Find textures
+  const textures = files.filter(f => f.fileType === 'texture');
+  // Select corresponding checkboxes
+  textures.forEach(tf => {
+    const cb = document.querySelector(`#fields-${type} .file-checkbox-item[data-path="${tf.filePath}"]`);
+    if (cb) cb.classList.add('selected');
+  });
+}
+
+// ===== Load available texture files from repo =====
+async function loadAvailableTextures() {
+  const container = document.getElementById('cosmetic-textures');
+  if (!container) return;
+  try {
+    container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Lade verfügbare Texturen...</div>';
+    const r = await fetch(API + '/api/content/files?type=image&limit=100', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error);
+    const images = data.items.filter(i => i.type === 'file');
+    if (images.length === 0) {
+      container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Keine Texturen im Repository gefunden. Dateien im Content Repository ablegen.</div>';
       return;
     }
-
-    closeModal();
-    loadContent(type);
-
-    // Refresh dashboard data
-    await loadContentTypes();
-    renderSidebar();
+    container.innerHTML = images.map(f => `
+      <div class="file-checkbox-item" data-path="${escapeHtml(f.path)}" data-file-type="texture" onclick="this.classList.toggle('selected')">
+        <svg class="fb-icon"><use href="#ico-image"/></svg>
+        <span class="fb-name">${escapeHtml(f.name)}</span>
+        <span class="fb-size">${formatBytes(f.size)}</span>
+      </div>
+    `).join('');
+    // If editing, select already-assigned texture files
+    if (editingItem && editingItem.files) {
+      editingItem.files.forEach(f => {
+        if (f.fileType === 'texture') {
+          const cb = container.querySelector(`.file-checkbox-item[data-path="${f.filePath}"]`);
+          if (cb) cb.classList.add('selected');
+        }
+      });
+    }
   } catch (e) {
-    showToast('Fehler: ' + e.message, 'error');
+    container.innerHTML = '<div style="font-size:11px;color:var(--danger);padding:8px">Fehler beim Laden: ' + e.message + '</div>';
   }
 }
 
-// ===== Delete =====
-async function deleteItem(type, id) {
-  if (!confirm('Wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
+// ===== File Picker (opens Media Browser) =====
+function openFilePicker(fieldId, type, filterType) {
+  openMediaBrowser('select', { fieldId, type, filterType });
+}
+
+// ===== Media Browser =====
+let mediaBrowserState = { mode: 'browse', dir: '', type: 'all', view: 'grid', search: '', callback: null };
+
+async function openMediaBrowser(mode, callback) {
+  mediaBrowserState.mode = mode;
+  mediaBrowserState.callback = callback;
+  mediaBrowserState.dir = '';
+  mediaBrowserState.search = '';
+  mediaBrowserState.type = 'all';
+
+  document.getElementById('media-browser-title').textContent = mode === 'select' ? 'Datei auswählen' : 'Media Browser';
+  document.getElementById('media-browser').classList.add('open');
+  await loadMediaBrowser();
+}
+
+async function loadMediaBrowser() {
+  const container = document.getElementById('media-browser-content');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
   try {
-    await api(`/api/content/${type}/${id}`, { method: 'DELETE' });
-    showToast('Gelöscht ✅', 'success');
-    loadContent(type);
-    await loadContentTypes();
-    renderSidebar();
+    const params = new URLSearchParams({ page: 1, limit: 200 });
+    if (mediaBrowserState.dir) params.set('dir', mediaBrowserState.dir);
+    if (mediaBrowserState.search) params.set('q', mediaBrowserState.search);
+    if (mediaBrowserState.type !== 'all') params.set('type', mediaBrowserState.type);
+
+    const r = await fetch(API + '/api/content/files?' + params, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await r.json();
+
+    if (!data.success) throw new Error(data.error);
+
+    renderMediaBrowser(data);
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state"><h3>Fehler</h3><p>${e.message}</p></div>`;
+  }
+}
+
+function renderMediaBrowser(data) {
+  const container = document.getElementById('media-browser-content');
+
+  // Build breadcrumb
+  const parts = data.path ? data.path.split('/').filter(Boolean) : [];
+  let breadcrumb = `<span class="path-item" onclick="mediaBrowserState.dir='';loadMediaBrowser()">root</span>`;
+  parts.forEach((p, i) => {
+    const path = parts.slice(0, i + 1).join('/');
+    breadcrumb += `<span class="path-sep">/</span><span class="path-item" onclick="mediaBrowserState.dir='${path}';loadMediaBrowser()">${p}</span>`;
+  });
+
+  const isSelection = mediaBrowserState.mode === 'select';
+
+  container.innerHTML = `
+    <div class="media-toolbar">
+      <div class="media-path">${breadcrumb}</div>
+      <div class="search-box" style="max-width:200px;flex:none">
+        <svg class="ico ico-sm"><use href="#ico-search"/></svg>
+        <input type="text" placeholder="Suchen..." value="${escapeHtml(mediaBrowserState.search)}" oninput="onMediaSearch(this.value)">
+      </div>
+      <select class="filter-select" onchange="mediaBrowserState.type=this.value;loadMediaBrowser()" style="width:auto">
+        <option value="all" ${mediaBrowserState.type === 'all' ? 'selected' : ''}>Alle</option>
+        <option value="image" ${mediaBrowserState.type === 'image' ? 'selected' : ''}>Bilder</option>
+        <option value="model" ${mediaBrowserState.type === 'model' ? 'selected' : ''}>Modelle</option>
+        <option value="json" ${mediaBrowserState.type === 'json' ? 'selected' : ''}>JSON</option>
+        <option value="audio" ${mediaBrowserState.type === 'audio' ? 'selected' : ''}>Audio</option>
+      </select>
+      <button class="btn btn-xs btn-ghost" onclick="mediaBrowserState.view='grid';loadMediaBrowser()" title="Grid"><svg class="ico ico-sm"><use href="#ico-grid"/></svg></button>
+      <button class="btn btn-xs btn-ghost" onclick="mediaBrowserState.view='list';loadMediaBrowser()" title="Liste"><svg class="ico ico-sm"><use href="#ico-list"/></svg></button>
+    </div>
+    <div style="margin-bottom:10px;font-size:11px;color:var(--text-muted)">${data.total} Einträge</div>
+  `;
+
+  if (data.items.length === 0) {
+    container.innerHTML += `<div class="empty-state"><h3>Keine Dateien gefunden</h3><p>Der Inhalt existiert noch nicht im Repository.</p></div>`;
+    return;
+  }
+
+  if (mediaBrowserState.view === 'grid') {
+    const grid = document.createElement('div');
+    grid.className = 'media-grid';
+
+    data.items.forEach(item => {
+      const isDir = item.type === 'directory';
+      const isImage = isDir ? false : /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(item.name);
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'media-grid-item' + (isDir ? ' is-dir' : '');
+      if (isSelection && !isDir) itemDiv.classList.add('selectable');
+
+      let thumbHtml;
+      if (isDir) {
+        thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-folder"/></svg></div><div class="media-name">${item.name}</div>`;
+      } else if (isImage) {
+        thumbHtml = `<div class="media-thumb"><img src="/api/content/files/preview?path=${encodeURIComponent(item.path)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><svg class="media-icon" style="display:none"><use href="#ico-image"/></svg></div><div class="media-name">${item.name}</div>`;
+      } else if (/\.(glb|gltf)$/i.test(item.name)) {
+        thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-box"/></svg></div><div class="media-name">${item.name}</div>`;
+      } else {
+        thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-file"/></svg></div><div class="media-name">${item.name}</div>`;
+      }
+
+      thumbHtml += `<div class="media-check"><svg class="ico ico-sm"><use href="#ico-check"/></svg></div>`;
+      itemDiv.innerHTML = thumbHtml;
+
+      if (isDir) {
+        itemDiv.onclick = () => { mediaBrowserState.dir = item.path; loadMediaBrowser(); };
+      } else if (isSelection) {
+        itemDiv.onclick = () => {
+          document.querySelectorAll('.media-grid-item.selectable').forEach(el => el.classList.remove('selected'));
+          itemDiv.classList.add('selected');
+          selectFile(item.path);
+        };
+      } else {
+        itemDiv.onclick = () => showFilePreview(item);
+      }
+
+      grid.appendChild(itemDiv);
+    });
+    container.appendChild(grid);
+  } else {
+    // List view
+    const table = document.createElement('table');
+    table.className = 'media-list';
+    table.innerHTML = `
+      <thead><tr>
+        <th style="width:50%">Name</th>
+        <th style="width:120px">Größe</th>
+        <th style="width:160px">Geändert</th>
+        <th style="width:60px"></th>
+      </tr></thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+
+    data.items.forEach(item => {
+      const isDir = item.type === 'directory';
+      const isImage = isDir ? false : /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(item.name);
+      const icon = isDir ? 'folder' : isImage ? 'image' : /\.(glb|gltf)$/i.test(item.name) ? 'box' : 'file';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="ml-name"><svg class="ml-icon"><use href="#ico-${icon}"/></svg>${item.name}</td>
+        <td class="ml-size">${isDir ? (item.fileCount + ' Dateien') : formatBytes(item.size)}</td>
+        <td class="ml-mtime">${item.mtime ? timeAgo(item.mtime) : '—'}</td>
+        <td>${isSelection && !isDir ? '<button class="btn btn-xs btn-primary" onclick="event.stopPropagation();selectFile(\'' + item.path + '\')">Auswählen</button>' : ''}</td>
+      `;
+      if (isDir) {
+        tr.onclick = () => { mediaBrowserState.dir = item.path; loadMediaBrowser(); };
+      } else if (isSelection) {
+        tr.onclick = () => {
+          document.querySelectorAll('.media-list tr').forEach(el => el.classList.remove('selected'));
+          tr.classList.add('selected');
+          selectFile(item.path);
+        };
+      } else {
+        tr.onclick = () => showFilePreview(item);
+      }
+      tbody.appendChild(tr);
+    });
+    container.appendChild(table);
+  }
+}
+
+function selectFile(filePath) {
+  if (mediaBrowserState.callback && mediaBrowserState.callback.fieldId) {
+    const cb = mediaBrowserState.callback;
+    fillFilePicker(cb.fieldId, filePath);
+    document.getElementById('media-browser').classList.remove('open');
+  }
+}
+
+async function showFilePreview(item) {
+  const previewEl = document.getElementById('media-browser-content');
+  const isImage = /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(item.name);
+
+  const infoDiv = document.createElement('div');
+  infoDiv.className = 'media-preview-pane';
+  infoDiv.innerHTML = `
+    <div>
+      ${isImage ? `<img src="/api/content/files/preview?path=${encodeURIComponent(item.path)}" alt="" loading="lazy" />` : `<div style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;background:var(--bg-tertiary);border-radius:8px"><svg class="ico" style="color:var(--text-muted)"><use href="#ico-file"/></svg></div>`}
+    </div>
+    <div class="preview-info">
+      <p><strong>${item.name}</strong></p>
+      <p>Größe: ${formatBytes(item.size)}</p>
+      <p>Zuletzt geändert: ${item.mtime ? new Date(item.mtime).toLocaleString('de-DE') : '—'}</p>
+      <p>Pfad: <code style="font-size:11px;color:var(--text-muted)">${item.path}</code></p>
+      <button class="btn btn-xs btn-primary" style="margin-top:8px" onclick="navigator.clipboard.writeText('${item.path}');showToast('Pfad kopiert','success')">Pfad kopieren</button>
+    </div>
+  `;
+
+  // Insert after toolbar
+  const toolbar = previewEl.querySelector('.media-toolbar');
+  if (toolbar) toolbar.after(infoDiv);
+  setTimeout(() => infoDiv.remove(), 5000);
+}
+
+function onMediaSearch(value) {
+  mediaBrowserState.search = value;
+  clearTimeout(mediaBrowserState._searchTimer);
+  mediaBrowserState._searchTimer = setTimeout(() => loadMediaBrowser(), 300);
+}
+
+// ===== Actions =====
+async function toggleActive(type, id) {
+  try {
+    const item = await api(`/api/content/${type}/${id}`);
+    await api(`/api/content/${type}/${id}`, {
+      method: 'PUT', body: JSON.stringify({ isActive: !item.isActive })
+    });
+    const ct = contentTypes.find(c => c.type === type);
+    if (ct) renderContentPage(type, ct);
+    showToast('Status geändert', 'success');
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
   }
 }
 
-// ===== Publish =====
 async function publishItem(type, id) {
   try {
     const r = await api(`/api/content/${type}/${id}/publish`, { method: 'POST' });
-    showToast(r.message || 'Veröffentlicht ✅', 'success');
-    loadContent(type);
-    await loadContentTypes();
-    renderSidebar();
+    showToast(r.message || 'Veröffentlicht', 'success');
+    const ct = contentTypes.find(c => c.type === type);
+    if (ct) {
+      await loadContentTypes();
+      renderContentPage(type, ct);
+    }
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
   }
 }
 
 async function publishAll() {
-  if (!confirm('Alle Entwürfe veröffentlichen und Manifest aktualisieren?')) return;
-
   try {
     const r = await api('/api/content/publish-all', { method: 'POST' });
-    const version = r.manifest ? ` (Version ${r.manifest.version})` : '';
-    showToast(r.message + version + ' ✅', 'success');
+    showToast(r.message || 'Alle veröffentlicht', 'success');
     await loadContentTypes();
-    renderSidebar();
-    if (currentPage !== 'dashboard') loadContent(currentPage);
+    renderDashboard();
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
   }
 }
 
-// ===== File Upload (Drag & Drop) =====
-async function handleDrop(event) {
-  event.preventDefault();
-  document.getElementById('drop-zone').classList.remove('dragover');
-
-  const files = event.dataTransfer.files;
-  if (!files || files.length === 0) return;
-  await uploadFiles(files);
-}
-
-async function handleFileSelect(event) {
-  const files = event.target.files;
-  if (!files || files.length === 0) return;
-  await uploadFiles(files);
-  event.target.value = '';
-}
-
-async function uploadFiles(files) {
-  const id = document.getElementById('editor-id').value;
-  const type = document.getElementById('editor-type').value;
-  if (!id || !type) {
-    showToast('Bitte zuerst speichern, bevor Dateien hochgeladen werden.', 'error');
-    return;
-  }
-
-  const progress = document.getElementById('upload-progress');
-  const bar = document.getElementById('progress-bar');
-  const status = document.getElementById('upload-status');
-  progress.classList.add('show');
-
+async function deleteItem(type, id) {
+  if (!confirm('Wirklich löschen?')) return;
   try {
-    const formData = new FormData();
-    for (const file of files) {
-      formData.append('files', file);
-    }
-
-    status.textContent = `${files.length} Datei(en) werden hochgeladen...`;
-    bar.style.width = '30%';
-
-    const r = await fetch(API + `/api/content/${type}/${id}/upload`, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token },
-      body: formData,
-    });
-
-    bar.style.width = '90%';
-    const result = await r.json();
-
-    if (result.success) {
-      bar.style.width = '100%';
-      status.textContent = `${result.files.length} Datei(en) erfolgreich hochgeladen ✅`;
-
-      // Show uploaded files
-      const list = document.getElementById('uploaded-files');
-      list.innerHTML = result.files.map(f => `
-        <span class="uploaded-file">${icosm('file')} ${f.fileName}</span>
-      `).join('');
-
-      setTimeout(() => { progress.classList.remove('show'); }, 2000);
-    } else {
-      throw new Error(result.error || 'Upload fehlgeschlagen');
-    }
+    await api(`/api/content/${type}/${id}`, { method: 'DELETE' });
+    showToast('Gelöscht', 'success');
+    const ct = contentTypes.find(c => c.type === type);
+    if (ct) renderContentPage(type, ct);
   } catch (e) {
-    status.textContent = 'Fehler: ' + e.message;
-    setTimeout(() => { progress.classList.remove('show'); }, 3000);
+    showToast('Fehler: ' + e.message, 'error');
   }
 }
 
-// Initial load
+// ===== Build type-specific fields HTML =====
+function buildTypeFields() {
+  return `
+    <!-- COSMETIC FIELDS -->
+    <div id="fields-cosmetic" class="type-specific-fields" style="display:none">
+      <div class="form-row">
+        <div>
+          <label>Typ</label>
+          <select id="editor-cosmetic-type">
+            <option value="cape">Umhang (Cape)</option>
+            <option value="aura">Aura</option>
+            <option value="hat">Hut (Hat)</option>
+            <option value="ear">Ohren (Ears)</option>
+            <option value="rank">Rang (Rank)</option>
+            <option value="other">Andere</option>
+          </select>
+        </div>
+        <div>
+          <label>Seltenheit</label>
+          <select id="editor-rarity">
+            <option value="common">Common</option>
+            <option value="rare">Rare</option>
+            <option value="epic">Epic</option>
+            <option value="legendary">Legendary</option>
+            <option value="mythic">Mythic</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label>Akzentfarbe</label>
+          <div class="color-input-row">
+            <input type="color" id="editor-accent-hex" value="#10b981" onchange="document.getElementById('editor-accent').value=this.value">
+            <input type="text" id="editor-accent" placeholder="#10b981" oninput="document.getElementById('editor-accent-hex').value=this.value||'#10b981'">
+          </div>
+        </div>
+        <div>
+          <label>Tags</label>
+          <input type="text" id="editor-tags" placeholder="z.B. crown,royal,gold">
+          <div class="help-text">Komma-getrennte Tags</div>
+        </div>
+      </div>
+
+      <label>Model (GLB/GLTF)</label>
+      <div class="file-picker" data-file-type="model" onclick="openFilePicker('cosmetic-model','cosmetic','model')">
+        <span class="file-picker-value empty" id="cosmetic-model-display">Keine Datei ausgewählt</span>
+        <span class="file-picker-btn">Auswählen</span>
+        <input type="hidden" class="file-picker-hidden" id="cosmetic-model-hidden">
+      </div>
+
+      <label>Texturen (PNG)</label>
+      <div class="file-checkbox-list" id="cosmetic-textures"></div>
+
+      <div class="form-row">
+        <div>
+          <label>Icon</label>
+          <div class="file-picker" data-file-type="icon" onclick="openFilePicker('cosmetic-icon','cosmetic','image')">
+            <span class="file-picker-value empty" id="cosmetic-icon-display">Keine Datei ausgewählt</span>
+            <span class="file-picker-btn">Auswählen</span>
+            <input type="hidden" class="file-picker-hidden" id="cosmetic-icon-hidden">
+          </div>
+        </div>
+        <div>
+          <label>Preview</label>
+          <div class="file-picker" data-file-type="preview" onclick="openFilePicker('cosmetic-preview','cosmetic','image')">
+            <span class="file-picker-value empty" id="cosmetic-preview-display">Keine Datei ausgewählt</span>
+            <span class="file-picker-btn">Auswählen</span>
+            <input type="hidden" class="file-picker-hidden" id="cosmetic-preview-hidden">
+          </div>
+        </div>
+      </div>
+      <div class="help-text">Dateien werden aus dem Content Repository ausgewählt — kein manuelles Hochladen nötig.</div>
+    </div>
+
+    <!-- THEME FIELDS (Backgrounds sind Teil des Themes) -->
+    <div id="fields-theme" class="type-specific-fields" style="display:none">
+      <div class="form-row">
+        <div>
+          <label>Akzentfarbe</label>
+          <div class="color-input-row">
+            <input type="color" id="theme-accent-hex" value="#10b981" onchange="document.getElementById('theme-accent').value=this.value">
+            <input type="text" id="theme-accent" placeholder="#10b981" oninput="document.getElementById('theme-accent-hex').value=this.value||'#10b981'">
+          </div>
+        </div>
+        <div>
+          <label>Hintergrundfarbe</label>
+          <div class="color-input-row">
+            <input type="color" id="theme-bg-hex" value="#07070e" onchange="document.getElementById('theme-bg').value=this.value">
+            <input type="text" id="theme-bg" placeholder="#07070e" oninput="document.getElementById('theme-bg-hex').value=this.value||'#07070e'">
+          </div>
+        </div>
+      </div>
+
+      <label>Hintergrundbild (Background)</label>
+      <div class="file-picker" data-file-type="background" onclick="openFilePicker('theme-bg-image','theme','image')">
+        <span class="file-picker-value empty" id="theme-bg-image-display">Kein Hintergrund ausgewählt</span>
+        <span class="file-picker-btn">Auswählen</span>
+        <input type="hidden" class="file-picker-hidden" id="theme-bg-image-hidden">
+        <img class="file-picker-preview" id="theme-bg-image-preview" style="display:none" alt="" onerror="this.style.display='none'">
+      </div>
+      <div class="help-text">Das Hintergrundbild gehört direkt zum Theme — kein separater Background-Bereich.</div>
+
+      <label>Icon (optional)</label>
+      <div class="file-picker" data-file-type="icon" onclick="openFilePicker('theme-icon','theme','image')">
+        <span class="file-picker-value empty" id="theme-icon-display">Kein Icon ausgewählt</span>
+        <span class="file-picker-btn">Auswählen</span>
+        <input type="hidden" class="file-picker-hidden" id="theme-icon-hidden">
+      </div>
+    </div>
+
+    <!-- NEWS FIELDS -->
+    <div id="fields-news" class="type-specific-fields" style="display:none">
+      <label>Untertitel</label>
+      <input type="text" id="news-subtitle" placeholder="Optionaler Untertitel">
+
+      <label>Inhalt</label>
+      <textarea id="news-content" placeholder="Artikelinhalt..." style="min-height:120px"></textarea>
+
+      <div class="form-row">
+        <div>
+          <label>Autor</label>
+          <input type="text" id="news-author" placeholder="Bamboo Team">
+        </div>
+        <div>
+          <label>Veröffentlichungsdatum</label>
+          <input type="datetime-local" id="news-published-at">
+        </div>
+      </div>
+
+      <label>Titelbild</label>
+      <div class="file-picker" data-file-type="image" onclick="openFilePicker('news-image','news','image')">
+        <span class="file-picker-value empty" id="news-image-display">Kein Bild ausgewählt</span>
+        <span class="file-picker-btn">Auswählen</span>
+        <input type="hidden" class="file-picker-hidden" id="news-image-hidden">
+      </div>
+
+      <div style="margin-top:14px;display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="news-visibility" checked style="width:auto">
+        <label for="news-visibility" style="margin:0;cursor:pointer">Sichtbar</label>
+      </div>
+    </div>
+
+    <!-- EVENT FIELDS -->
+    <div id="fields-event" class="type-specific-fields" style="display:none">
+      <label>Untertitel</label>
+      <input type="text" id="event-subtitle" placeholder="Optionaler Untertitel">
+
+      <div class="form-row">
+        <div><label>Startdatum</label><input type="datetime-local" id="event-start"></div>
+        <div><label>Enddatum</label><input type="datetime-local" id="event-end"></div>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label>Priorität</label>
+          <input type="number" id="event-priority" value="0" min="0">
+        </div>
+        <div>
+          <label>Autor</label>
+          <input type="text" id="event-author" placeholder="Bamboo Team">
+        </div>
+      </div>
+
+      <label>Belohnungen (optional)</label>
+      <textarea id="event-rewards" placeholder="Belohnungen Beschreibung, z.B.: 500 Bamboo Coins, Legendary Cape" style="min-height:60px"></textarea>
+
+      <label>Bild</label>
+      <div class="file-picker" data-file-type="image" onclick="openFilePicker('event-image','event','image')">
+        <span class="file-picker-value empty" id="event-image-display">Kein Bild ausgewählt</span>
+        <span class="file-picker-btn">Auswählen</span>
+        <input type="hidden" class="file-picker-hidden" id="event-image-hidden">
+      </div>
+
+      <div style="margin-top:14px;display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="event-active" checked style="width:auto">
+        <label for="event-active" style="margin:0;cursor:pointer">Aktiv</label>
+      </div>
+    </div>
+
+    <!-- BANNER FIELDS -->
+    <div id="fields-banner" class="type-specific-fields" style="display:none">
+      <label>Link-Ziel</label>
+      <input type="text" id="banner-target" placeholder="https://...">
+
+      <div class="form-row">
+        <div>
+          <label>Typ</label>
+          <select id="banner-clicktype">
+            <option value="external">Externer Link</option>
+            <option value="internal">Interner Link</option>
+            <option value="none">Kein Link</option>
+          </select>
+        </div>
+        <div>
+          <label>Priorität</label>
+          <input type="number" id="banner-priority" value="0" min="0">
+        </div>
+      </div>
+
+      <label>Bild</label>
+      <div class="file-picker" data-file-type="image" onclick="openFilePicker('banner-image','banner','image')">
+        <span class="file-picker-value empty" id="banner-image-display">Kein Bild ausgewählt</span>
+        <span class="file-picker-btn">Auswählen</span>
+        <input type="hidden" class="file-picker-hidden" id="banner-image-hidden">
+      </div>
+    </div>
+  `;
+}
+
+// ===== Initial page load =====
+</script>
+
+<!-- ===== Editor Modal ===== -->
+<div class="modal-overlay" id="editor-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="editor-modal-title">Neuer Inhalt</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editor-id">
+      <input type="hidden" id="editor-type">
+
+      <!-- Common fields -->
+      <label>Name *</label>
+      <input type="text" id="editor-name" placeholder="z.B. Dragon Wings" maxlength="256">
+      <div class="help-text">Aus dem Namen wird automatisch eine eindeutige ID generiert.</div>
+
+      <div class="form-row">
+        <div>
+          <label>Kategorie</label>
+          <input type="text" id="editor-category" placeholder="z.B. wings">
+        </div>
+        <div>
+          <label>Status</label>
+          <select id="editor-status">
+            <option value="draft">Entwurf</option>
+            <option value="published">Veröffentlicht</option>
+            <option value="archived">Archiviert</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Beschreibung (optional)</label>
+      <textarea id="editor-desc" placeholder="Kurze Beschreibung..." style="min-height:60px"></textarea>
+
+      <!-- Type-specific fields injected by JS -->
+      <div id="type-fields-container"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" id="editor-save-btn" onclick="saveContent()">
+        <svg class="ico ico-sm"><use href="#ico-check"/></svg>Speichern
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Media Browser Modal ===== -->
+<div class="modal-overlay" id="media-browser">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h2 id="media-browser-title">Media Browser</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
+    </div>
+    <div class="modal-body" id="media-browser-content">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Initialize type fields after DOM ready
 document.addEventListener('DOMContentLoaded', () => {
-  // Trigger login check
+  document.getElementById('type-fields-container').innerHTML = buildTypeFields();
 });
 </script>
+
 </body>
-</html>
+</html>

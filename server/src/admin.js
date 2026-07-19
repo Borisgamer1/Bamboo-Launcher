@@ -172,7 +172,6 @@ async function initDatabase() {
         ['duck-crown', 'Duck Crown', 'A majestic crown for your duck character', 'cosmetic', 'hats', 'published', 1, '{crown,royal,gold}'],
         ['bamboo-green-theme', 'Bamboo Green Theme', 'A fresh green theme inspired by bamboo forests', 'theme', 'green', 'published', 1, '{theme,green,nature}'],
         ['cherry-blossom-theme', 'Cherry Blossom Theme', 'Beautiful cherry blossom pink theme', 'theme', 'pink', 'published', 1, '{theme,pink,spring}'],
-        ['default-background', 'Default Background', 'The default launcher background', 'background', 'default', 'published', 1, '{background,default}'],
         ['dragon-wings', 'Dragon Wings', 'Epic dragon wings cosmetic', 'cosmetic', 'wings', 'draft', 1, '{wings,dragon,epic}'],
       ];
       for (const [slug, name, desc, type, cat, status, ver, tags] of defaultAssets) {
@@ -388,14 +387,7 @@ function sanitizeHtml(text) {
 }
 
 // ======================================================================
-// NOTE: Legacy NEWS, EVENTS, BANNERS, and COSMETICS API endpoints were
-// removed in favor of the UNIFIED CONTENT MANAGER API (/api/content/*)
-// See contentRoutes.js for the replacement.
-// ======================================================================
-
-// ======================================================================
-// NOTE: Legacy EVENTS, BANNERS, and COSMETICS API endpoints were
-// removed in favor of the UNIFIED CONTENT MANAGER API (/api/content/*)
+// Legacy API endpoints were removed in favor of the UNIFIED CONTENT MANAGER.
 // See contentRoutes.js for the replacement.
 // ======================================================================
 
@@ -470,7 +462,6 @@ app.patch('/api/events/:id/toggle', authenticateAdmin, async (req, res) => {
 });
 
 // ======================================================================
-/// ======================================================================
 
 // ======================================================================
 // === CONTENT DISTRIBUTION API (Bamboo Cloud) ==========================
