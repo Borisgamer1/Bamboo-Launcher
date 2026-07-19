@@ -339,10 +339,10 @@ const [showSavedToast, setShowSavedToast] = useState(false);
 
   // Theme selector - loaded from ThemeService (data-driven, CDN-backed)
   // Uses useMemo to rebuild theme list when themes change or language changes
-  const themesList = useMemo(() => buildThemeList(themeService.getThemes(), lang), [themeService, lang]);
+  const themesList = useMemo(() => buildThemeList(themeService.getThemes(), lang), [themeVersion, lang]);
 
-  // Force re-render when theme service notifies of new CDN themes loaded
-  const [, setThemeVersion] = useState(0);
+  // Force re-render when theme service notifies of new themes loaded
+  const [themeVersion, setThemeVersion] = useState(0);
 
   // Subscribe to theme service updates
   useEffect(() => {
@@ -361,6 +361,16 @@ const [showSavedToast, setShowSavedToast] = useState(false);
       setThemeVersion(v => v + 1);
     });
   }, []);
+
+  // Re-fetch backend themes whenever user opens the themes category
+  // This ensures newly created admin themes show up without restart
+  useEffect(() => {
+    if (activeCategory === "themes") {
+      themeService.refreshBackendThemes().then(() => {
+        setThemeVersion(v => v + 1);
+      });
+    }
+  }, [activeCategory]);
 
   // Helper: build display-ready theme list from ThemeDefinitions
   function buildThemeList(themes: ThemeDefinition[], currentLang: LanguageType) {

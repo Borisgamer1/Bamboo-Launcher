@@ -312,15 +312,19 @@ class ThemeService {
    * Load themes from the backend API (unified content manager).
    * Fetches published themes from /api/content/theme and parses metadata.
    */
+  /** Force a fresh fetch, invalidating any cached result */
+  async refreshBackendThemes(): Promise<ThemeDefinition[]> {
+    this._backendThemes = null;
+    return this.loadBackendThemes();
+  }
+
   async loadBackendThemes(): Promise<ThemeDefinition[]> {
-    if (this._backendThemes !== null) return this._backendThemes;
     if (this._backendLoading) {
+      // Wait for current fetch to complete
       return new Promise((resolve) => {
         const check = () => {
-          if (this._backendThemes !== null) {
-            resolve(this._backendThemes);
-            this._listeners.delete(check);
-          }
+          resolve(this._backendThemes || []);
+          this._listeners.delete(check);
         };
         this._listeners.add(check);
       });
@@ -337,8 +341,10 @@ class ThemeService {
 
       if (!res.ok) {
         console.warn(`[ThemeService] Backend themes fetch failed: ${res.status}`);
+        this._backendThemes = backendThemes;
         this._backendLoading = false;
-        return [];
+        this.notify();
+        return backendThemes;
       }
 
       const data = await res.json();
