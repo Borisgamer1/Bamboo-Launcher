@@ -1818,7 +1818,7 @@ function buildTypeFields() {
       </div><label>Modell (.json) <span style="color:var(--text-muted);font-weight:400;font-size:11px">– 1 Datei, Minecraft-Modellformat</span></label>
             <div class="file-picker" data-file-type="model" onclick="openFilePicker('cosmetic-model','cosmetic','model')">
               <span class="file-picker-value empty" id="cosmetic-model-display">Keine Modelldatei ausgewählt</span>
-              <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));}">✕</span>
+              <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));event.stopPropagation();}">✕</span>
               <input type="hidden" class="file-picker-hidden" id="cosmetic-model-hidden">
             </div><label>Texturen (.png) <span style="color:var(--text-muted);font-weight:400;font-size:11px">– mehrere Dateien möglich (1–8+)</span></label>
             <div id="cosmetic-textures-status" style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Lade verfügbare Texturen...</div>
@@ -1829,7 +1829,7 @@ function buildTypeFields() {
           <label>Icon <span style="color:var(--text-muted);font-weight:400;font-size:11px">– PNG, JPG, WebP, SVG, GIF</span></label>
           <div class="file-picker" data-file-type="icon" onclick="openFilePicker('cosmetic-icon','cosmetic','image')">
             <span class="file-picker-value empty" id="cosmetic-icon-display">Keine Icon-Datei ausgewählt</span>
-            <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));}">✕</span>
+            <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));event.stopPropagation();}">✕</span>
             <input type="hidden" class="file-picker-hidden" id="cosmetic-icon-hidden">
           </div>
         </div>
@@ -1837,7 +1837,7 @@ function buildTypeFields() {
           <label>Preview</label>
           <div class="file-picker" data-file-type="preview" onclick="openFilePicker('cosmetic-preview','cosmetic','image')">
             <span class="file-picker-value empty" id="cosmetic-preview-display">Keine Datei ausgewählt</span>
-            <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));}">✕</span>
+            <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));event.stopPropagation();}">✕</span>
             <input type="hidden" class="file-picker-hidden" id="cosmetic-preview-hidden">
           </div>
         </div>
@@ -1859,7 +1859,7 @@ function buildTypeFields() {
       <label>Hintergrundbild <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Launcher-Hintergrund / Backend-Icon</span></label>
       <div class="file-picker" data-file-type="background" onclick="openFilePicker('theme-bg-image','theme','image')">
         <span class="file-picker-value empty" id="theme-bg-image-display">Kein Hintergrund ausgewählt</span>
-        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));}">✕</span>
+        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));event.stopPropagation();}">✕</span>
         <input type="hidden" class="file-picker-hidden" id="theme-bg-image-hidden">
         <img class="file-picker-preview" id="theme-bg-image-preview" style="display:none" alt="" onerror="this.style.display='none'">
       </div>
@@ -1869,7 +1869,7 @@ function buildTypeFields() {
       <div class="help-text" style="margin-top:4px;margin-bottom:8px">Das PNG wird mit transparentem Hintergrund geladen und mit der Theme-Akzentfarbe eingefärbt. Empfohlen: weiße Form auf transparentem Hintergrund.</div>
       <div class="file-picker" data-file-type="particle-image" onclick="openFilePicker('theme-particle-image','theme','image')">
         <span class="file-picker-value empty" id="theme-particle-image-display">Kein Partikel-Bild ausgewählt (verwendet Standardformen)</span>
-        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));}">✕</span>
+        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));event.stopPropagation();}">✕</span>
         <input type="hidden" class="file-picker-hidden" id="theme-particle-image-hidden">
         <img class="file-picker-preview" id="theme-particle-image-preview" style="display:none" alt="" onerror="this.style.display='none'">
       </div>
@@ -1928,7 +1928,7 @@ function buildTypeFields() {
       <label>Titelbild</label>
       <div class="file-picker" data-file-type="image" onclick="openFilePicker('news-image','news','image')">
         <span class="file-picker-value empty" id="news-image-display">Kein Bild ausgewählt</span>
-        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));}">✕</span>
+        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));event.stopPropagation();}">✕</span>
         <input type="hidden" class="file-picker-hidden" id="news-image-hidden">
       </div>
 
@@ -1965,7 +1965,7 @@ function buildTypeFields() {
       <label>Bild</label>
       <div class="file-picker" data-file-type="image" onclick="openFilePicker('event-image','event','image')">
         <span class="file-picker-value empty" id="event-image-display">Kein Bild ausgewählt</span>
-        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));}">✕</span>
+        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));event.stopPropagation();}">✕</span>
         <input type="hidden" class="file-picker-hidden" id="event-image-hidden">
       </div>
 
@@ -1998,7 +1998,7 @@ function buildTypeFields() {
       <label>Bild</label>
       <div class="file-picker" data-file-type="image" onclick="openFilePicker('banner-image','banner','image')">
         <span class="file-picker-value empty" id="banner-image-display">Kein Bild ausgewählt</span>
-        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));}">✕</span>
+        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));event.stopPropagation();}">✕</span>
         <input type="hidden" class="file-picker-hidden" id="banner-image-hidden">
       </div>
     </div>
