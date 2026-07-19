@@ -122,8 +122,14 @@ async function initDatabase() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_content_manifests_type ON content_manifests(content_type_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_content_manifests_version ON content_manifests(version);`);
 
-    // === Assets (Phase 3 – Unified Asset Management) ===
-    await pool.query(`CREATE TABLE IF NOT EXISTS assets (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), slug VARCHAR(128) UNIQUE NOT NULL, name VARCHAR(256) NOT NULL, description TEXT NOT NULL DEFAULT '', asset_type VARCHAR(64) NOT NULL DEFAULT 'cosmetic' CHECK(asset_type IN ('cosmetic','theme','background','icon','ui_asset','music','shader','resource_pack','font','other')), category VARCHAR(64) NOT NULL DEFAULT 'general', status VARCHAR(32) NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','archived')), version INTEGER NOT NULL DEFAULT 1, tags TEXT[] DEFAULT '{}', thumbnail_url VARCHAR(1024) DEFAULT '', preview_url VARCHAR(1024) DEFAULT '', metadata JSONB DEFAULT '{}'::jsonb, is_active BOOLEAN NOT NULL DEFAULT true, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+    // === Assets (Unified Content Management) ===
+    // This is the SINGLE source of truth for ALL content types:
+    // cosmetics, themes, backgrounds, icons, ui_assets, music, shaders,
+    // resource_packs, fonts, news, events, banners, and more.
+    await pool.query(`CREATE TABLE IF NOT EXISTS assets (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), slug VARCHAR(128) UNIQUE NOT NULL, name VARCHAR(256) NOT NULL, description TEXT NOT NULL DEFAULT '', asset_type VARCHAR(64) NOT NULL DEFAULT 'cosmetic', category VARCHAR(64) NOT NULL DEFAULT 'general', status VARCHAR(32) NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','archived')), version INTEGER NOT NULL DEFAULT 1, tags TEXT[] DEFAULT '{}', thumbnail_url VARCHAR(1024) DEFAULT '', preview_url VARCHAR(1024) DEFAULT '', metadata JSONB DEFAULT '{}'::jsonb, is_active BOOLEAN NOT NULL DEFAULT true, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+    // Allow any asset_type (removed CHECK constraint for flexibility — validated at API layer)
+    try { await pool.query(`ALTER TABLE assets DROP CONSTRAINT IF EXISTS assets_asset_type_check`); } catch {}
+    try { await pool.query(`ALTER TABLE assets DROP CONSTRAINT IF EXISTS assets_asset_type_check1`); } catch {}
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(asset_type);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_assets_category ON assets(category);`);
@@ -382,91 +388,19 @@ function sanitizeHtml(text) {
 }
 
 // ======================================================================
-// === NEWS API =========================================================
+// NOTE: Legacy NEWS, EVENTS, BANNERS, and COSMETICS API endpoints were
+// removed in favor of the UNIFIED CONTENT MANAGER API (/api/content/*)
+// See contentRoutes.js for the replacement.
 // ======================================================================
-function mapNewsRow(r) { return { id: r.id, title: r.title, subtitle: r.subtitle || '', content: r.content || '', bannerUrl: r.banner_url || '', category: r.category || 'general', author: r.author || 'Bamboo Team', publishedAt: r.published_at ? new Date(r.published_at).toISOString() : null, createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(), updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString(), isVisible: r.is_visible !== undefined ? r.is_visible : true, isPinned: r.is_pinned !== undefined ? r.is_pinned : false, gameVersion: r.game_version || '', tags: r.tags || [], sortOrder: r.sort_order || 0 }; }
-
-app.get('/api/news', async (req, res) => {
-  try {
-    const { category, search, pinned, visible, page = 1, limit = 20 } = req.query;
-    const off = (parseInt(page)-1)*parseInt(limit);
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    let q = 'SELECT * FROM news WHERE 1=1'; const p = []; let i = 1;
-    if (visible==='true') { q += ' AND is_visible=true AND published_at IS NOT NULL AND published_at <= NOW()'; } else if (visible==='false') { q += ' AND is_visible=false'; }
-    if (pinned==='true') q += ' AND is_pinned=true';
-    if (category && category!=='all') { q += ` AND category=$${i++}`; p.push(category); }
-    if (search) { q += ` AND (title ILIKE $${i} OR subtitle ILIKE $${i} OR content ILIKE $${i})`; p.push(`%${search}%`); i++; }
-    q += ' ORDER BY is_pinned DESC, published_at DESC NULLS LAST, created_at DESC';
-    const cq = q.split('ORDER BY')[0].replace('SELECT *','SELECT COUNT(*)');
-    q += ` LIMIT $${i++} OFFSET $${i++}`; p.push(parseInt(limit), off);
-    const [r, cr] = await Promise.all([pool.query(q,p), pool.query(cq, p.slice(0,-2))]);
-    return res.json({ data: r.rows.map(mapNewsRow), total: parseInt(cr.rows[0].count), page: parseInt(page), limit: parseInt(limit) });
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/news/categories', async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('SELECT DISTINCT category FROM news ORDER BY category');
-    return res.json(r.rows.map(x=>x.category));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/news/:id', async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('SELECT * FROM news WHERE id=$1',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'News not found'}); return res.json(mapNewsRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/news', authenticateAdmin, async (req, res) => {
-  try {
-    const { title, subtitle, content, bannerUrl, category, author, publishedAt, isVisible, isPinned, gameVersion, tags, sortOrder } = req.body;
-    if (!title || typeof title !== 'string') return res.status(400).json({ error: 'Title required' });
-    if (title.length > 256) return res.status(400).json({ error: 'Title too long' });
-    const sc = sanitizeHtml(content || '');
-    const id = uuidv4();
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query(`INSERT INTO news (id,title,subtitle,content,banner_url,category,author,published_at,is_visible,is_pinned,game_version,tags,sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [id,title,subtitle||'',sc,bannerUrl||'',category||'general',author||'Bamboo Team',publishedAt?new Date(publishedAt):null,isVisible===true,isPinned===true,gameVersion||'',tags||[],sortOrder||0]);
-    return res.status(201).json(mapNewsRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.put('/api/news/:id', authenticateAdmin, async (req, res) => {
-  try {
-    const { title, subtitle, content, bannerUrl, category, author, publishedAt, isVisible, isPinned, gameVersion, tags, sortOrder } = req.body;
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const ex = await pool.query('SELECT * FROM news WHERE id=$1',[req.params.id]); if(!ex.rows.length) return res.status(404).json({error:'News not found'});
-    const r = await pool.query(`UPDATE news SET title=COALESCE($2,title),subtitle=COALESCE($3,subtitle),content=COALESCE($4,content),banner_url=COALESCE($5,banner_url),category=COALESCE($6,category),author=COALESCE($7,author),published_at=COALESCE($8,published_at),is_visible=COALESCE($9,is_visible),is_pinned=COALESCE($10,is_pinned),game_version=COALESCE($11,game_version),tags=COALESCE($12,tags),sort_order=COALESCE($13,sort_order),updated_at=NOW() WHERE id=$1 RETURNING *`,
-      [req.params.id,title,subtitle,content,bannerUrl,category,author,publishedAt?new Date(publishedAt):null,isVisible!==undefined?isVisible:null,isPinned!==undefined?isPinned:null,gameVersion,tags,sortOrder]);
-    return res.json(mapNewsRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.delete('/api/news/:id', authenticateAdmin, async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('DELETE FROM news WHERE id=$1 RETURNING id',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'News not found'}); return res.json({success:true});
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.patch('/api/news/:id/pin', authenticateAdmin, async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('UPDATE news SET is_pinned=NOT is_pinned,updated_at=NOW() WHERE id=$1 RETURNING *',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'News not found'}); return res.json(mapNewsRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.patch('/api/news/:id/visibility', authenticateAdmin, async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('UPDATE news SET is_visible=NOT is_visible,updated_at=NOW() WHERE id=$1 RETURNING *',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'News not found'}); return res.json(mapNewsRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
 
 // ======================================================================
-// === EVENTS API =======================================================
+// NOTE: Legacy EVENTS, BANNERS, and COSMETICS API endpoints were
+// removed in favor of the UNIFIED CONTENT MANAGER API (/api/content/*)
+// See contentRoutes.js for the replacement.
+// ======================================================================
+
+// ======================================================================
+// === CONTENT DISTRIBUTION API (Bamboo Cloud) =========================
 // ======================================================================
 function mapEventRow(r) { return { id: r.id, title: r.title, subtitle: r.subtitle || '', description: r.description || '', bannerUrl: r.banner_url || '', category: r.category || 'general', startDate: r.start_date ? new Date(r.start_date).toISOString() : new Date().toISOString(), endDate: r.end_date ? new Date(r.end_date).toISOString() : null, isActive: r.is_active !== undefined ? r.is_active : true, isVisible: r.is_visible !== undefined ? r.is_visible : true, priority: r.priority || 0, author: r.author || 'Bamboo Team', createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(), updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString() }; }
 
@@ -536,274 +470,7 @@ app.patch('/api/events/:id/toggle', authenticateAdmin, async (req, res) => {
 });
 
 // ======================================================================
-// === BANNERS API ======================================================
-// ======================================================================
-function mapBannerRow(r) { return { id: r.id, title: r.title, imageUrl: r.image_url || '', description: r.description || '', clickTarget: r.click_target || '', clickType: r.click_type || 'external', sortOrder: r.sort_order || 0, isActive: r.is_active !== undefined ? r.is_active : true, startDate: r.start_date ? new Date(r.start_date).toISOString() : null, endDate: r.end_date ? new Date(r.end_date).toISOString() : null, priority: r.priority || 0, createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(), updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString() }; }
-
-app.get('/api/banners', async (req, res) => {
-  try {
-    const { active } = req.query;
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    let q = 'SELECT * FROM banners WHERE 1=1'; const p = [];
-    if (active==='true') {
-      q += ' AND is_active=true AND (start_date IS NULL OR start_date <= NOW()) AND (end_date IS NULL OR end_date >= NOW())';
-    }
-    q += ' ORDER BY sort_order ASC, priority DESC';
-    const r = await pool.query(q,p);
-    return res.json({ data: r.rows.map(mapBannerRow) });
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/banners/:id', async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('SELECT * FROM banners WHERE id=$1',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'Banner not found'}); return res.json(mapBannerRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/banners', authenticateAdmin, async (req, res) => {
-  try {
-    const { title, imageUrl, description, clickTarget, clickType, sortOrder, isActive, startDate, endDate, priority } = req.body;
-    if (!title || typeof title !== 'string') return res.status(400).json({ error: 'Title required' });
-    if (!imageUrl) return res.status(400).json({ error: 'Image URL required' });
-    const id = uuidv4();
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query(`INSERT INTO banners (id,title,image_url,description,click_target,click_type,sort_order,is_active,start_date,end_date,priority) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [id,title,imageUrl,description||'',clickTarget||'',clickType||'external',sortOrder||0,isActive!==false,startDate?new Date(startDate):null,endDate?new Date(endDate):null,priority||0]);
-    return res.status(201).json(mapBannerRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.put('/api/banners/:id', authenticateAdmin, async (req, res) => {
-  try {
-    const { title, imageUrl, description, clickTarget, clickType, sortOrder, isActive, startDate, endDate, priority } = req.body;
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const ex = await pool.query('SELECT * FROM banners WHERE id=$1',[req.params.id]); if(!ex.rows.length) return res.status(404).json({error:'Banner not found'});
-    const r = await pool.query(`UPDATE banners SET title=COALESCE($2,title),image_url=COALESCE($3,image_url),description=COALESCE($4,description),click_target=COALESCE($5,click_target),click_type=COALESCE($6,click_type),sort_order=COALESCE($7,sort_order),is_active=COALESCE($8,is_active),start_date=COALESCE($9,start_date),end_date=COALESCE($10,end_date),priority=COALESCE($11,priority),updated_at=NOW() WHERE id=$1 RETURNING *`,
-      [req.params.id,title,imageUrl,description,clickTarget,clickType,sortOrder,isActive!==undefined?isActive:null,startDate!==undefined?(startDate?new Date(startDate):null):undefined,endDate!==undefined?(endDate?new Date(endDate):null):undefined,priority]);
-    return res.json(mapBannerRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.delete('/api/banners/:id', authenticateAdmin, async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('DELETE FROM banners WHERE id=$1 RETURNING id',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'Banner not found'}); return res.json({success:true});
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.patch('/api/banners/:id/toggle', authenticateAdmin, async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('UPDATE banners SET is_active=NOT is_active,updated_at=NOW() WHERE id=$1 RETURNING *',[req.params.id]); if(!r.rows.length) return res.status(404).json({error:'Banner not found'}); return res.json(mapBannerRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-app.patch('/api/banners/reorder', authenticateAdmin, async (req, res) => {
-  try {
-    const { orderedIds } = req.body;
-    if (!Array.isArray(orderedIds)) return res.status(400).json({ error: 'orderedIds array required' });
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    for (let i = 0; i < orderedIds.length; i++) {
-      await pool.query('UPDATE banners SET sort_order=$1,updated_at=NOW() WHERE id=$2', [i, orderedIds[i]]);
-    }
-    return res.json({ success: true });
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-// ======================================================================
-// === COSMETICS API =====================================================
-// ======================================================================
-const COSMETIC_TYPES = ['cape', 'aura', 'hat', 'ear', 'rank', 'other'];
-const COSMETIC_RARITIES = ['common', 'rare', 'epic', 'legendary', 'mythic'];
-
-function mapCosmeticRow(r) {
-  return {
-    id: r.id,
-    slug: r.slug,
-    name: r.name,
-    description: r.description || '',
-    type: r.type,
-    rarity: r.rarity,
-    previewUrl: r.preview_url || '',
-    imageUrl: r.image_url || '',
-    modelUrl: r.model_url || '',
-    accentColor: r.accent_color || '',
-    isActive: r.is_active !== undefined ? r.is_active : true,
-    sortOrder: r.sort_order || 0,
-    createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
-    updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString(),
-  };
-}
-
-// GET /api/cosmetics — List all cosmetics
-app.get('/api/cosmetics', async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const { type, rarity, active, page = 1, limit = 50 } = req.query;
-    const off = (parseInt(page) - 1) * parseInt(limit);
-    let q = 'SELECT * FROM cosmetics WHERE 1=1';
-    const p = [];
-    let i = 1;
-    if (type && type !== 'all') { q += ` AND type=$${i++}`; p.push(type); }
-    if (rarity && rarity !== 'all') { q += ` AND rarity=$${i++}`; p.push(rarity); }
-    if (active === 'true') { q += ' AND is_active=true'; }
-    else if (active === 'false') { q += ' AND is_active=false'; }
-    q += ' ORDER BY sort_order ASC, created_at DESC';
-    const cq = q.replace('SELECT *', 'SELECT COUNT(*)').split('ORDER BY')[0];
-    q += ` LIMIT $${i++} OFFSET $${i++}`; p.push(parseInt(limit), off);
-    const [r, cr] = await Promise.all([pool.query(q, p), pool.query(cq, p.slice(0, -2))]);
-    return res.json({ data: r.rows.map(mapCosmeticRow), total: parseInt(cr.rows[0].count), page: parseInt(page), limit: parseInt(limit) });
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-// GET /api/cosmetics/types — List available cosmetic types
-app.get('/api/cosmetics/types', (req, res) => {
-  res.json({ data: COSMETIC_TYPES });
-});
-
-// GET /api/cosmetics/rarities — List available rarities
-app.get('/api/cosmetics/rarities', (req, res) => {
-  res.json({ data: COSMETIC_RARITIES });
-});
-
-// GET /api/cosmetics/:id — Get single cosmetic
-app.get('/api/cosmetics/:id', async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('SELECT * FROM cosmetics WHERE id=$1', [req.params.id]);
-    if (!r.rows.length) return res.status(404).json({ error: 'Cosmetic not found' });
-    return res.json(mapCosmeticRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-// POST /api/cosmetics — Create new cosmetic
-app.post('/api/cosmetics', authenticateAdmin, async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const { slug, name, description, type, rarity, previewUrl, imageUrl, modelUrl, accentColor, isActive, sortOrder } = req.body;
-    if (!slug || typeof slug !== 'string') return res.status(400).json({ error: 'Slug required' });
-    if (!name || typeof name !== 'string') return res.status(400).json({ error: 'Name required' });
-    if (type && !COSMETIC_TYPES.includes(type)) return res.status(400).json({ error: 'Invalid type' });
-    if (rarity && !COSMETIC_RARITIES.includes(rarity)) return res.status(400).json({ error: 'Invalid rarity' });
-
-    const id = uuidv4();
-    try {
-      const r = await pool.query(`INSERT INTO cosmetics (id,slug,name,description,type,rarity,preview_url,image_url,model_url,accent_color,is_active,sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-        [id, slug, name, description || '', type || 'cape', rarity || 'common', previewUrl || '', imageUrl || '', modelUrl || '', accentColor || '', isActive !== false, sortOrder || 0]);
-      return res.status(201).json(mapCosmeticRow(r.rows[0]));
-    } catch (pgErr) {
-      if (pgErr.code === '23505') return res.status(409).json({ error: 'Ein Cosmetic mit diesem Slug existiert bereits' });
-      throw pgErr;
-    }
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-// PUT /api/cosmetics/:id — Update cosmetic
-app.put('/api/cosmetics/:id', authenticateAdmin, async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const { slug, name, description, type, rarity, previewUrl, imageUrl, modelUrl, accentColor, isActive, sortOrder } = req.body;
-    const ex = await pool.query('SELECT * FROM cosmetics WHERE id=$1', [req.params.id]);
-    if (!ex.rows.length) return res.status(404).json({ error: 'Cosmetic not found' });
-    const r = await pool.query(`UPDATE cosmetics SET slug=COALESCE($2,slug),name=COALESCE($3,name),description=COALESCE($4,description),type=COALESCE($5,type),rarity=COALESCE($6,rarity),preview_url=COALESCE($7,preview_url),image_url=COALESCE($8,image_url),model_url=COALESCE($9,model_url),accent_color=COALESCE($10,accent_color),is_active=COALESCE($11,is_active),sort_order=COALESCE($12,sort_order),updated_at=NOW() WHERE id=$1 RETURNING *`,
-      [req.params.id, slug, name, description, type, rarity, previewUrl, imageUrl, modelUrl, accentColor, isActive !== undefined ? isActive : null, sortOrder]);
-    return res.json(mapCosmeticRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-// DELETE /api/cosmetics/:id — Delete cosmetic
-app.delete('/api/cosmetics/:id', authenticateAdmin, async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('DELETE FROM cosmetics WHERE id=$1 RETURNING id', [req.params.id]);
-    if (!r.rows.length) return res.status(404).json({ error: 'Cosmetic not found' });
-    return res.json({ success: true });
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-// PATCH /api/cosmetics/:id/toggle — Toggle active state
-app.patch('/api/cosmetics/:id/toggle', authenticateAdmin, async (req, res) => {
-  try {
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    const r = await pool.query('UPDATE cosmetics SET is_active=NOT is_active,updated_at=NOW() WHERE id=$1 RETURNING *', [req.params.id]);
-    if (!r.rows.length) return res.status(404).json({ error: 'Cosmetic not found' });
-    return res.json(mapCosmeticRow(r.rows[0]));
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-// PATCH /api/cosmetics/reorder — Reorder cosmetics
-app.patch('/api/cosmetics/reorder', authenticateAdmin, async (req, res) => {
-  try {
-    const { orderedIds } = req.body;
-    if (!Array.isArray(orderedIds)) return res.status(400).json({ error: 'orderedIds array required' });
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    for (let i = 0; i < orderedIds.length; i++) {
-      await pool.query('UPDATE cosmetics SET sort_order=$1,updated_at=NOW() WHERE id=$2', [i, orderedIds[i]]);
-    }
-    return res.json({ success: true });
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
-
-// ----------------------------------------------------------------------
-// GET /api/cosmetics/:slug/image — Serve cosmetic preview image from disk
-// Looks for files in C:\BambooContent\cosmetic_models\<slug>\textures\
-// ----------------------------------------------------------------------
-const COSMETIC_MODELS_DIR = process.env.BAMBOO_COSMETIC_DIR || (process.env.NODE_ENV === 'production' ? '/data/bamboo/cosmetic_models' : path.join(__dirname, '..', 'cosmetic_models'));
-
-app.get('/api/cosmetics/:slug/image', async (req, res) => {
-  try {
-    const { slug } = req.params;
-    // Security: validate slug to prevent path traversal
-    if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
-      return res.status(400).json({ error: 'Invalid cosmetic slug' });
-    }
-    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-    // Get cosmetic name from DB to find the matching folder on disk
-    const dbResult = await pool.query('SELECT name FROM cosmetics WHERE slug = $1', [slug]);
-    if (!dbResult.rows.length) {
-      return res.status(404).json({ error: 'Cosmetic not found' });
-    }
-    const cosmeticName = dbResult.rows[0].name;
-    // Find the matching folder (case-insensitive match on disk)
-    let matchedDir = null;
-    if (fs.existsSync(COSMETIC_MODELS_DIR)) {
-      const entries = fs.readdirSync(COSMETIC_MODELS_DIR, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isDirectory() && entry.name.toLowerCase() === cosmeticName.toLowerCase()) {
-          matchedDir = path.join(COSMETIC_MODELS_DIR, entry.name, 'textures');
-          break;
-        }
-      }
-    }
-    if (!matchedDir || !fs.existsSync(matchedDir)) {
-      return res.status(404).json({ error: 'Cosmetic model directory not found' });
-    }
-    // Security: ensure resolved path is within COSMETIC_MODELS_DIR
-    const resolvedDir = path.resolve(COSMETIC_MODELS_DIR);
-    const resolvedPath = path.resolve(matchedDir);
-    if (!resolvedPath.startsWith(resolvedDir + path.sep)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    const files = fs.readdirSync(matchedDir).filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f));
-    if (files.length === 0) {
-      return res.status(404).json({ error: 'No image files found' });
-    }
-    // Serve the first image found (prefer files with 'preview' or 'high' in name)
-    let chosen = files.find(f => /preview/i.test(f)) || files.find(f => /high/i.test(f)) || files[0];
-    const imagePath = path.join(matchedDir, chosen);
-    if (!fs.existsSync(imagePath)) {
-      return res.status(404).json({ error: 'Image not found' });
-    }
-    const ext = path.extname(chosen).toLowerCase();
-    const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
-    res.setHeader('Content-Type', mimeMap[ext] || 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    const stream = fs.createReadStream(imagePath);
-    stream.pipe(res);
-    stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
-  } catch (err) { return res.status(500).json({ error: err.message }); }
-});
+/// ======================================================================
 
 // ======================================================================
 // === CONTENT DISTRIBUTION API (Bamboo Cloud) ==========================
@@ -1418,6 +1085,11 @@ app.use(handleMulterErrors);
 const assetRoutes = require('./assetRoutes');
 assetRoutes(app, { pool, dbState, authenticateAdmin, uuidv4 });
 
+// ===== Unified Content Manager Routes =====
+// ===== Unified Content Manager Routes =====
+const contentRoutes = require('./contentRoutes');
+contentRoutes(app, { pool, dbState, authenticateAdmin, uuidv4, multer });
+
 // ===== Serve Admin Panel UI =====
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin-panel.html'));
@@ -1462,7 +1134,7 @@ async function start() {
     console.log(`   Database: PostgreSQL connected`);
     console.log(`   Content Root: ${CONTENT_ROOT}`);
     console.log(`   Content Repo: ${BAMBOO_CONTENT_REPO}`);
-    console.log(`   Endpoints: /api/auth, /api/news, /api/events, /api/banners, /api/cosmetics, /api/content/*, /api/share/*, /api/health`);
+    console.log(`   Endpoints: /api/auth, /api/content/*, /api/share/*, /api/health, /api/assets/*`);
   });
 }
 

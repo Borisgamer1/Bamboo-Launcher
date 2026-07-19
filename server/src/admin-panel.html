@@ -3,345 +3,372 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bamboo Admin Panel</title>
+<title>Bamboo Content Manager</title>
 <style>
-  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-  :root {
-    --bg-primary: #06060d;
-    --bg-secondary: #0a0b14;
-    --bg-tertiary: #0f101d;
-    --bg-card: #11121f;
-    --bg-hover: #16172b;
-    --border-subtle: #1a1b2f;
-    --border-default: #21233d;
-    --border-active: #10b981;
-    --text-primary: #e4e6f0;
-    --text-secondary: #8b8fa8;
-    --text-muted: #5b5f78;
-    --accent: #10b981;
-    --accent-hover: #059669;
-    --accent-dim: rgba(16,185,129,0.1);
-    --danger: #ef4444;
-    --danger-dim: rgba(239,68,68,0.12);
-    --warning: #f59e0b;
-    --info: #6366f1;
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 14px;
-    --radius-xl: 18px;
-    --font-mono: 'Cascadia Code','Fira Code','JetBrains Mono',Consolas,monospace;
-  }
-  body {
-    font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    min-height: 100vh;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-  }
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+:root {
+  --bg-primary: #07070e;
+  --bg-secondary: #0a0b18;
+  --bg-tertiary: #0f1120;
+  --bg-card: #111225;
+  --bg-card-hover: #181a30;
+  --bg-elevated: #1a1c35;
+  --border-subtle: #1c1e38;
+  --border-default: #26284a;
+  --border-active: #10b981;
+  --border-glow: rgba(16, 185, 129, 0.3);
+  --text-primary: #e6e8f2;
+  --text-secondary: #9296b0;
+  --text-muted: #5c6080;
+  --accent: #10b981;
+  --accent-hover: #059669;
+  --accent-dim: rgba(16, 185, 129, 0.1);
+  --accent-glow: rgba(16, 185, 129, 0.2);
+  --danger: #ef4444;
+  --danger-dim: rgba(239, 68, 68, 0.12);
+  --danger-hover: rgba(239, 68, 68, 0.2);
+  --warning: #f59e0b;
+  --warning-dim: rgba(245, 158, 11, 0.12);
+  --info: #6366f1;
+  --info-dim: rgba(99, 102, 241, 0.12);
+  --purple: #8b5cf6;
+  --pink: #ec4899;
+  --cyan: #06b6d4;
+  --amber: #f59e0b;
+  --rose: #f43f5e;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.3);
+  --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
 
-  /* SVG Icon base */
-  .ico { width:18px; height:18px; flex-shrink:0; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
-  .ico-sm { width:14px; height:14px; }
-  .ico-lg { width:22px; height:22px; }
-  .ico-xl { width:28px; height:28px; }
+/* ===== SVG Icons ===== */
+.ico { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ico-sm { width: 14px; height: 14px; }
+.ico-lg { width: 22px; height: 22px; }
+.ico-xl { width: 28px; height: 28px; }
+.ico-2xl { width: 36px; height: 36px; }
 
-  /* ===== Login ===== */
-  #login-overlay { position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center, #0a0b18 0%, #04050d 100%); }
-  #login-overlay.hidden { display:none; }
-  .login-card {
-    background:var(--bg-card);border:1px solid var(--border-default);border-radius:var(--radius-xl);
-    padding:40px;width:400px;max-width:90vw;box-shadow:0 25px 80px rgba(0,0,0,0.6);
-  }
-  .login-logo { width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;margin-bottom:20px; }
-  .login-card h1 { font-size:22px;font-weight:800;letter-spacing:-0.3px;margin-bottom:4px; }
-  .login-card .sub { font-size:13px;color:var(--text-muted);margin-bottom:24px; }
-  .login-card label { font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px; }
-  .login-card input {
-    width:100%;padding:10px 14px;border-radius:var(--radius-md);border:1px solid var(--border-default);
-    background:var(--bg-secondary);color:var(--text-primary);font-size:14px;outline:none;
-    transition:border-color 0.2s;margin-bottom:14px;
-  }
-  .login-card input:focus { border-color:var(--accent); }
-  .login-card .error { color:var(--danger);font-size:12px;margin-top:-8px;margin-bottom:12px;display:none; }
-  .login-card button {
-    width:100%;padding:12px;border:none;border-radius:var(--radius-md);
-    background:linear-gradient(135deg,var(--accent),var(--accent-hover));color:white;
-    font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;
-  }
-  .login-card button:hover { opacity:0.9;transform:translateY(-1px); }
-  .login-card button:disabled { opacity:0.5;cursor:not-allowed;transform:none; }
+/* ===== Login ===== */
+#login-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 40%, #0a0b18 0%, #04050d 100%); }
+#login-overlay.hidden { display: none; }
+.login-card { background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 20px; padding: 44px; width: 420px; max-width: 92vw; box-shadow: 0 30px 100px rgba(0, 0, 0, 0.6); }
+.login-logo { width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, var(--accent), #059669); display: flex; align-items: center; justify-content: center; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3); }
+.login-card h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.4px; margin-bottom: 4px; }
+.login-card .sub { font-size: 13px; color: var(--text-muted); margin-bottom: 28px; }
+.login-card label { font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px; }
+.login-card input { width: 100%; padding: 11px 16px; border-radius: var(--radius-md); border: 1px solid var(--border-default); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; outline: none; transition: border-color var(--transition); margin-bottom: 16px; }
+.login-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--border-glow); }
+.login-card .error { color: var(--danger); font-size: 12px; margin-top: -10px; margin-bottom: 14px; display: none; }
+.login-card button { width: 100%; padding: 13px; border: none; border-radius: var(--radius-md); background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: white; font-size: 14px; font-weight: 700; cursor: pointer; transition: all var(--transition); }
+.login-card button:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3); }
+.login-card button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-  /* ===== Layout ===== */
-  #app { display:none; }
-  #app.active { display:flex;min-height:100vh; }
-  .sidebar {
-    width:220px;background:var(--bg-secondary);border-right:1px solid var(--border-subtle);
-    padding:16px 0;flex-shrink:0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;
-  }
-  .sidebar .brand { padding:0 16px 16px;border-bottom:1px solid var(--border-subtle);margin-bottom:8px;display:flex;align-items:center;gap:10px; }
-  .sidebar .brand .icon { width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-hover));display:flex;align-items:center;justify-content:center;color:white; }
-  .sidebar .brand h2 { font-size:14px;font-weight:800;line-height:1.2; }
-  .sidebar .brand span { font-size:10px;color:var(--text-muted);font-weight:500;display:block; }
-  .sidebar nav { flex:1;overflow-y:auto;padding:4px 8px; }
-  .sidebar nav .nav-section { font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;padding:12px 12px 6px; }
-  .sidebar nav button {
-    display:flex;align-items:center;gap:10px;width:100%;
-    padding:9px 12px;border:none;background:transparent;color:var(--text-secondary);
-    font-size:12.5px;font-weight:600;cursor:pointer;text-align:left;
-    border-radius:var(--radius-md);transition:all 0.15s;margin-bottom:1px;
-  }
-  .sidebar nav button:hover { color:var(--text-primary);background:var(--bg-hover); }
-  .sidebar nav button.active { color:var(--accent);background:var(--accent-dim); }
-  .sidebar .user-info { padding:12px 16px;border-top:1px solid var(--border-subtle);font-size:12px;display:flex;align-items:center;justify-content:space-between;margin-top:auto; }
-  .sidebar .user-info .name { color:var(--text-secondary);font-weight:600; }
-  .sidebar .user-info .logout { color:var(--danger);cursor:pointer;font-weight:600;font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid rgba(239,68,68,0.2);background:rgba(239,68,68,0.08);transition:all 0.15s; }
-  .sidebar .user-info .logout:hover { background:var(--danger-dim); }
+/* ===== Layout ===== */
+#app { display: none; }
+#app.active { display: flex; min-height: 100vh; }
 
-  .main { flex:1;padding:20px 28px;overflow-y:auto;max-height:100vh;background:var(--bg-primary); }
+.sidebar {
+  width: 240px; background: var(--bg-secondary); border-right: 1px solid var(--border-subtle);
+  padding: 20px 0; flex-shrink: 0; display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.sidebar .brand { padding: 0 20px 18px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
+.sidebar .brand .icon { width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(135deg, var(--accent), #059669); display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 2px 12px rgba(16, 185, 129, 0.3); }
+.sidebar .brand h2 { font-size: 15px; font-weight: 800; line-height: 1.2; }
+.sidebar .brand span { font-size: 10px; color: var(--text-muted); font-weight: 500; display: block; letter-spacing: 0.3px; text-transform: uppercase; }
 
-  /* ===== Components ===== */
-  .page-header { margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px; }
-  .page-header h1 { font-size:22px;font-weight:800;letter-spacing:-0.3px;display:flex;align-items:center;gap:10px; }
-  .page-header p { font-size:12px;color:var(--text-muted);margin-top:2px; }
+.sidebar nav { flex: 1; overflow-y: auto; padding: 4px 10px; }
+.sidebar nav .nav-section { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; padding: 14px 12px 6px; }
+.sidebar nav button {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 12px; border: none; background: transparent; color: var(--text-secondary);
+  font-size: 13px; font-weight: 600; cursor: pointer; text-align: left;
+  border-radius: var(--radius-md); transition: all var(--transition); margin-bottom: 2px;
+}
+.sidebar nav button:hover { color: var(--text-primary); background: var(--bg-card); }
+.sidebar nav button.active { color: var(--accent); background: var(--accent-dim); }
+.sidebar nav button .badge-count {
+  margin-left: auto; font-size: 10px; font-weight: 700; padding: 1px 7px;
+  border-radius: 20px; background: var(--accent-dim); color: var(--accent); min-width: 20px; text-align: center;
+}
+.sidebar .user-info { padding: 14px 20px; border-top: 1px solid var(--border-subtle); font-size: 12px; display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
+.sidebar .user-info .name { color: var(--text-secondary); font-weight: 600; }
+.sidebar .user-info .logout { color: var(--danger); cursor: pointer; font-weight: 600; font-size: 11px; padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.06); transition: all var(--transition); }
+.sidebar .user-info .logout:hover { background: var(--danger-hover); }
 
-  .stats-row { display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:10px;margin-bottom:20px; }
-  .stat-card {
-    background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);
-    padding:14px 18px;transition:border-color 0.2s;
-  }
-  .stat-card:hover { border-color:var(--border-default); }
-  .stat-card .stat-value { font-size:26px;font-weight:800; }
-  .stat-card .stat-label { font-size:11px;color:var(--text-muted);margin-top:2px; }
+.main { flex: 1; padding: 28px 32px; overflow-y: auto; max-height: 100vh; background: radial-gradient(ellipse at 0% 0%, #0a0b18 0%, transparent 60%), var(--bg-primary); }
 
-  .card {
-    background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);
-    overflow:hidden;margin-bottom:14px;
-  }
-  .card-header {
-    padding:12px 18px;border-bottom:1px solid var(--border-subtle);
-    display:flex;align-items:center;justify-content:space-between;gap:10px;
-  }
-  .card-header h3 { font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px; }
-  .card-body { padding:14px 18px; }
+/* ===== Page Header ===== */
+.page-header { margin-bottom: 24px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.page-header hgroup { flex: 1; }
+.page-header h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.4px; display: flex; align-items: center; gap: 12px; }
+.page-header h1 .ico { color: var(--accent); }
+.page-header .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.page-header .actions { display: flex; gap: 8px; align-items: center; }
 
-  /* Buttons */
-  .btn { padding:7px 14px;border:none;border-radius:var(--radius-md);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap; }
-  .btn-primary { background:var(--accent);color:white; }
-  .btn-primary:hover { background:var(--accent-hover);transform:translateY(-1px); }
-  .btn-secondary { background:var(--info);color:white; }
-  .btn-secondary:hover { opacity:0.9; }
-  .btn-ghost { background:transparent;color:var(--text-secondary);border:1px solid var(--border-default); }
-  .btn-ghost:hover { background:var(--bg-hover);color:var(--text-primary);border-color:var(--text-muted); }
-  .btn-danger { background:var(--danger-dim);color:var(--danger);border:1px solid rgba(239,68,68,0.2); }
-  .btn-danger:hover { background:rgba(239,68,68,0.25); }
-  .btn-sm { padding:4px 10px;font-size:11px;border-radius:6px; }
-  .btn-xs { padding:3px 8px;font-size:10px;border-radius:5px; }
+/* ===== Stats Row ===== */
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 24px; }
+.stat-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 16px 20px; transition: all var(--transition); }
+.stat-card:hover { border-color: var(--border-default); transform: translateY(-1px); box-shadow: var(--shadow-card); }
+.stat-card .stat-value { font-size: 28px; font-weight: 800; letter-spacing: -0.3px; }
+.stat-card .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
 
-  /* ===== Search & Filters ===== */
-  .toolbar { display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center; }
-  .search-box {
-    display:flex;align-items:center;gap:8px;background:var(--bg-card);border:1px solid var(--border-default);
-    border-radius:var(--radius-md);padding:0 12px;flex:1;min-width:200px;max-width:360px;
-    transition:border-color 0.2s;
-  }
-  .search-box:focus-within { border-color:var(--accent); }
-  .search-box input { flex:1;padding:8px 0;border:none;background:transparent;color:var(--text-primary);font-size:12.5px;outline:none; }
-  .search-box input::placeholder { color:var(--text-muted); }
-  .search-box .ico { color:var(--text-muted); }
-  .filter-select {
-    padding:8px 28px 8px 12px;border-radius:var(--radius-md);border:1px solid var(--border-default);
-    background:var(--bg-card);color:var(--text-primary);font-size:12px;font-weight:600;outline:none;
-    cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b8fa8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;
-  }
-  .filter-select:focus { border-color:var(--accent); }
+/* ===== Content Type Grid (Dashboard) ===== */
+.type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.type-card {
+  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  padding: 22px; cursor: pointer; transition: all var(--transition); position: relative; overflow: hidden;
+}
+.type-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--accent), var(--accent-hover)); opacity: 0; transition: opacity var(--transition); }
+.type-card:hover { border-color: var(--border-default); transform: translateY(-2px); box-shadow: var(--shadow-card); }
+.type-card:hover::before { opacity: 1; }
+.type-card .type-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+.type-card .type-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.type-card .type-count { font-size: 12px; color: var(--text-muted); }
+.type-card .type-count strong { color: var(--text-primary); }
+.type-card .draft-badge { position: absolute; top: 14px; right: 14px; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: var(--warning-dim); color: var(--warning); }
 
-  /* ===== Asset Grid ===== */
-  .asset-grid { display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:12px; }
-  .asset-card {
-    background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);
-    padding:16px;cursor:pointer;transition:all 0.2s;position:relative;
-  }
-  .asset-card:hover { border-color:var(--border-default);background:var(--bg-hover);transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,0,0,0.3); }
-  .asset-card .asset-header { display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px; }
-  .asset-card .asset-name { font-size:14px;font-weight:700; }
-  .asset-card .asset-slug { font-size:11px;color:var(--text-muted);font-family:var(--font-mono); }
-  .asset-card .asset-desc { font-size:12px;color:var(--text-secondary);margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
-  .asset-card .asset-meta { display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap; }
-  .asset-card .asset-actions { display:flex;gap:4px;margin-top:12px;opacity:0;transition:opacity 0.15s; }
-  .asset-card:hover .asset-actions { opacity:1; }
+/* ===== Content Grid ===== */
+.content-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
 
-  /* Badges */
-  .badge { font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;display:inline-flex;align-items:center;gap:3px; }
-  .badge-published { background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.2); }
-  .badge-draft { background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2); }
-  .badge-archived { background:rgba(139,143,168,0.1);color:#8b8fa8;border:1px solid rgba(139,143,168,0.2); }
-  .badge-type {
-    font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;
-    text-transform:uppercase;letter-spacing:0.3px;
-  }
-  .badge-cosmetic { background:rgba(99,102,241,0.1);color:#818cf8;border:1px solid rgba(99,102,241,0.2); }
-  .badge-theme { background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.2); }
-  .badge-background { background:rgba(14,165,233,0.1);color:#38bdf8;border:1px solid rgba(14,165,233,0.2); }
-  .badge-icon { background:rgba(236,72,153,0.1);color:#f472b6;border:1px solid rgba(236,72,153,0.2); }
-  .badge-music { background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.2); }
-  .badge-font { background:rgba(245,158,11,0.1);color:#fbbf24;border:1px solid rgba(245,158,11,0.2); }
-  .badge-shader { background:rgba(34,211,238,0.1);color:#22d3ee;border:1px solid rgba(34,211,238,0.2); }
-  .badge-other { background:rgba(148,163,184,0.1);color:#94a3b8;border:1px solid rgba(148,163,184,0.2); }
-  .badge-resource_pack { background:rgba(59,130,246,0.1);color:#60a5fa;border:1px solid rgba(59,130,246,0.2); }
-  .badge-ui_asset { background:rgba(20,184,166,0.1);color:#2dd4bf;border:1px solid rgba(20,184,166,0.2); }
+.content-card {
+  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl);
+  overflow: hidden; transition: all var(--transition); position: relative;
+}
+.content-card:hover { border-color: var(--border-default); transform: translateY(-2px); box-shadow: var(--shadow-card); }
 
-  /* ===== Table ===== */
-  .data-table { width:100%;border-collapse:collapse;font-size:13px; }
-  .data-table thead th { text-align:left;padding:10px 14px;font-size:10.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border-subtle); }
-  .data-table tbody td { padding:10px 14px;border-bottom:1px solid var(--border-subtle); }
-  .data-table tbody tr:hover { background:rgba(255,255,255,0.015); }
-  .data-table tbody tr:last-child td { border-bottom:none; }
-  .data-table .sort-th { cursor:pointer;user-select:none;transition:color 0.15s; }
-  .data-table .sort-th:hover { color:var(--text-primary); }
-  .data-table .sort-th.active { color:var(--accent); }
+.content-card .card-preview {
+  height: 120px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center;
+  overflow: hidden; position: relative;
+}
+.content-card .card-preview img { width: 100%; height: 100%; object-fit: cover; }
+.content-card .card-preview .placeholder-icon { width: 40px; height: 40px; color: var(--text-muted); opacity: 0.4; }
+.content-card .card-preview .status-badge {
+  position: absolute; top: 10px; right: 10px; font-size: 10px; font-weight: 700;
+  padding: 3px 10px; border-radius: 20px; backdrop-filter: blur(8px);
+}
+.status-published { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+.status-draft { background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.3); }
+.status-archived { background: rgba(139, 143, 168, 0.2); color: #a5a9c2; border: 1px solid rgba(139, 143, 168, 0.3); }
 
-  /* ===== Modal ===== */
-  .modal-overlay { position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center; }
-  .modal-overlay.open { display:flex; }
-  .modal { background:var(--bg-card);border:1px solid var(--border-default);border-radius:var(--radius-xl);padding:0;width:680px;max-width:95vw;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 25px 80px rgba(0,0,0,0.5); }
-  .modal-header { padding:18px 24px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;justify-content:space-between; }
-  .modal-header h2 { font-size:16px;font-weight:700; }
-  .modal-body { padding:20px 24px;overflow-y:auto;flex:1; }
-  .modal-body label { font-size:11px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:4px;margin-top:14px;text-transform:uppercase;letter-spacing:0.5px; }
-  .modal-body label:first-child { margin-top:0; }
-  .modal-body input, .modal-body select, .modal-body textarea {
-    width:100%;padding:9px 12px;border-radius:var(--radius-md);border:1px solid var(--border-default);
-    background:var(--bg-secondary);color:var(--text-primary);font-size:13px;outline:none;
-    transition:border-color 0.2s;font-family:inherit;
-  }
-  .modal-body input:focus, .modal-body select:focus, .modal-body textarea:focus { border-color:var(--accent); }
-  .modal-body textarea { min-height:70px;resize:vertical; }
-  .modal-footer { padding:14px 24px;border-top:1px solid var(--border-subtle);display:flex;gap:8px;justify-content:flex-end; }
+.content-card .card-body { padding: 16px 18px; }
+.content-card .card-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.content-card .card-title .rarity-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.content-card .card-desc { font-size: 12px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 10px; line-height: 1.4; }
+.content-card .card-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 
-  .form-row { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
-  .form-row-3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px; }
+.content-card .card-footer {
+  padding: 12px 18px; border-top: 1px solid var(--border-subtle);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.content-card .card-footer .footer-left { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
+.content-card .card-footer .footer-actions { display: flex; gap: 4px; opacity: 0; transition: opacity var(--transition); }
+.content-card:hover .card-footer .footer-actions { opacity: 1; }
 
-  /* Tabs */
-  .tab-nav { display:flex;gap:2px;background:var(--bg-secondary);border-radius:var(--radius-md);padding:3px;margin-bottom:14px; }
-  .tab-nav button { padding:7px 14px;border:none;border-radius:var(--radius-md);font-size:12px;font-weight:600;background:transparent;color:var(--text-secondary);cursor:pointer;transition:all 0.15s; }
-  .tab-nav button.active { background:var(--bg-card);color:var(--text-primary);box-shadow:0 1px 3px rgba(0,0,0,0.3); }
-  .tab-nav button:hover:not(.active) { color:var(--text-primary); }
+/* ===== Tags / Badges ===== */
+.tag { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
+.tag-cape { background: rgba(99, 102, 241, 0.12); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.2); }
+.tag-aura { background: rgba(168, 85, 247, 0.12); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.2); }
+.tag-hat { background: rgba(236, 72, 153, 0.12); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.2); }
+.tag-ear { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.2); }
+.tag-rank { background: rgba(239, 68, 68, 0.12); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.2); }
+.tag-common { background: rgba(148, 163, 184, 0.12); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); }
+.tag-rare { background: rgba(59, 130, 246, 0.12); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); }
+.tag-epic { background: rgba(168, 85, 247, 0.12); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.2); }
+.tag-legendary { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.2); }
+.tag-mythic { background: rgba(239, 68, 68, 0.12); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.2); }
+.tag-category { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(16, 185, 129, 0.2); }
+.tag-file-count { background: var(--info-dim); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.2); }
 
-  /* Toast */
-  .toast { position:fixed;bottom:24px;right:24px;z-index:10000;padding:12px 20px;border-radius:var(--radius-md);font-size:13px;font-weight:600;display:none;align-items:center;gap:8px;box-shadow:0 10px 40px rgba(0,0,0,0.5);max-width:400px; }
-  .toast.show { display:flex; }
-  .toast.success { background:#065f46;border:1px solid var(--accent);color:#a7f3d0; }
-  .toast.error { background:#7f1d1d;border:1px solid var(--danger);color:#fca5a5; }
-  .toast.info { background:#1e3a5f;border:1px solid var(--info);color:#a5b4fc; }
+/* ===== Buttons ===== */
+.btn {
+  padding: 8px 16px; border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all var(--transition); display: inline-flex; align-items: center; gap: 6px;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: white; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25); }
+.btn-primary:hover { box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35); transform: translateY(-1px); }
+.btn-secondary { background: var(--info); color: white; }
+.btn-secondary:hover { opacity: 0.9; }
+.btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-default); }
+.btn-ghost:hover { background: var(--bg-card-hover); color: var(--text-primary); border-color: var(--text-muted); }
+.btn-danger { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
+.btn-danger:hover { background: var(--danger-hover); }
+.btn-warning { background: var(--warning-dim); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.2); }
+.btn-warning:hover { background: rgba(245, 158, 11, 0.2); }
+.btn-sm { padding: 5px 10px; font-size: 11px; border-radius: 6px; }
+.btn-xs { padding: 3px 8px; font-size: 10px; border-radius: 5px; }
+.btn-icon { padding: 6px; border-radius: var(--radius-sm); }
 
-  /* File list in modal */
-  .file-list { display:flex;flex-direction:column;gap:6px; }
-  .file-item { display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius-md);background:var(--bg-secondary);border:1px solid var(--border-subtle);font-size:12px;transition:all 0.15s; }
-  .file-item:hover { border-color:var(--border-default); }
-  .file-item .file-icon { color:var(--text-muted); }
-  .file-item .file-name { flex:1;font-weight:600;font-family:var(--font-mono);font-size:11px; }
-  .file-item .file-type { font-size:10px;color:var(--text-muted);text-transform:uppercase; }
-  .file-item .file-size { font-size:10px;color:var(--text-muted);min-width:50px;text-align:right; }
+/* ===== Toolbar ===== */
+.toolbar { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
+.search-box { display: flex; align-items: center; gap: 8px; background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 0 14px; flex: 1; min-width: 200px; max-width: 360px; transition: border-color var(--transition); }
+.search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--border-glow); }
+.search-box input { flex: 1; padding: 9px 0; border: none; background: transparent; color: var(--text-primary); font-size: 13px; outline: none; }
+.search-box input::placeholder { color: var(--text-muted); }
+.search-box .ico { color: var(--text-muted); }
+.filter-select { padding: 9px 32px 9px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-default); background: var(--bg-card); color: var(--text-primary); font-size: 12px; font-weight: 600; outline: none; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239296b0' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; transition: border-color var(--transition); }
+.filter-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--border-glow); }
 
-  /* Empty state */
-  .empty-state { text-align:center;padding:48px 20px;color:var(--text-muted); }
-  .empty-state .ico { width:42px;height:42px;margin:0 auto 12px;opacity:0.5; }
-  .empty-state h3 { font-size:15px;color:var(--text-secondary);margin-bottom:4px; }
-  .empty-state p { font-size:12px; }
+/* ===== Modal ===== */
+.modal-overlay { position: fixed; inset: 0; z-index: 9998; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; padding: 20px; }
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 20px;
+  width: 640px; max-width: 100%; max-height: 90vh; overflow: hidden;
+  display: flex; flex-direction: column; box-shadow: var(--shadow-elevated);
+  animation: modalIn 0.2s ease-out;
+}
+@keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; }
+.modal-header h2 { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+.modal-body label { font-size: 12px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 5px; margin-top: 18px; }
+.modal-body label:first-child { margin-top: 0; }
+.modal-body input, .modal-body select, .modal-body textarea {
+  width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-default);
+  background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; outline: none;
+  transition: border-color var(--transition); font-family: inherit;
+}
+.modal-body input:focus, .modal-body select:focus, .modal-body textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--border-glow); }
+.modal-body textarea { min-height: 80px; resize: vertical; }
+.modal-body .help-text { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.modal-footer { padding: 16px 24px; border-top: 1px solid var(--border-subtle); display: flex; gap: 10px; justify-content: flex-end; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
 
-  .loading { text-align:center;padding:40px;color:var(--text-muted); }
-  .spinner { display:inline-block;width:22px;height:22px;border:2px solid var(--border-default);border-top-color:var(--accent);border-radius:50%;animation:spin 0.6s linear infinite; }
-  @keyframes spin { to { transform:rotate(360deg); } }
+/* ===== Drop Zone ===== */
+.drop-zone {
+  border: 2px dashed var(--border-default); border-radius: var(--radius-lg); padding: 32px;
+  text-align: center; cursor: pointer; transition: all var(--transition); margin-top: 14px;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: var(--accent-dim); }
+.drop-zone .drop-icon { width: 44px; height: 44px; margin: 0 auto 10px; color: var(--text-muted); }
+.drop-zone p { font-size: 13px; color: var(--text-secondary); }
+.drop-zone .drop-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+.upload-progress { display: none; margin-top: 14px; }
+.upload-progress.show { display: block; }
+.upload-progress .progress-bar { height: 4px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+.upload-progress .progress-bar .bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-hover)); border-radius: 4px; transition: width 0.3s; width: 0%; }
+.uploaded-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.uploaded-file { font-size: 11px; padding: 4px 10px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 4px; font-family: var(--font-mono); }
 
-  #app-content .page { display:none; }
-  #app-content .page.active { display:block; }
+/* ===== Empty State ===== */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+.empty-state .ico { width: 48px; height: 48px; margin: 0 auto 14px; opacity: 0.3; }
+.empty-state h3 { font-size: 16px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 600; }
+.empty-state p { font-size: 13px; max-width: 400px; margin: 0 auto; }
 
-  /* Tag input */
-  .tag-input-wrap { display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:6px 8px;border-radius:var(--radius-md);border:1px solid var(--border-default);background:var(--bg-secondary);min-height:38px;cursor:text;transition:border-color 0.2s; }
-  .tag-input-wrap:focus-within { border-color:var(--accent); }
-  .tag { font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;gap:3px;border:1px solid rgba(16,185,129,0.2); }
-  .tag .tag-close { cursor:pointer;opacity:0.6;transition:opacity 0.15s; }
-  .tag .tag-close:hover { opacity:1; }
-  .tag-input { border:none;background:transparent;color:var(--text-primary);font-size:12px;outline:none;min-width:60px;flex:1;padding:2px 4px; }
+/* ===== Loading ===== */
+.loading { text-align: center; padding: 50px; color: var(--text-muted); }
+.spinner { display: inline-block; width: 24px; height: 24px; border: 2px solid var(--border-default); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Tooltip for sidebar text */
-  .nav-label { font-size:12.5px;font-weight:600; }
+/* ===== Page visibility ===== */
+#app-content .page { display: none; }
+#app-content .page.active { display: block; }
+
+/* ===== Toast ===== */
+.toast {
+  position: fixed; bottom: 28px; right: 28px; z-index: 10000;
+  padding: 14px 22px; border-radius: var(--radius-md); font-size: 13px; font-weight: 600;
+  display: none; align-items: center; gap: 10px; box-shadow: var(--shadow-elevated);
+  max-width: 420px; animation: toastIn 0.3s ease-out;
+}
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.toast.show { display: flex; }
+.toast.success { background: #064e3b; border: 1px solid var(--accent); color: #a7f3d0; }
+.toast.error { background: #7f1d1d; border: 1px solid var(--danger); color: #fca5a5; }
+.toast.info { background: #1e3a5f; border: 1px solid var(--info); color: #a5b4fc; }
+
+/* ===== Publish Panel ===== */
+.publish-panel {
+  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl);
+  padding: 20px 24px; margin-top: 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.publish-panel .publish-info { display: flex; align-items: center; gap: 12px; }
+.publish-panel .publish-info .ico { color: var(--warning); }
+.publish-panel .publish-info h3 { font-size: 14px; font-weight: 700; }
+.publish-panel .publish-info p { font-size: 12px; color: var(--text-muted); }
+
+/* ===== Cosmetic Preview Color Accents ===== */
+.rarity-common { color: #94a3b8; }
+.rarity-rare { color: #60a5fa; }
+.rarity-epic { color: #c084fc; }
+.rarity-legendary { color: #fbbf24; }
+.rarity-mythic { color: #f87171; }
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 </style>
 </head>
 <body>
 
-<!-- ===== SVG Icon Definitions ===== -->
+<!-- ===== SVG Icons ===== -->
 <svg style="display:none" aria-hidden="true">
   <defs>
-    <!-- Dashboard -->
     <symbol id="ico-layout-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
-    <!-- Package/Box for Assets -->
     <symbol id="ico-package" viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
-    <!-- Sparkles for Cosmetics -->
     <symbol id="ico-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/></symbol>
-    <!-- Newspaper for News -->
     <symbol id="ico-newspaper" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></symbol>
-    <!-- Calendar for Events -->
     <symbol id="ico-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
-    <!-- Image for Banners -->
     <symbol id="ico-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
-    <!-- Plus -->
     <symbol id="ico-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
-    <!-- Search -->
     <symbol id="ico-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
-    <!-- Filter -->
-    <symbol id="ico-filter" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></symbol>
-    <!-- Edit -->
     <symbol id="ico-edit" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
-    <!-- Trash -->
     <symbol id="ico-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></symbol>
-    <!-- Toggle/Visibility -->
     <symbol id="ico-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
     <symbol id="ico-eye-off" viewBox="0 0 24 24"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></symbol>
-    <!-- Archive -->
-    <symbol id="ico-archive" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></symbol>
-    <!-- Upload -->
     <symbol id="ico-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
-    <!-- Download -->
     <symbol id="ico-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
-    <!-- File -->
     <symbol id="ico-file" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></symbol>
-    <!-- Folder -->
     <symbol id="ico-folder" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></symbol>
-    <!-- Tag -->
-    <symbol id="ico-tag" viewBox="0 0 24 24"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></symbol>
-    <!-- User -->
-    <symbol id="ico-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
-    <!-- Log Out -->
-    <symbol id="ico-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
-    <!-- Refresh -->
     <symbol id="ico-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
-    <!-- Chevron (dropdown arrow) -->
-    <symbol id="ico-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
-    <!-- X/Close -->
     <symbol id="ico-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
-    <!-- Check -->
     <symbol id="ico-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
-    <!-- Alert -->
     <symbol id="ico-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
-    <!-- Settings -->
     <symbol id="ico-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></symbol>
-    <!-- Database -->
-    <symbol id="ico-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></symbol>
-    <!-- Server -->
-    <symbol id="ico-server" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
-    <!-- Bamboo logo SVG (simple bamboo stalk) -->
     <symbol id="ico-bamboo" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M8 6h8"/><path d="M7 11h10"/><path d="M9 16h6"/><path d="M15 4l1 3"/><path d="M9 4L8 7"/><path d="M16 9l1 3"/><path d="M8 9l-1 3"/><path d="M14 14l1 3"/><path d="M10 14l-1 3"/></symbol>
+    <symbol id="ico-palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-1.01 0-.83.67-1.5 1.5-1.5H16c3.31 0 6-2.69 6-6 0-4.42-4.5-8-10-8Z"/></symbol>
+    <symbol id="ico-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+    <symbol id="ico-code" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+    <symbol id="ico-box" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><polyline points="3.3 7 12 12 20.7 7"/></symbol>
+    <symbol id="ico-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+    <symbol id="ico-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+    <symbol id="ico-type" viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></symbol>
+    <symbol id="ico-publish" viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><path d="M12 3v15"/><path d="M5 21h14"/></symbol>
   </defs>
 </svg>
 
-<!-- ===== Login Overlay ===== -->
+<!-- ===== Login ===== -->
 <div id="login-overlay">
   <div class="login-card">
-    <div class="login-logo"><svg class="ico ico-lg" style="color:white"><use href="#ico-bamboo"/></svg></div>
-    <h1>Admin Panel</h1>
-    <p class="sub">Bamboo Backend Verwaltung</p>
+    <div class="login-logo"><svg class="ico ico-xl" style="color:white"><use href="#ico-bamboo"/></svg></div>
+    <h1>Content Manager</h1>
+    <p class="sub">Bamboo Launcher — zentrale Verwaltung</p>
     <label>Benutzername</label>
     <input type="text" id="login-user" value="admin" autocomplete="username">
     <label>Passwort</label>
@@ -359,29 +386,14 @@
   <aside class="sidebar">
     <div class="brand">
       <div class="icon"><svg class="ico ico-sm" style="color:white"><use href="#ico-bamboo"/></svg></div>
-      <div><h2>Bamboo</h2><span>Admin Panel</span></div>
+      <div><h2>Bamboo</h2><span>Content Manager</span></div>
     </div>
     <nav>
-      <div class="nav-section">Verwaltung</div>
+      <div class="nav-section">Inhalte</div>
       <button class="active" data-page="dashboard" onclick="switchPage('dashboard')">
         <svg class="ico"><use href="#ico-layout-dashboard"/></svg><span class="nav-label">Dashboard</span>
       </button>
-      <button data-page="assets" onclick="switchPage('assets')">
-        <svg class="ico"><use href="#ico-package"/></svg><span class="nav-label">Asset Manager</span>
-      </button>
-      <div class="nav-section" style="margin-top:8px">Inhalte</div>
-      <button data-page="cosmetics" onclick="switchPage('cosmetics')">
-        <svg class="ico"><use href="#ico-sparkles"/></svg><span class="nav-label">Cosmetics</span>
-      </button>
-      <button data-page="news" onclick="switchPage('news')">
-        <svg class="ico"><use href="#ico-newspaper"/></svg><span class="nav-label">News</span>
-      </button>
-      <button data-page="events" onclick="switchPage('events')">
-        <svg class="ico"><use href="#ico-calendar"/></svg><span class="nav-label">Events</span>
-      </button>
-      <button data-page="banners" onclick="switchPage('banners')">
-        <svg class="ico"><use href="#ico-image"/></svg><span class="nav-label">Banners</span>
-      </button>
+      <div id="sidebar-content-types"></div>
     </nav>
     <div class="user-info">
       <span class="name" id="sidebar-user">admin</span>
@@ -391,246 +403,136 @@
   <main class="main">
     <div id="app-content">
       <div class="page active" id="page-dashboard"></div>
-      <div class="page" id="page-assets"></div>
-      <div class="page" id="page-cosmetics"></div>
-      <div class="page" id="page-news"></div>
-      <div class="page" id="page-events"></div>
-      <div class="page" id="page-banners"></div>
     </div>
   </main>
 </div>
 
-<!-- ===== Asset Editor Modal ===== -->
-<div class="modal-overlay" id="asset-modal">
+<!-- ===== Content Editor Modal ===== -->
+<div class="modal-overlay" id="editor-modal">
   <div class="modal">
     <div class="modal-header">
-      <h2 id="asset-modal-title">Neues Asset</h2>
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('asset-modal')">
-        <svg class="ico ico-sm"><use href="#ico-x"/></svg>
-      </button>
+      <h2 id="editor-modal-title">Neuer Inhalt</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
     </div>
     <div class="modal-body">
-      <div class="tab-nav" id="asset-modal-tabs">
-        <button class="active" data-tab="meta">Metadaten</button>
-        <button data-tab="files">Dateien</button>
-        <button data-tab="preview">Vorschau</button>
+      <input type="hidden" id="editor-id">
+      <input type="hidden" id="editor-type">
+
+      <!-- Common fields for all types -->
+      <label>Name</label>
+      <input type="text" id="editor-name" placeholder="z.B. Dragon Wings" maxlength="256">
+      <div class="help-text">Aus dem Namen wird automatisch eine eindeutige ID generiert.</div>
+
+      <div class="form-row">
+        <div>
+          <label>Kategorie</label>
+          <input type="text" id="editor-category" placeholder="z.B. wings">
+        </div>
+        <div>
+          <label>Status</label>
+          <select id="editor-status">
+            <option value="draft">Entwurf</option>
+            <option value="published">Veröffentlicht</option>
+            <option value="archived">Archiviert</option>
+          </select>
+        </div>
       </div>
-      <input type="hidden" id="asset-id">
-      <!-- Meta Tab -->
-      <div id="tab-meta" class="asset-tab">
-        <label>Slug (eindeutige ID)</label>
-        <input type="text" id="asset-slug" placeholder="z.B. duck-crown">
-        <label>Name</label>
-        <input type="text" id="asset-name" placeholder="Asset Name">
-        <label>Beschreibung</label>
-        <textarea id="asset-desc" placeholder="Kurze Beschreibung..."></textarea>
-        <div class="form-row-3">
+
+      <label>Beschreibung (optional)</label>
+      <textarea id="editor-desc" placeholder="Kurze Beschreibung..." style="min-height:60px"></textarea>
+
+      <!-- Cosmetic-specific fields -->
+      <div id="cosmetic-fields" style="display:none">
+        <div class="form-row">
           <div>
             <label>Typ</label>
-            <select id="asset-type">
-              <option value="cosmetic">Cosmetic</option><option value="theme">Theme</option>
-              <option value="background">Background</option><option value="icon">Icon</option>
-              <option value="ui_asset">UI Asset</option><option value="music">Music</option>
-              <option value="shader">Shader</option><option value="resource_pack">Resource Pack</option>
-              <option value="font">Font</option><option value="other">Other</option>
+            <select id="editor-cosmetic-type">
+              <option value="cape">Umhang (Cape)</option>
+              <option value="aura">Aura</option>
+              <option value="hat">Hut (Hat)</option>
+              <option value="ear">Ohren (Ears)</option>
+              <option value="rank">Rang (Rank)</option>
+              <option value="other">Andere</option>
             </select>
           </div>
           <div>
-            <label>Status</label>
-            <select id="asset-status">
-              <option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option>
+            <label>Seltenheit</label>
+            <select id="editor-rarity">
+              <option value="common">Common</option>
+              <option value="rare">Rare</option>
+              <option value="epic">Epic</option>
+              <option value="legendary">Legendary</option>
+              <option value="mythic">Mythic</option>
             </select>
           </div>
-          <div>
-            <label>Version</label>
-            <input type="number" id="asset-version" value="1" min="1">
-          </div>
         </div>
-        <div class="form-row">
-          <div><label>Kategorie</label><input type="text" id="asset-category" placeholder="z.B. hats"></div>
-          <div><label>Sortierung</label><input type="number" id="asset-sort" value="0" min="0"></div>
-        </div>
-        <label>Tags</label>
-        <div class="tag-input-wrap" id="tag-wrap">
-          <div id="tags-display"></div>
-          <input type="text" class="tag-input" id="tag-input" placeholder="Tag eingeben & Enter...">
-        </div>
-        <div class="form-row">
-          <div><label>Thumbnail URL</label><input type="text" id="asset-thumbnail" placeholder="https://..."></div>
-          <div><label>Preview URL</label><input type="text" id="asset-preview" placeholder="https://..."></div>
-        </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);font-weight:400;margin-top:12px">
-          <input type="checkbox" id="asset-active" checked> Aktiv
-        </label>
+        <label>Akzentfarbe</label>
+        <input type="text" id="editor-accent" placeholder="z.B. #10b981">
       </div>
-      <!-- Files Tab -->
-      <div id="tab-files" class="asset-tab" style="display:none">
-        <div class="file-list" id="asset-files-list">
-          <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px">
-            <svg class="ico ico-lg" style="margin:0 auto 8px;opacity:0.4"><use href="#ico-file"/></svg>
-            <p>Keine Dateien. Speichere das Asset zuerst,<br>dann kannst du Dateien hinzufügen.</p>
-          </div>
+
+      <!-- News-specific fields -->
+      <div id="news-fields" style="display:none">
+        <label>Untertitel</label>
+        <input type="text" id="news-subtitle" placeholder="Optionaler Untertitel">
+        <label>Inhalt</label>
+        <textarea id="news-content" placeholder="Artikelinhalt..." style="min-height:120px"></textarea>
+        <div class="form-row">
+          <div><label>Autor</label><input type="text" id="news-author" placeholder="Bamboo Team"></div>
+          <div><label>Game Version</label><input type="text" id="news-version" placeholder="z.B. 1.21"></div>
         </div>
-        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-subtle)">
-          <label>Datei hinzufügen</label>
-          <div class="form-row">
-            <div><input type="text" id="new-file-name" placeholder="Dateiname (z.B. model.glb)"></div>
-            <div>
-              <select id="new-file-type">
-                <option value="texture">Texture</option><option value="model">Model</option>
-                <option value="icon">Icon</option><option value="preview">Preview</option>
-                <option value="manifest">Manifest</option><option value="audio">Audio</option>
-                <option value="shader">Shader</option><option value="font">Font</option><option value="config">Config</option><option value="other">Other</option>
-              </select>
+      </div>
+
+      <!-- Event-specific fields -->
+      <div id="event-fields" style="display:none">
+        <label>Untertitel</label>
+        <input type="text" id="event-subtitle" placeholder="Optionaler Untertitel">
+        <div class="form-row">
+          <div><label>Startdatum</label><input type="datetime-local" id="event-start"></div>
+          <div><label>Enddatum</label><input type="datetime-local" id="event-end"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Priorität</label><input type="number" id="event-priority" value="0" min="0"></div>
+          <div><label>Autor</label><input type="text" id="event-author" placeholder="Bamboo Team"></div>
+        </div>
+      </div>
+
+      <!-- Banner-specific fields -->
+      <div id="banner-fields" style="display:none">
+        <label>Link-Ziel</label>
+        <input type="text" id="banner-target" placeholder="https://...">
+        <div class="form-row">
+          <div><label>Typ</label><select id="banner-clicktype"><option value="external">Externer Link</option><option value="internal">Interner Link</option><option value="none">Kein Link</option></select></div>
+          <div><label>Priorität</label><input type="number" id="banner-priority" value="0" min="0"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border-subtle)">
+        <!-- Upload area (shown after save) -->
+        <div id="upload-section" style="display:none">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;font-size:12px;color:var(--text-secondary)">
+            <input type="checkbox" id="toggle-upload" onchange="toggleUploadArea()"> Dateien hochladen
+          </label>
+          <div id="upload-area" style="display:none">
+            <div class="drop-zone" id="drop-zone" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleDrop(event)">
+              <svg class="ico drop-icon"><use href="#ico-upload"/></svg>
+              <p>Ordner oder Dateien hier ablegen</p>
+              <p class="drop-hint">Oder klicken, um Dateien auszuwählen</p>
+              <input type="file" id="file-input" multiple webkitdirectory style="display:none" onchange="handleFileSelect(event)">
             </div>
+            <div class="upload-progress" id="upload-progress">
+              <p style="font-size:12px;color:var(--text-secondary)" id="upload-status">Wird hochgeladen...</p>
+              <div class="progress-bar"><div class="bar" id="progress-bar"></div></div>
+            </div>
+            <div class="uploaded-files" id="uploaded-files"></div>
           </div>
-          <div style="margin-top:8px"><input type="text" id="new-file-path" placeholder="Dateipfad (z.B. textures/diffuse.png)"></div>
-          <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="addAssetFile()">
-            <svg class="ico ico-sm"><use href="#ico-plus"/></svg>Datei hinzufügen
-          </button>
-        </div>
-      </div>
-      <!-- Preview Tab -->
-      <div id="tab-preview" class="asset-tab" style="display:none">
-        <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px">
-          <svg class="ico ico-lg" style="margin:0 auto 8px;opacity:0.4"><use href="#ico-image"/></svg>
-          <p>Vorschau wird beim Speichern aktualisiert</p>
         </div>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('asset-modal')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveAsset()">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" id="editor-save-btn" onclick="saveContent()">
         <svg class="ico ico-sm"><use href="#ico-check"/></svg>Speichern
       </button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== Cosmetics Modal (kept from original, de-emojified) ===== -->
-<div class="modal-overlay" id="cosmetic-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 id="cosmetic-modal-title">Neues Cosmetic</h2>
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('cosmetic-modal')"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="cosmetic-id">
-      <label>Slug (eindeutige ID)</label>
-      <input type="text" id="cosmetic-slug" placeholder="z.B. dragon-wing">
-      <label>Name</label>
-      <input type="text" id="cosmetic-name" placeholder="Dragon Wing">
-      <label>Beschreibung</label>
-      <textarea id="cosmetic-desc" placeholder="Eine kurze Beschreibung..."></textarea>
-      <div class="form-row">
-        <div><label>Typ</label><select id="cosmetic-type"><option value="cape">Cape</option><option value="aura">Aura</option><option value="hat">Hat</option><option value="ear">Ears</option><option value="rank">Rank</option><option value="other">Other</option></select></div>
-        <div><label>Seltenheit</label><select id="cosmetic-rarity"><option value="common">Common</option><option value="rare">Rare</option><option value="epic">Epic</option><option value="legendary">Legendary</option><option value="mythic">Mythic</option></select></div>
-      </div>
-      <label>Preview URL (optional)</label>
-      <input type="text" id="cosmetic-preview" placeholder="https://...">
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('cosmetic-modal')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveCosmetic()">Speichern</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== News Modal ===== -->
-<div class="modal-overlay" id="news-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 id="news-modal-title">Neuer News-Eintrag</h2>
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('news-modal')"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="news-id">
-      <label>Titel</label><input type="text" id="news-title" placeholder="News Titel">
-      <label>Untertitel</label><input type="text" id="news-subtitle" placeholder="Optionaler Untertitel">
-      <label>Inhalt</label><textarea id="news-content" placeholder="Artikelinhalt..." style="min-height:120px"></textarea>
-      <div class="form-row">
-        <div><label>Kategorie</label><input type="text" id="news-category" placeholder="general" value="general"></div>
-        <div><label>Banner URL</label><input type="text" id="news-banner" placeholder="https://..."></div>
-      </div>
-      <div class="form-row">
-        <div><label>Veröffentlicht am</label><input type="datetime-local" id="news-published"></div>
-        <div><label>Game Version</label><input type="text" id="news-version" placeholder="z.B. 1.21"></div>
-      </div>
-      <div style="display:flex;gap:16px;margin-top:12px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:400"><input type="checkbox" id="news-visible" checked> Sichtbar</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:400"><input type="checkbox" id="news-pinned"> Angepinnt</label>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('news-modal')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveNews()">Speichern</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== Events Modal ===== -->
-<div class="modal-overlay" id="events-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 id="events-modal-title">Neues Event</h2>
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('events-modal')"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="event-id">
-      <label>Titel</label><input type="text" id="event-title" placeholder="Event Titel">
-      <label>Untertitel</label><input type="text" id="event-subtitle" placeholder="Optionaler Untertitel">
-      <label>Beschreibung</label><textarea id="event-desc" placeholder="Eventbeschreibung..." style="min-height:80px"></textarea>
-      <div class="form-row">
-        <div><label>Kategorie</label><input type="text" id="event-category" placeholder="general" value="general"></div>
-        <div><label>Banner URL</label><input type="text" id="event-banner" placeholder="https://..."></div>
-      </div>
-      <div class="form-row">
-        <div><label>Startdatum</label><input type="datetime-local" id="event-start"></div>
-        <div><label>Enddatum</label><input type="datetime-local" id="event-end"></div>
-      </div>
-      <div class="form-row">
-        <div><label>Priorität</label><input type="number" id="event-priority" value="0" min="0"></div>
-        <div><label>Autor</label><input type="text" id="event-author" placeholder="Bamboo Team" value="Bamboo Team"></div>
-      </div>
-      <div style="display:flex;gap:16px;margin-top:12px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:400"><input type="checkbox" id="event-active" checked> Aktiv</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:400"><input type="checkbox" id="event-visible" checked> Sichtbar</label>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('events-modal')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveEvent()">Speichern</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== Banners Modal ===== -->
-<div class="modal-overlay" id="banners-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 id="banners-modal-title">Neues Banner</h2>
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('banners-modal')"><svg class="ico ico-sm"><use href="#ico-x"/></svg></button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="banner-id">
-      <label>Titel</label><input type="text" id="banner-title" placeholder="Banner Titel">
-      <label>Bild URL</label><input type="text" id="banner-image" placeholder="https://...">
-      <label>Beschreibung</label><textarea id="banner-desc" placeholder="Kurze Beschreibung..." style="min-height:60px"></textarea>
-      <div class="form-row">
-        <div><label>Link-Ziel</label><input type="text" id="banner-target" placeholder="https://..."></div>
-        <div><label>Link-Typ</label><select id="banner-clicktype"><option value="external">External</option><option value="internal">Internal</option><option value="none">None</option></select></div>
-      </div>
-      <div class="form-row">
-        <div><label>Sortierung</label><input type="number" id="banner-sort" value="0" min="0"></div>
-        <div><label>Priorität</label><input type="number" id="banner-priority" value="0" min="0"></div>
-      </div>
-      <div style="display:flex;gap:16px;margin-top:12px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:400"><input type="checkbox" id="banner-active" checked> Aktiv</label>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('banners-modal')">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveBanner()">Speichern</button>
     </div>
   </div>
 </div>
@@ -639,35 +541,45 @@
 const API = '';
 let token = localStorage.getItem('bamboo_admin_token') || '';
 let user = JSON.parse(localStorage.getItem('bamboo_admin_user') || 'null');
-let assetsCache = [];
-let cosmeticsCache = [];
-let newsCache = [];
-let eventsCache = [];
-let bannersCache = [];
-let editingAssetTags = [];
+let currentPage = 'dashboard';
+let contentTypes = [];
+let contentCache = {};
+let editingItem = null;
 
 // ===== Helpers =====
 function ico(name) { return `<svg class="ico"><use href="#${name}"/></svg>`; }
 function icosm(name) { return `<svg class="ico ico-sm"><use href="#${name}"/></svg>`; }
+
 function showToast(msg, type) {
   const t = document.getElementById('toast');
   t.innerHTML = msg; t.className = 'toast show ' + type;
-  setTimeout(() => t.classList.remove('show'), 3000);
+  setTimeout(() => t.classList.remove('show'), 4000);
 }
+
 function formatBytes(b) {
   if (!b || b === 0) return '0 B';
-  const u = ['B','KB','MB','GB']; const i = Math.floor(Math.log(b)/Math.log(1024));
-  return (b/Math.pow(1024,i)).toFixed(i===0?0:1)+' '+u[i];
+  const u = ['B', 'KB', 'MB', 'GB']; const i = Math.floor(Math.log(b) / Math.log(1024));
+  return (b / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + u[i];
 }
+
 function timeAgo(d) {
   if (!d) return '—';
   const diff = (Date.now() - new Date(d).getTime()) / 1000;
   if (diff < 60) return 'gerade eben';
-  if (diff < 3600) return Math.floor(diff/60) + 'm';
-  if (diff < 86400) return Math.floor(diff/3600) + 'h';
-  return Math.floor(diff/86400) + 'd';
+  if (diff < 3600) return Math.floor(diff / 60) + ' min';
+  if (diff < 86400) return Math.floor(diff / 3600) + ' h';
+  return Math.floor(diff / 86400) + ' d';
 }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function closeModal() {
+  document.getElementById('editor-modal').classList.remove('open');
+  editingItem = null;
+}
+
+function toggleUploadArea() {
+  const area = document.getElementById('upload-area');
+  area.style.display = area.style.display === 'none' ? 'block' : 'none';
+}
 
 // ===== Auth =====
 async function login() {
@@ -675,628 +587,631 @@ async function login() {
   const u = document.getElementById('login-user').value, p = document.getElementById('login-pass').value;
   btn.disabled = true; btn.textContent = 'Anmelden...'; err.style.display = 'none';
   try {
-    const r = await fetch(API+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const r = await fetch(API + '/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, password: p })
+    });
     const d = await r.json();
     if (!d.success) throw new Error(d.error);
     token = d.data.token; user = d.data.user;
-    localStorage.setItem('bamboo_admin_token',token);
-    localStorage.setItem('bamboo_admin_user',JSON.stringify(user));
+    localStorage.setItem('bamboo_admin_token', token);
+    localStorage.setItem('bamboo_admin_user', JSON.stringify(user));
     document.getElementById('login-overlay').classList.add('hidden');
     document.getElementById('app').classList.add('active');
     document.getElementById('sidebar-user').textContent = user.displayName || user.username;
     init();
-  } catch(e) { err.textContent = e.message || 'Anmeldung fehlgeschlagen'; err.style.display = 'block'; }
+  } catch (e) { err.textContent = e.message || 'Anmeldung fehlgeschlagen'; err.style.display = 'block'; }
   btn.disabled = false; btn.textContent = 'Anmelden';
 }
+
 function logout() {
-  token='';user=null;localStorage.removeItem('bamboo_admin_token');localStorage.removeItem('bamboo_admin_user');
-  document.getElementById('app').classList.remove('active');document.getElementById('login-overlay').classList.remove('hidden');
+  token = ''; user = null;
+  localStorage.removeItem('bamboo_admin_token');
+  localStorage.removeItem('bamboo_admin_user');
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('login-overlay').classList.remove('hidden');
 }
+
+// Auto-login with stored token
 if (token && user) {
-  (async()=>{
-    try{const r=await fetch(API+'/api/auth/verify',{headers:{'Authorization':'Bearer '+token}});const d=await r.json();if(d.success){document.getElementById('login-overlay').classList.add('hidden');document.getElementById('app').classList.add('active');document.getElementById('sidebar-user').textContent=user.displayName||user.username;init();return;}}catch(e){}
-    token='';user=null;localStorage.removeItem('bamboo_admin_token');localStorage.removeItem('bamboo_admin_user');
+  (async () => {
+    try {
+      const r = await fetch(API + '/api/auth/verify', { headers: { 'Authorization': 'Bearer ' + token } });
+      const d = await r.json();
+      if (d.success) {
+        document.getElementById('login-overlay').classList.add('hidden');
+        document.getElementById('app').classList.add('active');
+        document.getElementById('sidebar-user').textContent = user.displayName || user.username;
+        init();
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    token = ''; user = null;
+    localStorage.removeItem('bamboo_admin_token');
+    localStorage.removeItem('bamboo_admin_user');
   })();
 }
 
-// ===== API Helper =====
+// ===== API =====
 async function api(path, opts = {}) {
-  const r = await fetch(API+path,{...opts,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,...opts.headers}});
-  if (r.status===401){logout();throw new Error('Session abgelaufen');}
+  const r = await fetch(API + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, ...opts.headers }
+  });
+  if (r.status === 401) { logout(); throw new Error('Session abgelaufen'); }
+  const isJson = r.headers.get('content-type')?.includes('json');
+  if (!isJson) {
+    const text = await r.text();
+    try { return JSON.parse(text); } catch { throw new Error(text); }
+  }
   return r.json();
 }
-async function init() { renderDashboard(); }
+
+// ===== Init =====
+async function init() {
+  await loadContentTypes();
+  renderSidebar();
+  renderDashboard();
+}
+
+async function loadContentTypes() {
+  try {
+    const r = await api('/api/content');
+    contentTypes = r.data || [];
+    const total = contentTypes.reduce((s, t) => s + t.count, 0);
+    if (total === 0) {
+      // Seed some defaults
+      const defaults = ['cosmetic', 'news', 'event', 'banner', 'theme', 'background'];
+      for (const t of defaults) {
+        if (!contentTypes.find(ct => ct.type === t)) {
+          contentTypes.push({ type: t, name: t.charAt(0).toUpperCase() + t.slice(1) + 's', count: 0, draftCount: 0, publishedCount: 0 });
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load content types:', e);
+  }
+}
+
+function renderSidebar() {
+  const container = document.getElementById('sidebar-content-types');
+  container.innerHTML = contentTypes.map(ct => `
+    <button data-page="${ct.type}" onclick="switchPage('${ct.type}')">
+      <svg class="ico"><use href="#ico-${getIconForType(ct.type)}"/></svg>
+      <span class="nav-label">${ct.name}</span>
+      ${ct.draftCount > 0 ? `<span class="badge-count">${ct.draftCount}</span>` : ''}
+    </button>
+  `).join('');
+}
+
+function getIconForType(type) {
+  const icons = {
+    cosmetic: 'sparkles', news: 'newspaper', event: 'calendar', banner: 'image',
+    theme: 'palette', background: 'image', icon: 'file', ui_asset: 'package',
+    music: 'music', shader: 'code', resource_pack: 'box', font: 'type', other: 'folder'
+  };
+  return icons[type] || 'package';
+}
+
+function getColorForType(type) {
+  const colors = {
+    cosmetic: '#8b5cf6', news: '#10b981', event: '#06b6d4', banner: '#f59e0b',
+    theme: '#ec4899', background: '#6366f1', icon: '#f43f5e', ui_asset: '#14b8a6',
+    music: '#f59e0b', shader: '#22d3ee', resource_pack: '#3b82f6', font: '#a855f7', other: '#94a3b8'
+  };
+  return colors[type] || '#94a3b8';
+}
 
 // ===== Navigation =====
 function switchPage(page) {
-  document.querySelectorAll('.sidebar nav button').forEach(b=>b.classList.remove('active'));
+  currentPage = page;
+
+  // Update sidebar
+  document.querySelectorAll('.sidebar nav button').forEach(b => b.classList.remove('active'));
   const btn = document.querySelector(`.sidebar nav button[data-page="${page}"]`);
   if (btn) btn.classList.add('active');
-  document.querySelectorAll('#app-content .page').forEach(p=>p.classList.remove('active'));
-  const pg = document.getElementById('page-'+page);
-  if (pg) pg.classList.add('active');
-  if (page==='dashboard') renderDashboard();
-  else if (page==='assets') renderAssets();
-  else if (page==='cosmetics') renderCosmetics();
-  else if (page==='news') renderNews();
-  else if (page==='events') renderEvents();
-  else if (page==='banners') renderBanners();
+
+  // Ensure page element exists
+  let el = document.getElementById('page-' + page);
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'page';
+    el.id = 'page-' + page;
+    document.getElementById('app-content').appendChild(el);
+  }
+
+  document.querySelectorAll('#app-content .page').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+
+  // Render page
+  if (page === 'dashboard') renderDashboard();
+  else renderContentPage(page);
 }
 
 // ===== Dashboard =====
 async function renderDashboard() {
   const el = document.getElementById('page-dashboard');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  try {
-    const [cosRes,healthRes,assetStatsRes] = await Promise.all([
-      api('/api/cosmetics?limit=1'),fetch(API+'/api/health').then(r=>r.json()).catch(()=>({})),
-      fetch(API+'/api/assets/stats',{headers:{'Authorization':'Bearer '+token}}).then(r=>r.json()).catch(()=>({}))
-    ]);
-    const totalCos = cosRes.total || 0;
-    const assetStats = assetStatsRes;
-    const statusCounts = (assetStats.byStatus || []).reduce((a,c) => { a[c.status] = parseInt(c.count); return a; }, {});
-    
-    el.innerHTML = `
-      <div class="page-header"><h1>Dashboard</h1><p>&Uuml;bersicht &uuml;ber das Bamboo Backend</p></div>
-      <div class="stats-row">
-        <div class="stat-card"><div class="stat-value">${assetStats.total || 0}</div><div class="stat-label">Assets</div></div>
-        <div class="stat-card"><div class="stat-value">${totalCos}</div><div class="stat-label">Cosmetics</div></div>
-        <div class="stat-card"><div class="stat-value">${statusCounts.published || 0}</div><div class="stat-label">Ver&ouml;ffentlicht</div></div>
-        <div class="stat-card"><div class="stat-value">${statusCounts.draft || 0}</div><div class="stat-label">Entw&uuml;rfe</div></div>
-        <div class="stat-card"><div class="stat-value">${healthRes.database==='connected' ? 'Online' : 'Offline'}</div><div class="stat-label">Datenbank</div></div>
-        <div class="stat-card"><div class="stat-value">${healthRes.status==='ok' ? 'Online' : 'Offline'}</div><div class="stat-label">Backend</div></div>
+  if (!el) return;
+
+  // Refresh content types
+  await loadContentTypes();
+
+  const totalItems = contentTypes.reduce((s, t) => s + t.count, 0);
+  const draftItems = contentTypes.reduce((s, t) => s + t.draftCount, 0);
+  const publishedItems = contentTypes.reduce((s, t) => s + t.publishedCount, 0);
+
+  el.innerHTML = `
+    <div class="page-header">
+      <hgroup>
+        <h1>${ico('layout-dashboard')} Dashboard</h1>
+        <p class="subtitle">Übersicht über alle Inhalte des Bamboo Launchers</p>
+      </hgroup>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="publishAll()">
+          ${icosm('publish')} Alle veröffentlichen
+        </button>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div class="card">
-          <div class="card-header"><h3>Asset Typen</h3></div>
-          <div class="card-body" style="font-size:13px">
-            ${(assetStats.byType||[]).length > 0 ? assetStats.byType.map(t => `
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-subtle)">
-                <span class="badge-type badge-${t.asset_type}">${t.asset_type}</span>
-                <span style="font-weight:700">${t.count}</span>
-              </div>`).join('') : '<div class="empty-state"><p>Keine Assets</p></div>'}
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header"><h3>Schnellzugriff</h3></div>
-          <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
-            <button class="btn btn-primary" style="width:100%" onclick="switchPage('assets');openAssetModal()">Neues Asset erstellen</button>
-            <button class="btn btn-ghost" style="width:100%" onclick="switchPage('cosmetics')">Cosmetics verwalten</button>
-            <button class="btn btn-ghost" style="width:100%" onclick="switchPage('news')">News verwalten</button>
-          </div>
-        </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value" style="color:var(--accent)">${totalItems}</div>
+        <div class="stat-label">Inhalte gesamt</div>
       </div>
-    `;
-  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
+      <div class="stat-card">
+        <div class="stat-value" style="color:var(--warning)">${draftItems}</div>
+        <div class="stat-label">Entwürfe</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color:var(--accent)">${publishedItems}</div>
+        <div class="stat-label">Veröffentlicht</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color:var(--info)">${contentTypes.length}</div>
+        <div class="stat-label">Inhaltstypen</div>
+      </div>
+    </div>
+
+    <div class="type-grid">
+      ${contentTypes.map(ct => `
+        <div class="type-card" onclick="switchPage('${ct.type}')">
+          <div class="type-icon" style="background:${getColorForType(ct.type)}22;color:${getColorForType(ct.type)}">
+            <svg class="ico-lg"><use href="#ico-${getIconForType(ct.type)}"/></svg>
+          </div>
+          <div class="type-name">${ct.name}</div>
+          <div class="type-count"><strong>${ct.count}</strong> Einträge</div>
+          ${ct.draftCount > 0 ? `<span class="draft-badge">${ct.draftCount} Entwürfe</span>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
-// ===== ASSET MANAGER =====
-let assetFilters = { search:'', type:'all', status:'all', category:'all', sortBy:'updatedAt', sortDir:'desc' };
+// ===== Content Page =====
+async function renderContentPage(type) {
+  const el = document.getElementById('page-' + type);
+  if (!el) return;
 
-async function renderAssets() {
-  const el = document.getElementById('page-assets');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  try {
-    const params = new URLSearchParams({
-      search:assetFilters.search, assetType:assetFilters.type, category:assetFilters.category,
-      status:assetFilters.status, sortBy:assetFilters.sortBy, sortDir:assetFilters.sortDir, limit:'200'
-    });
-    const data = await api('/api/assets?'+params.toString());
-    assetsCache = data.data || [];
-    
-    el.innerHTML = `
-      <div class="page-header">
-        <div><h1>${ico('ico-package')}Asset Manager</h1><p>${data.total || 0} Assets im System</p></div>
-        <button class="btn btn-primary" onclick="openAssetModal()">${ico('ico-plus')}Neues Asset</button>
+  const ct = contentTypes.find(t => t.type === type) || { name: type.charAt(0).toUpperCase() + type.slice(1) + 's', count: 0 };
+
+  el.innerHTML = `
+    <div class="page-header">
+      <hgroup>
+        <h1>
+          <span class="ico" style="color:${getColorForType(type)}"><use href="#ico-${getIconForType(type)}"/></svg>
+          ${ct.name}
+        </h1>
+        <p class="subtitle">Alle ${ct.name.toLowerCase()} verwalten</p>
+      </hgroup>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="openCreate('${type}')">
+          ${icosm('plus')} Neu erstellen
+        </button>
       </div>
-      <div class="toolbar">
-        <div class="search-box">
-          ${ico('ico-search')}
-          <input type="text" id="asset-search" placeholder="Assets durchsuchen..." value="${escapeHtml(assetFilters.search)}"
-            oninput="assetFilters.search=this.value;renderAssets()">
+    </div>
+
+    <div class="toolbar">
+      <div class="search-box">
+        <svg class="ico ico-sm"><use href="#ico-search"/></svg>
+        <input type="text" id="search-${type}" placeholder="Suchen..." oninput="debounceSearch('${type}', this.value)">
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="loadContent('${type}')">
+        ${icosm('refresh')} Aktualisieren
+      </button>
+    </div>
+
+    <div id="content-list-${type}">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+
+    <div class="publish-panel">
+      <div class="publish-info">
+        <svg class="ico ico-lg"><use href="#ico-publish"/></svg>
+        <div>
+          <h3>Änderungen veröffentlichen</h3>
+          <p>Nach dem Veröffentlichen werden alle Änderungen im Launcher sichtbar.</p>
         </div>
-        ${ico('ico-filter')}
-        <select class="filter-select" id="filter-type" onchange="assetFilters.type=this.value;renderAssets()">
-          <option value="all">Alle Typen</option>
-          <option value="cosmetic">Cosmetic</option><option value="theme">Theme</option>
-          <option value="background">Background</option><option value="icon">Icon</option>
-          <option value="ui_asset">UI Asset</option><option value="music">Music</option>
-          <option value="shader">Shader</option><option value="resource_pack">Resource Pack</option>
-          <option value="font">Font</option><option value="other">Other</option>
-        </select>
-        <select class="filter-select" id="filter-status" onchange="assetFilters.status=this.value;renderAssets()">
-          <option value="all">Alle Status</option>
-          <option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option>
-        </select>
-        <select class="filter-select" id="filter-sort" onchange="const v=this.value.split(':');assetFilters.sortBy=v[0];assetFilters.sortDir=v[1];renderAssets()">
-          <option value="updatedAt:desc">Zuletzt aktualisiert</option><option value="name:asc">Name A-Z</option>
-          <option value="name:desc">Name Z-A</option><option value="version:desc">Version</option>
-          <option value="created:desc">Erstellungsdatum</option>
-        </select>
       </div>
-      ${assetsCache.length === 0 ? `
+      <button class="btn btn-warning" onclick="publishAll()">
+        ${icosm('publish')} Jetzt veröffentlichen
+      </button>
+    </div>
+  `;
+
+  loadContent(type);
+}
+
+async function loadContent(type) {
+  const listEl = document.getElementById('content-list-' + type);
+  if (!listEl) return;
+
+  try {
+    listEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    const r = await api(`/api/content/${type}?limit=100`);
+    const items = r.data || [];
+
+    if (items.length === 0) {
+      listEl.innerHTML = `
         <div class="empty-state">
-          ${ico('ico-package')}
-          <h3>Keine Assets gefunden</h3>
-          <p>Erstelle dein erstes Asset mit dem Button oben.</p>
+          <svg class="ico"><use href="#ico-${getIconForType(type)}"/></svg>
+          <h3>Noch keine ${type === 'cosmetic' ? 'Cosmetics' : type + 's'} vorhanden</h3>
+          <p>Erstelle den ersten Eintrag mit einem Klick auf "Neu erstellen".<br>
+          Nach dem Speichern kannst du Dateien per Drag & Drop hochladen.</p>
         </div>
-      ` : `
-        <div class="asset-grid">
-          ${assetsCache.map(a => `
-            <div class="asset-card" onclick="openAssetModal('${a.id}')">
-              <div class="asset-header">
-                <div>
-                  <div class="asset-name">${escapeHtml(a.name)}</div>
-                  <div class="asset-slug">${escapeHtml(a.slug)}</div>
-                </div>
-                <span class="badge badge-${a.status}">${a.status}</span>
-              </div>
-              ${a.description ? `<div class="asset-desc">${escapeHtml(a.description)}</div>` : ''}
-              <div class="asset-meta">
-                <span class="badge-type badge-${a.assetType}">${a.assetType}</span>
-                ${a.category && a.category !== 'general' ? `<span style="font-size:10px;color:var(--text-muted)">${escapeHtml(a.category)}</span>` : ''}
-                <span style="font-size:10px;color:var(--text-muted);margin-left:4px">v${a.version}</span>
-                <span style="font-size:10px;color:var(--text-muted)">${a.fileCount || 0} Dateien</span>
-              </div>
-              <div class="asset-actions" onclick="event.stopPropagation()">
-                <button class="btn btn-ghost btn-xs" onclick="openAssetModal('${a.id}')" title="Bearbeiten">${icosm('ico-edit')}</button>
-                <button class="btn btn-ghost btn-xs" onclick="toggleAsset('${a.id}')" title="${a.isActive?'Deaktivieren':'Aktivieren'}">${icosm(a.isActive?'ico-eye-off':'ico-eye')}</button>
-                <button class="btn btn-ghost btn-xs" onclick="changeAssetStatus('${a.id}','${a.status==='published'?'archived':'published'}')" title="Status wechseln">${icosm('ico-archive')}</button>
-                <button class="btn btn-danger btn-xs" onclick="deleteAsset('${a.id}')" title="L&ouml;schen">${icosm('ico-trash')}</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      `}
-    `;
-    
-    // Set filter values
-    setTimeout(() => {
-      const ft = document.getElementById('filter-type'); if (ft) ft.value = assetFilters.type;
-      const fs = document.getElementById('filter-status'); if (fs) fs.value = assetFilters.status;
-    }, 50);
-  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
+      `;
+      return;
+    }
+
+    listEl.innerHTML = `<div class="content-grid">${items.map(item => renderCard(type, item)).join('')}</div>`;
+  } catch (e) {
+    listEl.innerHTML = `<div class="empty-state"><h3>Fehler beim Laden</h3><p>${e.message}</p></div>`;
+  }
 }
 
-function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function renderCard(type, item) {
+  const rarityColors = { common: '#94a3b8', rare: '#60a5fa', epic: '#c084fc', legendary: '#fbbf24', mythic: '#f87171' };
+  const statusClass = item.status === 'published' ? 'status-published' : item.status === 'archived' ? 'status-archived' : 'status-draft';
+  const statusLabel = item.status === 'published' ? 'Veröffentlicht' : item.status === 'archived' ? 'Archiviert' : 'Entwurf';
+  const previewUrl = item.thumbnailUrl || item.imageUrl || item.previewUrl || '';
 
-// ===== Asset Modal =====
-function openAssetModal(id) {
-  document.getElementById('asset-id').value = id || '';
-  document.getElementById('asset-modal-title').textContent = id ? 'Asset bearbeiten' : 'Neues Asset';
-  document.querySelectorAll('#asset-modal-tabs button').forEach((b,i) => b.classList.toggle('active', i===0));
-  document.querySelectorAll('.asset-tab').forEach((t,i) => t.style.display = i===0 ? 'block' : 'none');
-  
-  if (!id) {
-    // New asset
-    document.getElementById('asset-slug').value = '';
-    document.getElementById('asset-name').value = '';
-    document.getElementById('asset-desc').value = '';
-    document.getElementById('asset-type').value = 'cosmetic';
-    document.getElementById('asset-status').value = 'draft';
-    document.getElementById('asset-version').value = '1';
-    document.getElementById('asset-category').value = '';
-    document.getElementById('asset-sort').value = '0';
-    document.getElementById('asset-thumbnail').value = '';
-    document.getElementById('asset-preview').value = '';
-    document.getElementById('asset-active').checked = true;
-    editingAssetTags = [];
-    renderTags();
-    document.getElementById('asset-files-list').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px"><svg class="ico ico-lg" style="margin:0 auto 8px;opacity:0.4"><use href="#ico-file"/></svg><p>Speichere das Asset zuerst.</p></div>';
-    document.getElementById('asset-modal').classList.add('open');
+  // Build type-specific tags
+  let tagsHtml = '';
+  if (type === 'cosmetic') {
+    const ct = item.metadata?.cosmeticType || item.type || 'cape';
+    const rar = item.metadata?.rarity || item.rarity || 'common';
+    tagsHtml = `
+      <span class="tag tag-${ct}">${ct}</span>
+      <span class="tag tag-${rar}">${rar}</span>
+    `;
+  }
+  if (item.category && item.category !== 'general') {
+    tagsHtml += `<span class="tag tag-category">${item.category}</span>`;
+  }
+  if (item.fileCount > 0) {
+    tagsHtml += `<span class="tag tag-file-count">${item.fileCount} Dateien</span>`;
+  }
+
+  return `
+    <div class="content-card">
+      <div class="card-preview">
+        ${previewUrl ? `<img src="${previewUrl}" alt="${item.name}" onerror="this.style.display='none'">` : `<svg class="placeholder-icon"><use href="#ico-${getIconForType(type)}"/></svg>`}
+        <span class="status-badge ${statusClass}">${statusLabel}</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">
+          ${item.rarity && rarityColors[item.rarity] ? `<span class="rarity-dot" style="background:${rarityColors[item.rarity]}"></span>` : ''}
+          ${item.name}
+        </div>
+        ${item.description ? `<div class="card-desc">${item.description}</div>` : ''}
+        <div class="card-meta">${tagsHtml}</div>
+      </div>
+      <div class="card-footer">
+        <div class="footer-left">
+          ${icosm('refresh')} ${timeAgo(item.updatedAt)}
+        </div>
+        <div class="footer-actions">
+          <button class="btn btn-ghost btn-xs" onclick="openEdit('${type}','${item.id}')" title="Bearbeiten">
+            ${icosm('edit')}
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="publishItem('${type}','${item.id}')" title="Veröffentlichen">
+            ${icosm('publish')}
+          </button>
+          <button class="btn btn-danger btn-xs" onclick="deleteItem('${type}','${item.id}')" title="Löschen">
+            ${icosm('trash')}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ===== Search =====
+let searchTimers = {};
+function debounceSearch(type, value) {
+  clearTimeout(searchTimers[type]);
+  searchTimers[type] = setTimeout(() => {
+    const listEl = document.getElementById('content-list-' + type);
+    if (!listEl) return;
+    const items = listEl.querySelectorAll('.content-card');
+    items.forEach(card => {
+      const title = card.querySelector('.card-title')?.textContent || '';
+      const desc = card.querySelector('.card-desc')?.textContent || '';
+      const match = !value || title.toLowerCase().includes(value.toLowerCase()) || desc.toLowerCase().includes(value.toLowerCase());
+      card.style.display = match ? '' : 'none';
+    });
+  }, 200);
+}
+
+// ===== Create / Edit =====
+function openCreate(type) {
+  editingItem = null;
+  document.getElementById('editor-modal-title').textContent = `Neuen ${type === 'cosmetic' ? 'Eintrag' : 'Eintrag'} erstellen`;
+  document.getElementById('editor-id').value = '';
+  document.getElementById('editor-type').value = type;
+  document.getElementById('editor-name').value = '';
+  document.getElementById('editor-desc').value = '';
+  document.getElementById('editor-category').value = '';
+  document.getElementById('editor-status').value = 'draft';
+  document.getElementById('editor-save-btn').innerHTML = `${icosm('check')} Speichern`;
+
+  // Show/hide type-specific fields
+  document.getElementById('cosmetic-fields').style.display = type === 'cosmetic' ? 'block' : 'none';
+  document.getElementById('news-fields').style.display = type === 'news' ? 'block' : 'none';
+  document.getElementById('event-fields').style.display = type === 'event' ? 'block' : 'none';
+  document.getElementById('banner-fields').style.display = type === 'banner' ? 'block' : 'none';
+  document.getElementById('upload-section').style.display = 'none';
+
+  document.getElementById('editor-modal').classList.add('open');
+}
+
+async function openEdit(type, id) {
+  try {
+    const item = await api(`/api/content/${type}/${id}`);
+    editingItem = item;
+
+    document.getElementById('editor-modal-title').textContent = `Bearbeiten: ${item.name}`;
+    document.getElementById('editor-id').value = item.id;
+    document.getElementById('editor-type').value = type;
+    document.getElementById('editor-name').value = item.name || '';
+    document.getElementById('editor-desc').value = item.description || '';
+    document.getElementById('editor-category').value = item.category || '';
+    document.getElementById('editor-status').value = item.status || 'draft';
+
+    // Type-specific fields
+    document.getElementById('cosmetic-fields').style.display = type === 'cosmetic' ? 'block' : 'none';
+    if (type === 'cosmetic') {
+      document.getElementById('editor-cosmetic-type').value = item.metadata?.cosmeticType || item.type || 'cape';
+      document.getElementById('editor-rarity').value = item.metadata?.rarity || item.rarity || 'common';
+      document.getElementById('editor-accent').value = item.metadata?.accentColor || item.accentColor || '';
+    }
+
+    document.getElementById('news-fields').style.display = type === 'news' ? 'block' : 'none';
+    if (type === 'news') {
+      document.getElementById('news-subtitle').value = item.metadata?.subtitle || item.subtitle || '';
+      document.getElementById('news-content').value = item.metadata?.content || item.content || '';
+      document.getElementById('news-author').value = item.metadata?.author || item.author || 'Bamboo Team';
+      document.getElementById('news-version').value = item.metadata?.gameVersion || item.gameVersion || '';
+    }
+
+    document.getElementById('event-fields').style.display = type === 'event' ? 'block' : 'none';
+    if (type === 'event') {
+      document.getElementById('event-subtitle').value = item.metadata?.subtitle || item.subtitle || '';
+      const startDate = item.metadata?.startDate || item.startDate;
+      document.getElementById('event-start').value = startDate ? startDate.substring(0, 16) : '';
+      const endDate = item.metadata?.endDate || item.endDate;
+      document.getElementById('event-end').value = endDate ? endDate.substring(0, 16) : '';
+      document.getElementById('event-priority').value = item.metadata?.priority || item.priority || 0;
+      document.getElementById('event-author').value = item.metadata?.author || item.author || 'Bamboo Team';
+    }
+
+    document.getElementById('banner-fields').style.display = type === 'banner' ? 'block' : 'none';
+    if (type === 'banner') {
+      document.getElementById('banner-target').value = item.metadata?.clickTarget || item.clickTarget || '';
+      document.getElementById('banner-clicktype').value = item.metadata?.clickType || item.clickType || 'external';
+      document.getElementById('banner-priority').value = item.metadata?.priority || item.priority || 0;
+    }
+
+    // Show upload section
+    document.getElementById('upload-section').style.display = 'block';
+    document.getElementById('upload-area').style.display = 'none';
+    document.getElementById('toggle-upload').checked = false;
+    document.getElementById('uploaded-files').innerHTML = '';
+
+    document.getElementById('editor-save-btn').innerHTML = `${icosm('check')} Aktualisieren`;
+    document.getElementById('editor-modal').classList.add('open');
+  } catch (e) {
+    showToast('Fehler beim Laden: ' + e.message, 'error');
+  }
+}
+
+async function saveContent() {
+  const type = document.getElementById('editor-type').value;
+  const id = document.getElementById('editor-id').value;
+  const name = document.getElementById('editor-name').value.trim();
+
+  if (!name) {
+    showToast('Bitte gib einen Namen ein.', 'error');
     return;
   }
-  
-  // Load existing
-  api('/api/assets/'+id).then(asset => {
-    document.getElementById('asset-slug').value = asset.slug || '';
-    document.getElementById('asset-name').value = asset.name || '';
-    document.getElementById('asset-desc').value = asset.description || '';
-    document.getElementById('asset-type').value = asset.assetType || 'cosmetic';
-    document.getElementById('asset-status').value = asset.status || 'draft';
-    document.getElementById('asset-version').value = asset.version || 1;
-    document.getElementById('asset-category').value = asset.category || '';
-    document.getElementById('asset-sort').value = asset.sortOrder || 0;
-    document.getElementById('asset-thumbnail').value = asset.thumbnailUrl || '';
-    document.getElementById('asset-preview').value = asset.previewUrl || '';
-    document.getElementById('asset-active').checked = asset.isActive !== false;
-    editingAssetTags = asset.tags || [];
-    renderTags();
-    
-    // Files
-    const files = asset.files || [];
-    const fl = document.getElementById('asset-files-list');
-    if (files.length === 0) {
-      fl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px"><svg class="ico ico-lg" style="margin:0 auto 8px;opacity:0.4"><use href="#ico-file"/></svg><p>Keine Dateien vorhanden</p></div>';
-    } else {
-      fl.innerHTML = files.map(f => `
-        <div class="file-item">
-          ${icosm('ico-file')}
-          <span class="file-name">${escapeHtml(f.fileName)}</span>
-          <span class="file-type">${f.fileType}</span>
-          <span class="file-size">${formatBytes(f.fileSize)}</span>
-          <button class="btn btn-ghost btn-xs" onclick="removeAssetFile('${id}','${f.id}')">${icosm('ico-trash')}</button>
-        </div>
-      `).join('');
-    }
-  }).catch(e => showToast('Fehler: '+e.message,'error'));
-  
-  document.getElementById('asset-modal').classList.add('open');
-}
 
-// Asset modal tabs
-document.getElementById('asset-modal-tabs').addEventListener('click', function(e) {
-  if (e.target.tagName !== 'BUTTON') return;
-  const tab = e.target.dataset.tab;
-  this.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-  e.target.classList.add('active');
-  document.querySelectorAll('.asset-tab').forEach(t => t.style.display = 'none');
-  document.getElementById('tab-'+tab).style.display = 'block';
-});
-
-// Tags
-function renderTags() {
-  const wrap = document.getElementById('tags-display');
-  wrap.innerHTML = editingAssetTags.map((t,i) => `
-    <span class="tag">${escapeHtml(t)}<span class="tag-close" onclick="editingAssetTags.splice(${i},1);renderTags()">${icosm('ico-x')}</span></span>
-  `).join('');
-}
-document.getElementById('tag-input').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const v = this.value.trim();
-    if (v && !editingAssetTags.includes(v)) { editingAssetTags.push(v); renderTags(); }
-    this.value = '';
-  }
-});
-
-async function saveAsset() {
-  const id = document.getElementById('asset-id').value;
   const body = {
-    slug: document.getElementById('asset-slug').value,
-    name: document.getElementById('asset-name').value,
-    description: document.getElementById('asset-desc').value,
-    assetType: document.getElementById('asset-type').value,
-    status: document.getElementById('asset-status').value,
-    version: parseInt(document.getElementById('asset-version').value) || 1,
-    category: document.getElementById('asset-category').value,
-    sortOrder: parseInt(document.getElementById('asset-sort').value) || 0,
-    thumbnailUrl: document.getElementById('asset-thumbnail').value,
-    previewUrl: document.getElementById('asset-preview').value,
-    tags: editingAssetTags,
-    isActive: document.getElementById('asset-active').checked,
-    metadata: {}
+    name,
+    description: document.getElementById('editor-desc').value.trim(),
+    category: document.getElementById('editor-category').value.trim() || 'general',
+    status: document.getElementById('editor-status').value,
   };
-  if (!body.slug || !body.name) { showToast('Slug und Name sind erforderlich','error'); return; }
+
+  // Add type-specific fields
+  if (type === 'cosmetic') {
+    body.type = document.getElementById('editor-cosmetic-type').value;
+    body.rarity = document.getElementById('editor-rarity').value;
+    body.accentColor = document.getElementById('editor-accent').value.trim();
+  }
+  if (type === 'news') {
+    body.metadata = {
+      subtitle: document.getElementById('news-subtitle').value.trim(),
+      content: document.getElementById('news-content').value,
+      author: document.getElementById('news-author').value.trim() || 'Bamboo Team',
+      gameVersion: document.getElementById('news-version').value.trim(),
+    };
+  }
+  if (type === 'event') {
+    body.metadata = {
+      subtitle: document.getElementById('event-subtitle').value.trim(),
+      startDate: document.getElementById('event-start').value ? new Date(document.getElementById('event-start').value).toISOString() : null,
+      endDate: document.getElementById('event-end').value ? new Date(document.getElementById('event-end').value).toISOString() : null,
+      priority: parseInt(document.getElementById('event-priority').value) || 0,
+      author: document.getElementById('event-author').value.trim() || 'Bamboo Team',
+    };
+  }
+  if (type === 'banner') {
+    body.metadata = {
+      clickTarget: document.getElementById('banner-target').value.trim(),
+      clickType: document.getElementById('banner-clicktype').value,
+      priority: parseInt(document.getElementById('banner-priority').value) || 0,
+    };
+  }
+
   try {
+    let result;
     if (id) {
-      await api('/api/assets/'+id, { method:'PUT', body:JSON.stringify(body) });
-      showToast('Asset aktualisiert','success');
+      result = await api(`/api/content/${type}/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+      showToast('Gespeichert ✅', 'success');
     } else {
-      await api('/api/assets', { method:'POST', body:JSON.stringify(body) });
-      showToast('Asset erstellt','success');
+      result = await api(`/api/content/${type}`, { method: 'POST', body: JSON.stringify(body) });
+      showToast('Erstellt ✅', 'success');
+      // Now open the edit mode for upload
+      closeModal();
+      openEdit(type, result.id);
+      return;
     }
-    closeModal('asset-modal');
-    renderAssets();
-  } catch(e) { showToast('Fehler: '+e.message,'error'); }
+
+    closeModal();
+    loadContent(type);
+
+    // Refresh dashboard data
+    await loadContentTypes();
+    renderSidebar();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
-async function addAssetFile() {
-  const id = document.getElementById('asset-id').value;
-  if (!id) { showToast('Bitte zuerst speichern','error'); return; }
-  const fileName = document.getElementById('new-file-name').value.trim();
-  const fileType = document.getElementById('new-file-type').value;
-  const filePath = document.getElementById('new-file-path').value.trim();
-  if (!fileName) { showToast('Dateiname erforderlich','error'); return; }
+// ===== Delete =====
+async function deleteItem(type, id) {
+  if (!confirm('Wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
+
   try {
-    await api('/api/assets/'+id+'/files', { method:'POST', body:JSON.stringify({ fileName, fileType, filePath: filePath || fileName }) });
-    showToast('Datei hinzugef&uuml;gt','success');
-    document.getElementById('new-file-name').value = '';
-    document.getElementById('new-file-path').value = '';
-    openAssetModal(id);
-  } catch(e) { showToast('Fehler: '+e.message,'error'); }
+    await api(`/api/content/${type}/${id}`, { method: 'DELETE' });
+    showToast('Gelöscht ✅', 'success');
+    loadContent(type);
+    await loadContentTypes();
+    renderSidebar();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
-async function removeAssetFile(assetId, fileId) {
-  if (!confirm('Datei wirklich entfernen?')) return;
+// ===== Publish =====
+async function publishItem(type, id) {
   try {
-    await api('/api/assets/'+assetId+'/files/'+fileId, { method:'DELETE' });
-    showToast('Datei entfernt','success');
-    openAssetModal(assetId);
-  } catch(e) { showToast('Fehler: '+e.message,'error'); }
+    const r = await api(`/api/content/${type}/${id}/publish`, { method: 'POST' });
+    showToast(r.message || 'Veröffentlicht ✅', 'success');
+    loadContent(type);
+    await loadContentTypes();
+    renderSidebar();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
-async function toggleAsset(id) {
-  try { await api('/api/assets/'+id+'/toggle', { method:'PATCH' }); showToast('Status ge&auml;ndert','success'); renderAssets(); }
-  catch(e) { showToast('Fehler: '+e.message,'error'); }
-}
+async function publishAll() {
+  if (!confirm('Alle Entwürfe veröffentlichen und Manifest aktualisieren?')) return;
 
-async function changeAssetStatus(id, status) {
-  try { await api('/api/assets/'+id+'/status', { method:'PATCH', body:JSON.stringify({status}) }); showToast('Status: '+status,'success'); renderAssets(); }
-  catch(e) { showToast('Fehler: '+e.message,'error'); }
-}
-
-async function deleteAsset(id) {
-  if (!confirm('Asset wirklich loschen? Alle Dateien werden mit entfernt.')) return;
-  try { await api('/api/assets/'+id, { method:'DELETE' }); showToast('Asset gel&ouml;scht','success'); renderAssets(); }
-  catch(e) { showToast('Fehler: '+e.message,'error'); }
-}
-
-// ===== Cosmetics ===== (de-emojified)
-async function renderCosmetics() {
-  const el = document.getElementById('page-cosmetics');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try {
-    const data = await api('/api/cosmetics?limit=500');
-    cosmeticsCache = data.data || [];
-    el.innerHTML = `
-      <div class="page-header">
-        <div><h1>${ico('ico-sparkles')}Cosmetics</h1><p>${cosmeticsCache.length} Cosmetic(s) im Katalog</p></div>
-        <button class="btn btn-primary" onclick="openCosmeticModal()">${ico('ico-plus')}Neu</button>
-      </div>
-      <div class="card"><div class="card-body">
-        ${cosmeticsCache.length===0 ? `<div class="empty-state">${ico('ico-sparkles')}<p>Keine Cosmetics vorhanden</p></div>` : `
-        <table class="data-table">
-          <thead><tr><th>Slug</th><th>Name</th><th>Typ</th><th>Seltenheit</th><th>Status</th><th>Aktionen</th></tr></thead>
-          <tbody>${cosmeticsCache.map(c => `
-            <tr>
-              <td style="font-family:monospace;font-size:12px;color:var(--text-muted)">${escapeHtml(c.slug)}</td>
-              <td style="font-weight:600">${escapeHtml(c.name)}</td>
-              <td><span class="badge-type badge-${c.type}">${c.type}</span></td>
-              <td><span class="badge-rarity ${c.rarity}">${c.rarity}</span></td>
-              <td><span class="status-dot ${c.isActive?'active':'inactive'}"></span>${c.isActive?'Aktiv':'Inaktiv'}</td>
-              <td>
-                <button class="btn btn-ghost btn-xs" onclick="editCosmetic('${c.id}')">${icosm('ico-edit')}</button>
-                <button class="btn btn-xs ${c.isActive?'btn-ghost':'btn-primary'}" onclick="toggleCosmetic('${c.id}')">${c.isActive?'Deaktivieren':'Aktivieren'}</button>
-                <button class="btn btn-danger btn-xs" onclick="deleteCosmetic('${c.id}')">${icosm('ico-trash')}</button>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>`}
-      </div></div>
-    `;
-  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
+    const r = await api('/api/content/publish-all', { method: 'POST' });
+    const version = r.manifest ? ` (Version ${r.manifest.version})` : '';
+    showToast(r.message + version + ' ✅', 'success');
+    await loadContentTypes();
+    renderSidebar();
+    if (currentPage !== 'dashboard') loadContent(currentPage);
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
-// Original cosmetic functions (de-emojified)
-function openCosmeticModal(item) {
-  document.getElementById('cosmetic-modal-title').textContent = item ? 'Cosmetic bearbeiten' : 'Neues Cosmetic';
-  document.getElementById('cosmetic-id').value = item ? item.id : '';
-  document.getElementById('cosmetic-slug').value = item ? item.slug : '';
-  document.getElementById('cosmetic-name').value = item ? item.name : '';
-  document.getElementById('cosmetic-desc').value = item ? item.description : '';
-  document.getElementById('cosmetic-type').value = item ? item.type : 'cape';
-  document.getElementById('cosmetic-rarity').value = item ? item.rarity : 'common';
-  document.getElementById('cosmetic-preview').value = item ? item.previewUrl : '';
-  document.getElementById('cosmetic-modal').classList.add('open');
-}
-function editCosmetic(id) { const item = cosmeticsCache.find(c => c.id === id); if (item) openCosmeticModal(item); }
-async function saveCosmetic() {
-  const id = document.getElementById('cosmetic-id').value;
-  const body = { slug:document.getElementById('cosmetic-slug').value, name:document.getElementById('cosmetic-name').value, description:document.getElementById('cosmetic-desc').value, type:document.getElementById('cosmetic-type').value, rarity:document.getElementById('cosmetic-rarity').value, previewUrl:document.getElementById('cosmetic-preview').value };
-  if (!body.slug||!body.name) { showToast('Slug und Name erforderlich','error'); return; }
-  try {
-    if (id) { await api('/api/cosmetics/'+id,{method:'PUT',body:JSON.stringify(body)}); showToast('Cosmetic aktualisiert','success'); }
-    else { await api('/api/cosmetics',{method:'POST',body:JSON.stringify(body)}); showToast('Cosmetic erstellt','success'); }
-    closeModal('cosmetic-modal'); renderCosmetics();
-  } catch(e) { showToast('Fehler: '+e.message,'error'); }
-}
-async function toggleCosmetic(id) { try { await api('/api/cosmetics/'+id+'/toggle',{method:'PATCH'}); showToast('Status ge&auml;ndert','success'); renderCosmetics(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
-async function deleteCosmetic(id) { if (!confirm('Wirklich loschen?')) return; try { await api('/api/cosmetics/'+id,{method:'DELETE'}); showToast('Cosmetic gel&ouml;scht','success'); renderCosmetics(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
+// ===== File Upload (Drag & Drop) =====
+async function handleDrop(event) {
+  event.preventDefault();
+  document.getElementById('drop-zone').classList.remove('dragover');
 
-// ===== News =====
-async function renderNews() {
-  const el = document.getElementById('page-news');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  try {
-    const data = await api('/api/news?limit=50');
-    newsCache = data.data || [];
-    el.innerHTML = `
-      <div class="page-header">
-        <div><h1>${ico('ico-newspaper')}News</h1><p>${newsCache.length} News-Eintr&auml;ge</p></div>
-        <button class="btn btn-primary" onclick="openNewsModal()">${ico('ico-plus')}Neu</button>
-      </div>
-      <div class="card"><div class="card-body">
-        ${newsCache.length===0 ? `<div class="empty-state">${ico('ico-newspaper')}<p>Keine News vorhanden</p></div>` : `
-        <table class="data-table">
-          <thead><tr><th>Titel</th><th>Kategorie</th><th>Status</th><th>Datum</th><th>Aktionen</th></tr></thead>
-          <tbody>${newsCache.map(n => `
-            <tr>
-              <td style="font-weight:600">${escapeHtml(n.title)}${n.isPinned?' '+icosm('ico-tag'):''}</td>
-              <td><span style="font-size:11px;color:var(--text-muted)">${escapeHtml(n.category||'general')}</span></td>
-              <td><span class="status-dot ${n.isVisible?'active':'inactive'}"></span>${n.isVisible?'Sichtbar':'Versteckt'}</td>
-              <td style="color:var(--text-muted);font-size:12px">${n.publishedAt?new Date(n.publishedAt).toLocaleDateString():'—'}</td>
-              <td>
-                <button class="btn btn-ghost btn-xs" onclick="editNews('${n.id}')">${icosm('ico-edit')}</button>
-                <button class="btn btn-xs ${n.isVisible?'btn-ghost':'btn-primary'}" onclick="toggleNews('${n.id}')">${n.isVisible?'Verstecken':'Zeigen'}</button>
-                <button class="btn btn-danger btn-xs" onclick="deleteNews('${n.id}')">${icosm('ico-trash')}</button>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>`}
-      </div></div>
-    `;
-  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
+  const files = event.dataTransfer.files;
+  if (!files || files.length === 0) return;
+  await uploadFiles(files);
 }
-// Original news functions (de-emojified)
-function openNewsModal(item) {
-  document.getElementById('news-modal-title').textContent = item ? 'News bearbeiten' : 'Neuer News-Eintrag';
-  document.getElementById('news-id').value = item ? item.id : '';
-  document.getElementById('news-title').value = item ? item.title : '';
-  document.getElementById('news-subtitle').value = item ? item.subtitle : '';
-  document.getElementById('news-content').value = item ? item.content : '';
-  document.getElementById('news-category').value = item ? item.category : 'general';
-  document.getElementById('news-banner').value = item ? item.bannerUrl : '';
-  document.getElementById('news-published').value = item&&item.publishedAt ? new Date(item.publishedAt).toISOString().slice(0,16) : new Date().toISOString().slice(0,16);
-  document.getElementById('news-version').value = item ? item.gameVersion : '';
-  document.getElementById('news-visible').checked = item ? item.isVisible : true;
-  document.getElementById('news-pinned').checked = item ? item.isPinned : false;
-  document.getElementById('news-modal').classList.add('open');
-}
-function editNews(id) { const item = newsCache.find(n => n.id===id); if (item) openNewsModal(item); }
-async function saveNews() {
-  const id = document.getElementById('news-id').value;
-  const body = { title:document.getElementById('news-title').value, subtitle:document.getElementById('news-subtitle').value, content:document.getElementById('news-content').value, category:document.getElementById('news-category').value||'general', bannerUrl:document.getElementById('news-banner').value, publishedAt:document.getElementById('news-published').value||new Date().toISOString(), gameVersion:document.getElementById('news-version').value, isVisible:document.getElementById('news-visible').checked, isPinned:document.getElementById('news-pinned').checked };
-  if (!body.title) { showToast('Titel erforderlich','error'); return; }
-  try {
-    if (id) { await api('/api/news/'+id,{method:'PUT',body:JSON.stringify(body)}); showToast('News aktualisiert','success'); }
-    else { await api('/api/news',{method:'POST',body:JSON.stringify(body)}); showToast('News erstellt','success'); }
-    closeModal('news-modal'); renderNews();
-  } catch(e) { showToast('Fehler: '+e.message,'error'); }
-}
-async function toggleNews(id) { try { await api('/api/news/'+id+'/visibility',{method:'PATCH'}); showToast('Sichtbarkeit ge&auml;ndert','success'); renderNews(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
-async function deleteNews(id) { if (!confirm('Wirklich loschen?')) return; try { await api('/api/news/'+id,{method:'DELETE'}); showToast('News gel&ouml;scht','success'); renderNews(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
 
-// ===== Events =====
-async function renderEvents() {
-  const el = document.getElementById('page-events');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  try {
-    const data = await api('/api/events?limit=50');
-    eventsCache = data.data || [];
-    el.innerHTML = `
-      <div class="page-header">
-        <div><h1>${ico('ico-calendar')}Events</h1><p>${eventsCache.length} Events</p></div>
-        <button class="btn btn-primary" onclick="openEventModal()">${ico('ico-plus')}Neu</button>
-      </div>
-      <div class="card"><div class="card-body">
-        ${eventsCache.length===0 ? `<div class="empty-state">${ico('ico-calendar')}<p>Keine Events vorhanden</p></div>` : `
-        <table class="data-table">
-          <thead><tr><th>Titel</th><th>Kategorie</th><th>Start</th><th>Ende</th><th>Status</th><th>Aktionen</th></tr></thead>
-          <tbody>${eventsCache.map(e => `
-            <tr>
-              <td style="font-weight:600">${escapeHtml(e.title)}</td>
-              <td style="color:var(--text-muted);font-size:12px">${escapeHtml(e.category||'general')}</td>
-              <td style="color:var(--text-muted);font-size:12px">${new Date(e.startDate).toLocaleDateString()}</td>
-              <td style="color:var(--text-muted);font-size:12px">${e.endDate?new Date(e.endDate).toLocaleDateString():'—'}</td>
-              <td><span class="status-dot ${e.isActive?'active':'inactive'}"></span>${e.isActive?'Aktiv':'Inaktiv'}</td>
-              <td>
-                <button class="btn btn-ghost btn-xs" onclick="editEvent('${e.id}')">${icosm('ico-edit')}</button>
-                <button class="btn btn-xs ${e.isActive?'btn-ghost':'btn-primary'}" onclick="toggleEvent('${e.id}')">${e.isActive?'Deaktiv.':'Aktivieren'}</button>
-                <button class="btn btn-danger btn-xs" onclick="deleteEvent('${e.id}')">${icosm('ico-trash')}</button>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>`}
-      </div></div>
-    `;
-  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
+async function handleFileSelect(event) {
+  const files = event.target.files;
+  if (!files || files.length === 0) return;
+  await uploadFiles(files);
+  event.target.value = '';
 }
-// Original events functions (de-emojified)
-function openEventModal(item) {
-  document.getElementById('events-modal-title').textContent = item ? 'Event bearbeiten' : 'Neues Event';
-  document.getElementById('event-id').value = item ? item.id : '';
-  document.getElementById('event-title').value = item ? item.title : '';
-  document.getElementById('event-subtitle').value = item ? item.subtitle : '';
-  document.getElementById('event-desc').value = item ? item.description : '';
-  document.getElementById('event-category').value = item ? item.category : 'general';
-  document.getElementById('event-banner').value = item ? item.bannerUrl : '';
-  document.getElementById('event-start').value = item&&item.startDate ? new Date(item.startDate).toISOString().slice(0,16) : '';
-  document.getElementById('event-end').value = item&&item.endDate ? new Date(item.endDate).toISOString().slice(0,16) : '';
-  document.getElementById('event-priority').value = item ? item.priority : 0;
-  document.getElementById('event-author').value = item ? item.author : 'Bamboo Team';
-  document.getElementById('event-active').checked = item ? item.isActive : true;
-  document.getElementById('event-visible').checked = item ? item.isVisible : true;
-  document.getElementById('events-modal').classList.add('open');
-}
-function editEvent(id) { const item = eventsCache.find(e => e.id===id); if (item) openEventModal(item); }
-async function saveEvent() {
-  const id = document.getElementById('event-id').value;
-  const body = { title:document.getElementById('event-title').value, subtitle:document.getElementById('event-subtitle').value, description:document.getElementById('event-desc').value, category:document.getElementById('event-category').value||'general', bannerUrl:document.getElementById('event-banner').value, startDate:document.getElementById('event-start').value||new Date().toISOString(), endDate:document.getElementById('event-end').value||null, priority:parseInt(document.getElementById('event-priority').value)||0, author:document.getElementById('event-author').value||'Bamboo Team', isActive:document.getElementById('event-active').checked, isVisible:document.getElementById('event-visible').checked };
-  if (!body.title) { showToast('Titel erforderlich','error'); return; }
-  try {
-    if (id) { await api('/api/events/'+id,{method:'PUT',body:JSON.stringify(body)}); showToast('Event aktualisiert','success'); }
-    else { await api('/api/events',{method:'POST',body:JSON.stringify(body)}); showToast('Event erstellt','success'); }
-    closeModal('events-modal'); renderEvents();
-  } catch(e) { showToast('Fehler: '+e.message,'error'); }
-}
-async function toggleEvent(id) { try { await api('/api/events/'+id+'/toggle',{method:'PATCH'}); showToast('Status ge&auml;ndert','success'); renderEvents(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
-async function deleteEvent(id) { if (!confirm('Wirklich loschen?')) return; try { await api('/api/events/'+id,{method:'DELETE'}); showToast('Event gel&ouml;scht','success'); renderEvents(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
 
-// ===== Banners =====
-async function renderBanners() {
-  const el = document.getElementById('page-banners');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  try {
-    const data = await api('/api/banners');
-    bannersCache = data.data || [];
-    el.innerHTML = `
-      <div class="page-header">
-        <div><h1>${ico('ico-image')}Banners</h1><p>${bannersCache.length} Banner(s)</p></div>
-        <button class="btn btn-primary" onclick="openBannerModal()">${ico('ico-plus')}Neu</button>
-      </div>
-      <div class="card"><div class="card-body">
-        ${bannersCache.length===0 ? `<div class="empty-state">${ico('ico-image')}<p>Keine Banners vorhanden</p></div>` : `
-        <table class="data-table">
-          <thead><tr><th>Titel</th><th>Vorschau</th><th>Sortierung</th><th>Status</th><th>Aktionen</th></tr></thead>
-          <tbody>${bannersCache.map(b => `
-            <tr>
-              <td style="font-weight:600">${escapeHtml(b.title)}</td>
-              <td>${b.imageUrl?'<img src="'+b.imageUrl+'" style="height:36px;border-radius:6px;object-fit:cover" onerror="this.style.display=\'none\'">':'<span style="color:var(--text-muted)">—</span>'}</td>
-              <td style="color:var(--text-muted);font-size:12px">${b.sortOrder||0}</td>
-              <td><span class="status-dot ${b.isActive?'active':'inactive'}"></span>${b.isActive?'Aktiv':'Inaktiv'}</td>
-              <td>
-                <button class="btn btn-ghost btn-xs" onclick="editBanner('${b.id}')">${icosm('ico-edit')}</button>
-                <button class="btn btn-xs ${b.isActive?'btn-ghost':'btn-primary'}" onclick="toggleBanner('${b.id}')">${b.isActive?'Deaktiv.':'Aktivieren'}</button>
-                <button class="btn btn-danger btn-xs" onclick="deleteBanner('${b.id}')">${icosm('ico-trash')}</button>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>`}
-      </div></div>
-    `;
-  } catch(e) { el.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
-}
-// Original banners functions (de-emojified)
-function openBannerModal(item) {
-  document.getElementById('banners-modal-title').textContent = item ? 'Banner bearbeiten' : 'Neues Banner';
-  document.getElementById('banner-id').value = item ? item.id : '';
-  document.getElementById('banner-title').value = item ? item.title : '';
-  document.getElementById('banner-image').value = item ? item.imageUrl : '';
-  document.getElementById('banner-desc').value = item ? item.description : '';
-  document.getElementById('banner-target').value = item ? item.clickTarget : '';
-  document.getElementById('banner-clicktype').value = item ? item.clickType : 'external';
-  document.getElementById('banner-sort').value = item ? item.sortOrder : 0;
-  document.getElementById('banner-priority').value = item ? item.priority : 0;
-  document.getElementById('banner-active').checked = item ? item.isActive : true;
-  document.getElementById('banners-modal').classList.add('open');
-}
-function editBanner(id) { const item = bannersCache.find(b => b.id===id); if (item) openBannerModal(item); }
-async function saveBanner() {
-  const id = document.getElementById('banner-id').value;
-  const body = { title:document.getElementById('banner-title').value, imageUrl:document.getElementById('banner-image').value, description:document.getElementById('banner-desc').value, clickTarget:document.getElementById('banner-target').value, clickType:document.getElementById('banner-clicktype').value, sortOrder:parseInt(document.getElementById('banner-sort').value)||0, priority:parseInt(document.getElementById('banner-priority').value)||0, isActive:document.getElementById('banner-active').checked };
-  if (!body.title) { showToast('Titel erforderlich','error'); return; }
-  if (!body.imageUrl) { showToast('Bild-URL erforderlich','error'); return; }
-  try {
-    if (id) { await api('/api/banners/'+id,{method:'PUT',body:JSON.stringify(body)}); showToast('Banner aktualisiert','success'); }
-    else { await api('/api/banners',{method:'POST',body:JSON.stringify(body)}); showToast('Banner erstellt','success'); }
-    closeModal('banners-modal'); renderBanners();
-  } catch(e) { showToast('Fehler: '+e.message,'error'); }
-}
-async function toggleBanner(id) { try { await api('/api/banners/'+id+'/toggle',{method:'PATCH'}); showToast('Status ge&auml;ndert','success'); renderBanners(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
-async function deleteBanner(id) { if (!confirm('Wirklich loschen?')) return; try { await api('/api/banners/'+id,{method:'DELETE'}); showToast('Banner gel&ouml;scht','success'); renderBanners(); } catch(e) { showToast('Fehler: '+e.message,'error'); } }
+async function uploadFiles(files) {
+  const id = document.getElementById('editor-id').value;
+  const type = document.getElementById('editor-type').value;
+  if (!id || !type) {
+    showToast('Bitte zuerst speichern, bevor Dateien hochgeladen werden.', 'error');
+    return;
+  }
 
-// ===== CSS for status dots & rarity badges (preserved from original) =====
-const extraStyle = document.createElement('style');
-extraStyle.textContent = `
-  .status-dot { display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px; }
-  .status-dot.active { background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.4); }
-  .status-dot.inactive { background:#64748b; }
-  .badge-rarity { display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px; }
-  .badge-rarity.common { background:rgba(148,163,184,0.1);color:#94a3b8;border:1px solid rgba(148,163,184,0.2); }
-  .badge-rarity.rare { background:rgba(96,165,250,0.1);color:#93c5fd;border:1px solid rgba(96,165,250,0.2); }
-  .badge-rarity.epic { background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.2); }
-  .badge-rarity.legendary { background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.2); }
-  .badge-rarity.mythic { background:rgba(251,146,60,0.1);color:#fb923c;border:1px solid rgba(251,146,60,0.2); }
-  .badge-type.cape { background:rgba(99,102,241,0.1);color:#818cf8;border:1px solid rgba(99,102,241,0.2); }
-  .badge-type.aura { background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.2); }
-  .badge-type.hat { background:rgba(245,158,11,0.1);color:#fbbf24;border:1px solid rgba(245,158,11,0.2); }
-  .badge-type.ear { background:rgba(236,72,153,0.1);color:#f472b6;border:1px solid rgba(236,72,153,0.2); }
-  .badge-type.wings { background:rgba(14,165,233,0.1);color:#38bdf8;border:1px solid rgba(14,165,233,0.2); }
-  .badge-type.rank { background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.2); }
-  .badge-type.other { background:rgba(148,163,184,0.1);color:#94a3b8;border:1px solid rgba(148,163,184,0.2); }
-`;
-document.head.appendChild(extraStyle);
+  const progress = document.getElementById('upload-progress');
+  const bar = document.getElementById('progress-bar');
+  const status = document.getElementById('upload-status');
+  progress.classList.add('show');
+
+  try {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file);
+    }
+
+    status.textContent = `${files.length} Datei(en) werden hochgeladen...`;
+    bar.style.width = '30%';
+
+    const r = await fetch(API + `/api/content/${type}/${id}/upload`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: formData,
+    });
+
+    bar.style.width = '90%';
+    const result = await r.json();
+
+    if (result.success) {
+      bar.style.width = '100%';
+      status.textContent = `${result.files.length} Datei(en) erfolgreich hochgeladen ✅`;
+
+      // Show uploaded files
+      const list = document.getElementById('uploaded-files');
+      list.innerHTML = result.files.map(f => `
+        <span class="uploaded-file">${icosm('file')} ${f.fileName}</span>
+      `).join('');
+
+      setTimeout(() => { progress.classList.remove('show'); }, 2000);
+    } else {
+      throw new Error(result.error || 'Upload fehlgeschlagen');
+    }
+  } catch (e) {
+    status.textContent = 'Fehler: ' + e.message;
+    setTimeout(() => { progress.classList.remove('show'); }, 3000);
+  }
+}
+
+// Initial load
+document.addEventListener('DOMContentLoaded', () => {
+  // Trigger login check
+});
 </script>
 </body>
 </html>
