@@ -79,11 +79,21 @@ const [showExitModal, setShowExitModal] = useState(false);
   const [showBgImage, setShowBgImage] = useState(() => localStorage.getItem('bamboo-showBgImage') !== 'false');
   const [showParticles, setShowParticles] = useState(() => localStorage.getItem('bamboo-showParticles') !== 'false');
   const [showCursorGlow, setShowCursorGlow] = useState(() => localStorage.getItem('bamboo-showCursorGlow') !== 'false');
+  const [bgBrightness, setBgBrightness] = useState(() => {
+    const saved = localStorage.getItem('bamboo-bgBrightness');
+    return saved !== null ? parseInt(saved) : 35;
+  });
+  const [bgBlur, setBgBlur] = useState(() => {
+    const saved = localStorage.getItem('bamboo-bgBlur');
+    return saved !== null ? parseInt(saved) : 0;
+  });
 
   // Persist changes
   useEffect(() => { localStorage.setItem('bamboo-showBgImage', String(showBgImage)); }, [showBgImage]);
   useEffect(() => { localStorage.setItem('bamboo-showParticles', String(showParticles)); }, [showParticles]);
   useEffect(() => { localStorage.setItem('bamboo-showCursorGlow', String(showCursorGlow)); }, [showCursorGlow]);
+  useEffect(() => { localStorage.setItem('bamboo-bgBrightness', String(bgBrightness)); }, [bgBrightness]);
+  useEffect(() => { localStorage.setItem('bamboo-bgBlur', String(bgBlur)); }, [bgBlur]);
 
   // Resolve current theme: check ThemeService first, then fallback to built-in
   const currentTheme = themeService.getTheme(themeId) ||
@@ -354,6 +364,8 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
         showBgImage={showBgImage}
         showParticles={showParticles}
         showCursorGlow={showCursorGlow}
+        bgBrightness={bgBrightness}
+        bgBlur={bgBlur}
       />
       <Sidebar activeTab={activeTab} setActiveTab={handleSetActiveTab} theme={theme} lang={lang} />
 

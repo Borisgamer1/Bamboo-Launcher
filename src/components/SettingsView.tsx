@@ -44,6 +44,10 @@ interface SettingsViewProps {
   setShowParticles: (v: boolean) => void;
   showCursorGlow: boolean;
   setShowCursorGlow: (v: boolean) => void;
+  bgBrightness: number;
+  setBgBrightness: (v: number) => void;
+  bgBlur: number;
+  setBgBlur: (v: number) => void;
 }
 
 type SettingsCategory = "general" | "ingame" | "themes" | "accounts";
@@ -65,6 +69,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setShowParticles,
   showCursorGlow,
   setShowCursorGlow,
+  bgBrightness,
+  setBgBrightness,
+  bgBlur,
+  setBgBlur,
 }) => {
   const t = translations[lang];
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>(() => {
@@ -1347,6 +1355,46 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                         style={{ transform: showCursorGlow ? "translateX(20px)" : "translateX(0)" }}
                       />
                     </button>
+                  </div>
+                </div>
+
+                {/* Background brightness slider */}
+                <div className="bg-slate-900/20 border border-slate-800/40 p-4 rounded-2xl flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-200">Hintergrund-Helligkeit</span>
+                    <span className="text-xs font-mono font-black theme-text">{bgBrightness}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={5}
+                    max={100}
+                    value={bgBrightness}
+                    onChange={(e) => setBgBrightness(parseInt(e.target.value))}
+                    className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1.5 rounded-lg cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                    <span>Dunkel</span>
+                    <span>Hell</span>
+                  </div>
+                </div>
+
+                {/* Background blur slider */}
+                <div className="bg-slate-900/20 border border-slate-800/40 p-4 rounded-2xl flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-200">Hintergrund-Unschärfe</span>
+                    <span className="text-xs font-mono font-black theme-text">{bgBlur > 0 ? `${bgBlur}px` : 'Aus'}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={20}
+                    value={bgBlur}
+                    onChange={(e) => setBgBlur(parseInt(e.target.value))}
+                    className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1.5 rounded-lg cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                    <span>Scharf</span>
+                    <span>Unscharf</span>
                   </div>
                 </div>
 

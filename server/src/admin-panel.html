@@ -1853,7 +1853,19 @@ function buildTypeFields() {
         <input type="hidden" class="file-picker-hidden" id="theme-particle-image-hidden">
         <img class="file-picker-preview" id="theme-particle-image-preview" style="display:none" alt="" onerror="this.style.display='none'">
       </div>
-      <input type="hidden" id="theme-particle-shapes" value="">
+
+      <div style="margin-top:20px;border-top:1px solid var(--border-subtle);padding-top:16px">
+        <label>ODER: Formen zeichnen <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Polygone per Klick in den Canvas zeichnen (wenn kein PNG ausgewählt)</span></label>
+        <div class="help-text" style="margin-top:4px;margin-bottom:8px">Klicke in den Canvas, um Eckpunkte zu setzen. Bei ≥3 Ecken: auf den ersten Punkt klicken zum Schließen. Mehrere Polygone möglich.</div>
+        <canvas id="theme-shape-canvas" width="400" height="240" style="width:100%;height:180px;background:var(--bg-secondary);border:1px solid var(--border-default);border-radius:var(--radius-md);cursor:crosshair;touch-action:none"></canvas>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="shapeEditor.undoPoint()">Letzten Punkt rückgängig</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="shapeEditor.clearCurrent()">Aktuelles löschen</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="shapeEditor.clearAll()">Alle löschen</button>
+        </div>
+        <div id="theme-shape-status" style="font-size:11px;color:var(--text-muted);margin-top:6px">Keine Formen definiert. Klicke in den Canvas, um ein Polygon zu zeichnen.</div>
+      </div>
+            <input type="hidden" id="theme-particle-shapes" value="">
     </div>
 
     <!-- NEWS FIELDS -->
@@ -2025,23 +2037,182 @@ function buildTypeFields() {
 // Stores normalized coordinates (0-1) as [[[x1,y1],[x2,y2],...], ...]
 const shapeEditor = {
   polygons: [],
+  currentPolygon: [],
+  canvas: null,
+  ctx: null,
 
   init() {
-    // Shape editor removed - using file picker for particle images instead
+    this.canvas = document.getElementById('theme-shape-canvas');
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext('2d');
+    if (!this.ctx) return;
+
+    this.canvas.addEventListener('click', (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+
+      // Check if clicking near the first point to close polygon
+      if (this.currentPolygon.length >= 3) {
+        const first = this.currentPolygon[0];
+        const dx = x - first[0];
+        const dy = y - first[1];
+        if (Math.sqrt(dx*dx + dy*dy) < 0.04) {
+          this.polygons.push([...this.currentPolygon]);
+          this.currentPolygon = [];
+          this.sync();
+          this.render();
+          return;
+        }
+      }
+
+      this.currentPolygon.push([x, y]);
+      this.render();
+    });
+
+    this.render();
+  },
+
+  render() {
+    const canvas = this.canvas;
+    const ctx = this.ctx;
+    if (!canvas || !ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Draw subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < 10; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * w / 10, 0);
+      ctx.lineTo(i * w / 10, h);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i * h / 10);
+      ctx.lineTo(w, i * h / 10);
+      ctx.stroke();
+    }
+
+    // Draw completed polygons
+    this.polygons.forEach((poly, pi) => {
+      if (poly.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(poly[0][0] * w, poly[0][1] * h);
+      for (let i = 1; i < poly.length; i++) {
+        ctx.lineTo(poly[i][0] * w, poly[i][1] * h);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `hsla(${pi * 60}, 70%, 50%, 0.12)`;
+      ctx.fill();
+      ctx.strokeStyle = `hsla(${pi * 60}, 70%, 60%, 0.7)`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      poly.forEach(([px, py]) => {
+        ctx.beginPath();
+        ctx.arc(px * w, py * h, 3, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${pi * 60}, 80%, 70%, 1)`;
+        ctx.fill();
+      });
+    });
+
+    // Draw current polygon being edited
+    if (this.currentPolygon.length >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(this.currentPolygon[0][0] * w, this.currentPolygon[0][1] * h);
+      for (let i = 1; i < this.currentPolygon.length; i++) {
+        ctx.lineTo(this.currentPolygon[i][0] * w, this.currentPolygon[i][1] * h);
+      }
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (this.currentPolygon.length >= 3) {
+        const first = this.currentPolygon[0];
+        ctx.beginPath();
+        ctx.arc(first[0] * w, first[1] * h, 6, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    this.currentPolygon.forEach(([px, py]) => {
+      ctx.beginPath();
+      ctx.arc(px * w, py * h, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#10b981';
+      ctx.fill();
+    });
+
+    this.updateStatus();
+  },
+
+  updateStatus() {
+    const statusEl = document.getElementById('theme-shape-status');
+    if (!statusEl) return;
+    const total = this.polygons.length;
+    const current = this.currentPolygon.length;
+    let msg = '';
+    if (total === 0 && current === 0) {
+      msg = 'Keine Formen definiert. Klicke in den Canvas, um Ecken eines Polygons zu setzen.';
+    } else if (current > 0) {
+      msg = `Aktuelles Polygon: ${current} Ecke${current > 1 ? 'n' : ''} (bei ≥3 Ecken: auf den ersten Punkt klicken zum Schließen). Gesamt: ${total} Polygon${total !== 1 ? 'e' : ''}.`;
+    } else {
+      msg = `${total} Polygon${total !== 1 ? 'e' : ''} definiert. Klicke in den Canvas für ein neues Polygon.`;
+    }
+    statusEl.textContent = msg;
+  },
+
+  undoPoint() {
+    if (this.currentPolygon.length > 0) {
+      this.currentPolygon.pop();
+      this.render();
+    } else if (this.polygons.length > 0) {
+      this.currentPolygon = this.polygons.pop();
+      this.sync();
+      this.render();
+    }
+  },
+
+  clearCurrent() {
+    this.currentPolygon = [];
+    this.render();
+  },
+
+  clearAll() {
+    this.polygons = [];
+    this.currentPolygon = [];
+    this.sync();
+    this.render();
   },
 
   load(shapes) {
-    this.polygons = Array.isArray(shapes) ? shapes.filter(p => Array.isArray(p) && p.length >= 2) : [];
-    document.getElementById('theme-particle-shapes').value = JSON.stringify(this.polygons);
+    if (!Array.isArray(shapes) || shapes.length === 0) {
+      this.polygons = [];
+      this.currentPolygon = [];
+      this.sync();
+      this.render();
+      return;
+    }
+    this.polygons = shapes.filter(p => Array.isArray(p) && p.length >= 2);
+    this.currentPolygon = [];
+    this.sync();
+    this.render();
   },
 
   sync() {
-    const all = [...this.polygons];
+    const all = [...this.polygons, ...(this.currentPolygon.length >= 3 ? [this.currentPolygon] : [])];
     document.getElementById('theme-particle-shapes').value = JSON.stringify(all);
   },
 };
 
-// Initialize type fields after DOM ready
+// Initialize type fields + shape editor after DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('type-fields-container').innerHTML = buildTypeFields();
   setTimeout(() => shapeEditor.init(), 100);

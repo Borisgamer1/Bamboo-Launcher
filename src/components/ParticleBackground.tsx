@@ -61,6 +61,10 @@ interface ParticleBackgroundProps {
   showBgImage?: boolean;
   showParticles?: boolean;
   showCursorGlow?: boolean;
+  /** Brightness of background image (0–100, default 35) */
+  bgBrightness?: number;
+  /** Blur of background image in px (0–20, default 0) */
+  bgBlur?: number;
 }
 
 export const ParticleBackground = React.memo(function ParticleBackground({
@@ -71,6 +75,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   showBgImage = true,
   showParticles = true,
   showCursorGlow = true,
+  bgBrightness = 35,
+  bgBlur = 0,
 }: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -292,7 +298,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
             backgroundImage: bgImage ? `url('${bgImage}')` : undefined,
             backgroundColor: bgImage ? undefined : "rgba(2, 6, 23, 1)",
             transform: "translate(0px, 0px) scale(1.03)",
-            filter: bgImage ? "brightness(0.35) contrast(1.08)" : undefined,
+            filter: bgImage ? `brightness(${bgBrightness}%) blur(${bgBlur}px) contrast(1.08)` : undefined,
           }}
         />
       )}
