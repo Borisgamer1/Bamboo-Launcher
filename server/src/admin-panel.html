@@ -1038,12 +1038,10 @@ async function openEditEditor(type, id) {
       if (item.files) fillFilePickers(type, item);
     } else if (type === 'theme') {
       const meta = item.metadata || {};
-      document.getElementById('theme-accent').value = meta.accentColor || '';
-      document.getElementById('theme-accent-hex').value = meta.accentColor || '#10b981';
-      document.getElementById('theme-bg').value = meta.backgroundColor || '';
-      document.getElementById('theme-bg-hex').value = meta.backgroundColor || '#07070e';
-      fillFilePicker('theme-bg-image', meta.backgroundImage || '');
-      fillFilePicker('theme-icon', meta.iconFile || '');
+      document.getElementById('theme-accent-label').value = meta.accentLabel || '';
+      document.getElementById('theme-accent').value = meta.accent || '';
+      document.getElementById('theme-accent-hex').value = meta.accent || '#10b981';
+      fillFilePicker('theme-bg-image', meta.bgImage || '');
     } else if (type === 'news') {
       const meta = item.metadata || {};
       document.getElementById('news-subtitle').value = meta.subtitle || '';
@@ -1106,14 +1104,12 @@ async function saveContent() {
       if (files.length > 0) data.metadata._files = files;
     } catch (e) {
       return; // Validation error already shown as toast
-    }
-  } else if (type === 'theme') {
-    data.metadata.accentColor = document.getElementById('theme-accent').value;
-    data.metadata.backgroundColor = document.getElementById('theme-bg').value;
-    data.metadata.backgroundImage = getFilePickerValue('theme-bg-image');
-    data.metadata.iconFile = getFilePickerValue('theme-icon');
-    const files = gatherFileAssignments('theme');
-    if (files.length > 0) data.metadata._files = files;
+    }    } else if (type === 'theme') {
+      data.metadata.accentLabel = document.getElementById('theme-accent-label').value;
+      data.metadata.accent = document.getElementById('theme-accent').value;
+      data.metadata.bgImage = getFilePickerValue('theme-bg-image');
+      const files = gatherFileAssignments('theme');
+      if (files.length > 0) data.metadata._files = files;
   } else if (type === 'news') {
     data.metadata.subtitle = document.getElementById('news-subtitle').value;
     data.metadata.content = document.getElementById('news-content').value;
@@ -1817,38 +1813,23 @@ function buildTypeFields() {
 
     <!-- THEME FIELDS (Backgrounds sind Teil des Themes) -->
     <div id="fields-theme" class="type-specific-fields" style="display:none">
-      <div class="form-row">
-        <div>
-          <label>Akzentfarbe</label>
-          <div class="color-input-row">
-            <input type="color" id="theme-accent-hex" value="#10b981" onchange="document.getElementById('theme-accent').value=this.value">
-            <input type="text" id="theme-accent" placeholder="#10b981" oninput="document.getElementById('theme-accent-hex').value=this.value||'#10b981'">
-          </div>
-        </div>
-        <div>
-          <label>Hintergrundfarbe</label>
-          <div class="color-input-row">
-            <input type="color" id="theme-bg-hex" value="#07070e" onchange="document.getElementById('theme-bg').value=this.value">
-            <input type="text" id="theme-bg" placeholder="#07070e" oninput="document.getElementById('theme-bg-hex').value=this.value||'#07070e'">
-          </div>
-        </div>
+      <label>Akzent (Beschreibung) <span style="color:var(--text-muted);font-weight:400;font-size:11px">– z.B. "Grün", "Rot", "Pink"</span></label>
+      <input type="text" id="theme-accent-label" placeholder="z.B. Grün">
+
+      <label>Akzentfarbe <span style="color:var(--text-muted);font-weight:400;font-size:11px">– nur EINE Farbe</span></label>
+      <div class="color-input-row">
+        <input type="color" id="theme-accent-hex" value="#10b981" onchange="document.getElementById('theme-accent').value=this.value">
+        <input type="text" id="theme-accent" placeholder="#10b981" oninput="document.getElementById('theme-accent-hex').value=this.value||'#10b981'">
       </div>
 
-      <label>Hintergrundbild (Background)</label>
+      <label>Hintergrundbild <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Launcher-Hintergrund / Backend-Icon</span></label>
       <div class="file-picker" data-file-type="background" onclick="openFilePicker('theme-bg-image','theme','image')">
         <span class="file-picker-value empty" id="theme-bg-image-display">Kein Hintergrund ausgewählt</span>
         <span class="file-picker-btn">Auswählen</span>
         <input type="hidden" class="file-picker-hidden" id="theme-bg-image-hidden">
         <img class="file-picker-preview" id="theme-bg-image-preview" style="display:none" alt="" onerror="this.style.display='none'">
       </div>
-      <div class="help-text">Das Hintergrundbild gehört direkt zum Theme — kein separater Background-Bereich.</div>
-
-      <label>Icon (optional)</label>
-      <div class="file-picker" data-file-type="icon" onclick="openFilePicker('theme-icon','theme','image')">
-        <span class="file-picker-value empty" id="theme-icon-display">Kein Icon ausgewählt</span>
-        <span class="file-picker-btn">Auswählen</span>
-        <input type="hidden" class="file-picker-hidden" id="theme-icon-hidden">
-      </div>
+      <div class="help-text">Das Hintergrundbild erscheint im Launcher als Theme-Hintergrund und im Backend als Icon.</div>
     </div>
 
     <!-- NEWS FIELDS -->

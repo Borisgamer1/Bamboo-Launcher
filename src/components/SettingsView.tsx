@@ -373,36 +373,15 @@ const [showSavedToast, setShowSavedToast] = useState(false);
   }, [activeCategory]);
 
   // Helper: build display-ready theme list from ThemeDefinitions
-  function buildThemeList(themes: ThemeDefinition[], currentLang: LanguageType) {
-    // Static lookup for bgStyle classes (must be static for Tailwind JIT)
-    const BG_STYLES: Record<string, string> = {
-      bamboo: "from-emerald-500/10 to-emerald-400/5 border-emerald-500/20",
-      cherry: "from-rose-500/10 to-pink-400/5 border-rose-500/20",
-      frozen: "from-sky-500/10 to-cyan-400/5 border-sky-500/20",
-      nether: "from-red-500/10 to-orange-400/5 border-red-500/20",
-      end: "from-purple-500/10 to-violet-400/5 border-purple-500/20",
-      warden: "from-teal-500/10 to-emerald-400/5 border-teal-500/20",
-      copper: "from-amber-500/10 to-orange-400/5 border-amber-500/20",
-      obsidian: "from-violet-500/10 to-indigo-400/5 border-violet-500/20",
-    };
-
-    const ACCENT_NAMES: Record<string, { de: string; en: string }> = {
-      bamboo: { de: "Grün", en: "Green" },
-      cherry: { de: "Rosa", en: "Pink" },
-      frozen: { de: "Eisblau", en: "Ice Blue" },
-      nether: { de: "Rot", en: "Red" },
-      end: { de: "Purpur", en: "Purple" },
-      warden: { de: "Türkis", en: "Teal" },
-      copper: { de: "Orange", en: "Orange" },
-      obsidian: { de: "Violett", en: "Violet" },
-    };
-
+  function buildThemeList(themes: ThemeDefinition[], _currentLang: LanguageType) {
+    // Derive a semi-transparent bg style from the accent color for Tailwind
+    // Since we can't use dynamic Tailwind classes, use a neutral fallback
     return themes.map((t) => ({
       ...t,
-      accent: ACCENT_NAMES[t.id]?.[currentLang] || t.name,
+      accent: t.accentLabel || t.name,
       accentColor: t.accent,
       accentText: "theme-text",
-      bgStyle: BG_STYLES[t.id] || "from-slate-500/10 to-slate-400/5 border-slate-500/20",
+      bgStyle: "from-slate-500/10 to-slate-400/5 border-slate-500/20",
       badge: "theme-bg-md theme-text theme-border-md",
     }));
   }

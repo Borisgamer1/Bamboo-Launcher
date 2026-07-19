@@ -1,150 +1,28 @@
 // ============================================================
-// Theme Service v1.0.0
-// Data-driven theme system that loads themes from the
-// CDN asset cache, with built-in fallback themes.
+// Theme Service v2.0.0
+// Data-driven theme system — ALL themes come from the backend.
+// No hardcoded built-in themes.
 // ============================================================
 
 import { getCachedAssetText, getCachedAssetUrl } from "./assetCache";
-import type { ThemeType } from "../components/ParticleBackground";
 import { API_BASE, getLauncherHeaders } from "./api";
 
 // ===== Theme Definition Types =====
 
 export interface ThemeDefinition {
-  /** Unique theme ID */
+  /** Unique theme ID (slug) */
   id: string;
   /** Display name */
   name: string;
   /** Short description */
   desc: string;
-  /** Category for grouping in settings */
-  category: "new" | "classic" | "community" | "cdn";
-  /** Particle background type */
-  themeType: ThemeType;
-  /** Background image path (relative to CDN) */
-  bgImage?: string;
+  /** Verbal accent label e.g. "Grün", "Rot", "Pink" */
+  accentLabel: string;
   /** Primary accent color (hex) */
   accent: string;
-  /** Light variant of accent */
-  accentLight: string;
-  /** Dark variant of accent */
-  accentDark: string;
-  /** Glow/shadow color (rgba) */
-  glowColor: string;
-  /** Optional custom font family */
-  fontFamily?: string;
-  /** Whether this theme comes from CDN */
-  fromCdn: boolean;
+  /** Background image path */
+  bgImage?: string;
 }
-
-// ===== Built-in Fallback Themes =====
-
-const BUILTIN_THEMES: ThemeDefinition[] = [
-  {
-    id: "bamboo",
-    name: "Bamboo",
-    desc: "Bambus & Grün",
-    category: "new",
-    themeType: "bamboo",
-    bgImage: "/images/bamboo_forest.png",
-    accent: "#22c55e",
-    accentLight: "#34d399",
-    accentDark: "#16a34a",
-    glowColor: "rgba(52,211,153,0.5)",
-    fromCdn: false,
-  },
-  {
-    id: "cherry",
-    name: "Cherry",
-    desc: "Kirschblüte & Pink",
-    category: "new",
-    themeType: "cherry",
-    bgImage: "/images/cherry_blossom.png",
-    accent: "#f43f5e",
-    accentLight: "#fb7185",
-    accentDark: "#e11d48",
-    glowColor: "rgba(244,63,94,0.5)",
-    fromCdn: false,
-  },
-  {
-    id: "frozen",
-    name: "Icy Blue",
-    desc: "Eis & Blau",
-    category: "new",
-    themeType: "frozen",
-    bgImage: "/images/frozen_ice.png",
-    accent: "#0ea5e9",
-    accentLight: "#38bdf8",
-    accentDark: "#0284c7",
-    glowColor: "rgba(14,165,233,0.5)",
-    fromCdn: false,
-  },
-  {
-    id: "nether",
-    name: "Nether Red",
-    desc: "Nether & Rot",
-    category: "new",
-    themeType: "nether",
-    bgImage: "/images/nether_amber.png",
-    accent: "#ef4444",
-    accentLight: "#f87171",
-    accentDark: "#dc2626",
-    glowColor: "rgba(239,68,68,0.5)",
-    fromCdn: false,
-  },
-  {
-    id: "end",
-    name: "End Purple",
-    desc: "Purpur & Mystisch",
-    category: "classic",
-    themeType: "end",
-    bgImage: "/images/nether_amber.png",
-    accent: "#a855f7",
-    accentLight: "#c084fc",
-    accentDark: "#7c3aed",
-    glowColor: "rgba(168,85,247,0.5)",
-    fromCdn: false,
-  },
-  {
-    id: "warden",
-    name: "Warden Cyan",
-    desc: "Türkis & Modern",
-    category: "classic",
-    themeType: "warden",
-    bgImage: "/images/frozen_ice.png",
-    accent: "#14b8a6",
-    accentLight: "#2dd4bf",
-    accentDark: "#0d9488",
-    glowColor: "rgba(20,184,166,0.5)",
-    fromCdn: false,
-  },
-  {
-    id: "copper",
-    name: "Copper Orange",
-    desc: "Kupfer & Orange",
-    category: "classic",
-    themeType: "copper",
-    bgImage: "/images/nether_amber.png",
-    accent: "#d97706",
-    accentLight: "#f59e0b",
-    accentDark: "#b45309",
-    glowColor: "rgba(217,119,6,0.5)",
-    fromCdn: false,
-  },
-  {
-    id: "obsidian",
-    name: "Obsidian Black",
-    desc: "Obsidian & Violett",
-    category: "classic",
-    themeType: "obsidian",
-    bgImage: "/images/bamboo_forest.png",
-    accent: "#a78bfa",
-    accentLight: "#c4b5fd",
-    accentDark: "#8b5cf6",
-    glowColor: "rgba(167,139,250,0.5)",
-    fromCdn: false,
-  },
-];
 
 // ===== Theme Service =====
 
@@ -164,33 +42,21 @@ class ThemeService {
     this._listeners.forEach((fn) => fn());
   }
 
-  /** Get all available themes (built-in + CDN + backend) */
+  /** Get all available themes (CDN + backend). Backend overrides CDN by ID. */
   getThemes(): ThemeDefinition[] {
     const cdn = this._cdnThemes || [];
     const backend = this._backendThemes || [];
-    // Merge: built-in first, then CDN overrides, then backend overrides
-    const merged = [...BUILTIN_THEMES];
-    for (const cdnTheme of cdn) {
-      const existingIdx = merged.findIndex((t) => t.id === cdnTheme.id);
-      if (existingIdx >= 0) {
-        merged[existingIdx] = cdnTheme;
+    const merged: ThemeDefinition[] = [];
+    const seen = new Set<string>();
+
+    // CDN first, then backend — backend overrides CDN when IDs match
+    for (const t of [...cdn, ...backend]) {
+      if (!seen.has(t.id)) {
+        seen.add(t.id);
+        merged.push(t);
       } else {
-        merged.push(cdnTheme);
-      }
-    }
-    const builtinIds = new Set(BUILTIN_THEMES.map(t => t.id));
-    for (const backendTheme of backend) {
-      const existingIdx = merged.findIndex((t) => t.id === backendTheme.id);
-      if (existingIdx >= 0) {
-        // Only override built-in themes if backend item has real metadata
-        // (accent differs from the bamboo default, or name differs from id)
-        const isBuiltin = builtinIds.has(backendTheme.id);
-        if (isBuiltin && backendTheme.accent === '#22c55e' && backendTheme.name === backendTheme.id) {
-          continue; // skip — no real metadata, keep the built-in version
-        }
-        merged[existingIdx] = backendTheme;
-      } else {
-        merged.push(backendTheme);
+        const idx = merged.findIndex((m) => m.id === t.id);
+        if (idx >= 0) merged[idx] = t;
       }
     }
     return merged;
@@ -201,118 +67,14 @@ class ThemeService {
     return this.getThemes().find((t) => t.id === id);
   }
 
-  /** Get the default theme (first built-in) */
+  /** Get the default theme (first available, or a minimal green fallback) */
   getDefaultTheme(): ThemeDefinition {
-    return BUILTIN_THEMES[0];
+    const all = this.getThemes();
+    if (all.length > 0) return all[0];
+    return { id: "default", name: "Default", desc: "", accentLabel: "Grün", accent: "#22c55e" };
   }
 
-  /** Check if CDN themes are loaded */
-  get cdnThemesLoaded(): boolean {
-    return this._cdnThemes !== null;
-  }
-
-  get isLoading(): boolean {
-    return this._loading;
-  }
-
-  /**
-   * Load themes from CDN asset cache.
-   * Themes are stored as `themes/{id}/theme.json` in the CDN.
-   */
-  async loadCdnThemes(): Promise<ThemeDefinition[]> {
-    if (this._cdnThemes !== null) return this._cdnThemes;
-    if (this._loading) {
-      // Wait for current load
-      return new Promise((resolve) => {
-        const check = () => {
-          if (this._cdnThemes !== null) {
-            resolve(this._cdnThemes);
-            this._listeners.delete(check);
-          }
-        };
-        this._listeners.add(check);
-      });
-    }
-
-    this._loading = true;
-    this.notify();
-
-    const cdnThemes: ThemeDefinition[] = [];
-
-    try {
-      // Try to load theme index from cache
-      const indexJson = await getCachedAssetText("themes/index.json");
-      let themeIds: string[] = [];
-
-      if (indexJson) {
-        try {
-          const index = JSON.parse(indexJson);
-          themeIds = index.themes || [];
-        } catch {
-          console.warn("[ThemeService] Failed to parse themes/index.json");
-        }
-      }
-
-      // If no index, try common theme directories
-      if (themeIds.length === 0) {
-        // Try each known theme directory
-        const knownDirs = ["bamboo", "cherry", "frozen", "nether", "end", "warden", "copper", "obsidian"];
-        for (const dir of knownDirs) {
-          const themeJson = await getCachedAssetText(`themes/${dir}/theme.json`);
-          if (themeJson) {
-            themeIds.push(dir);
-          }
-        }
-      }
-
-      // Load each theme definition
-      for (const id of themeIds) {
-        try {
-          const themeJson = await getCachedAssetText(`themes/${id}/theme.json`);
-          if (!themeJson) continue;
-
-          const cdnTheme = JSON.parse(themeJson) as Partial<ThemeDefinition>;
-
-          // Build full theme definition
-          const theme: ThemeDefinition = {
-            id: cdnTheme.id || id,
-            name: cdnTheme.name || id,
-            desc: cdnTheme.desc || "",
-            category: "cdn",
-            themeType: (cdnTheme.themeType as ThemeType) || "bamboo",
-            bgImage: cdnTheme.bgImage,
-            accent: cdnTheme.accent || "#22c55e",
-            accentLight: cdnTheme.accentLight || "#34d399",
-            accentDark: cdnTheme.accentDark || "#16a34a",
-            glowColor: cdnTheme.glowColor || "rgba(52,211,153,0.5)",
-            fontFamily: cdnTheme.fontFamily,
-            fromCdn: true,
-          };
-
-          cdnThemes.push(theme);
-        } catch (err) {
-          console.warn(`[ThemeService] Failed to load theme ${id}:`, err);
-        }
-      }
-
-      if (cdnThemes.length > 0) {
-        console.log(`[ThemeService] Loaded ${cdnThemes.length} CDN themes`);
-      }
-    } catch (err) {
-      console.warn("[ThemeService] Failed to load CDN themes:", err);
-    }
-
-    this._cdnThemes = cdnThemes;
-    this._loading = false;
-    this.notify();
-    return cdnThemes;
-  }
-
-  /**
-   * Load themes from the backend API (unified content manager).
-   * Fetches published themes from /api/content/theme and parses metadata.
-   */
-  /** Force a fresh fetch, invalidating any cached result */
+  /** Force a fresh fetch from the backend */
   async refreshBackendThemes(): Promise<ThemeDefinition[]> {
     this._backendThemes = null;
     return this.loadBackendThemes();
@@ -320,7 +82,6 @@ class ThemeService {
 
   async loadBackendThemes(): Promise<ThemeDefinition[]> {
     if (this._backendLoading) {
-      // Wait for current fetch to complete
       return new Promise((resolve) => {
         const check = () => {
           resolve(this._backendThemes || []);
@@ -331,7 +92,6 @@ class ThemeService {
     }
 
     this._backendLoading = true;
-
     const backendThemes: ThemeDefinition[] = [];
 
     try {
@@ -351,15 +111,13 @@ class ThemeService {
       const items = data.data || data.items || data || [];
       const list = Array.isArray(items) ? items : (Array.isArray(items.data) ? items.data : []);
 
-      const builtinIds = new Set(BUILTIN_THEMES.map(t => t.id));
-
       for (const item of list) {
         const slug = item.slug || item.id;
         if (!slug) continue;
 
         const meta = item.metadata || {};
 
-        // Determine description: prefer metadata desc, then item desc, then fallback
+        // Description: prefer metadata desc, then item.description
         let desc = slug + ' theme';
         if (meta.desc && typeof meta.desc === 'string' && meta.desc.trim()) {
           desc = meta.desc;
@@ -367,29 +125,18 @@ class ThemeService {
           desc = item.description;
         }
 
-        // For built-in themes with no real metadata, don't override — use the built-in desc
-        const isBuiltin = builtinIds.has(slug);
-        const hasRealMeta = meta.accent && meta.accent !== '#22c55e' &&
-          (!isBuiltin || (meta.themeType && meta.themeType !== 'bamboo'));
-
-        if (isBuiltin && !hasRealMeta) {
-          // This is a built-in theme with stale/empty metadata — skip it
-          continue;
-        }
+        // Accent label (verbal description like "Grün", "Rot")
+        const accentLabel = (meta.accentLabel && typeof meta.accentLabel === 'string' && meta.accentLabel.trim())
+          ? meta.accentLabel
+          : meta.accent || '#22c55e';
 
         const theme: ThemeDefinition = {
           id: slug,
           name: item.name || slug,
           desc,
-          category: 'cdn',
-          themeType: (meta.themeType as ThemeType) || 'bamboo',
-          bgImage: meta.bgImage || undefined,
+          accentLabel,
           accent: meta.accent || '#22c55e',
-          accentLight: meta.accentLight || '#34d399',
-          accentDark: meta.accentDark || '#16a34a',
-          glowColor: meta.glowColor || 'rgba(52,211,153,0.5)',
-          fontFamily: meta.fontFamily,
-          fromCdn: false,
+          bgImage: meta.bgImage || undefined,
         };
         backendThemes.push(theme);
       }
@@ -407,31 +154,93 @@ class ThemeService {
     return backendThemes;
   }
 
-  /** Check if backend themes have been loaded */
-  get backendThemesLoaded(): boolean {
-    return this._backendThemes !== null;
-  }
-
   /**
-   * Resolve a theme's background image URL.
-   * For CDN themes, tries the local cache first, falls back to built-in path.
+   * Load themes from CDN asset cache (themes/{id}/theme.json).
+   * This is a secondary source — backend themes take priority.
    */
-  async resolveBgUrl(theme: ThemeDefinition): Promise<string | undefined> {
-    if (!theme.bgImage) return undefined;
-
-    // For CDN themes, try to get from cache
-    if (theme.fromCdn) {
-      const cachedUrl = await getCachedAssetUrl(theme.bgImage);
-      if (cachedUrl) return cachedUrl;
+  async loadCdnThemes(): Promise<ThemeDefinition[]> {
+    if (this._cdnThemes !== null) return this._cdnThemes;
+    if (this._loading) {
+      return new Promise((resolve) => {
+        const check = () => {
+          if (this._cdnThemes !== null) {
+            resolve(this._cdnThemes);
+            this._listeners.delete(check);
+          }
+        };
+        this._listeners.add(check);
+      });
     }
 
-    // Fall back to the path as-is (could be a local /images/ path or CDN URL)
-    return theme.bgImage;
+    this._loading = true;
+    this.notify();
+
+    const cdnThemes: ThemeDefinition[] = [];
+
+    try {
+      const indexJson = await getCachedAssetText("themes/index.json");
+      let themeIds: string[] = [];
+
+      if (indexJson) {
+        try {
+          const index = JSON.parse(indexJson);
+          themeIds = index.themes || [];
+        } catch {
+          console.warn("[ThemeService] Failed to parse themes/index.json");
+        }
+      }
+
+      if (themeIds.length === 0) {
+        const knownDirs = ["bamboo", "cherry", "frozen", "nether", "end", "warden", "copper", "obsidian"];
+        for (const dir of knownDirs) {
+          const themeJson = await getCachedAssetText(`themes/${dir}/theme.json`);
+          if (themeJson) themeIds.push(dir);
+        }
+      }
+
+      for (const id of themeIds) {
+        try {
+          const themeJson = await getCachedAssetText(`themes/${id}/theme.json`);
+          if (!themeJson) continue;
+
+          const cdnTheme = JSON.parse(themeJson) as any;
+
+          const theme: ThemeDefinition = {
+            id: cdnTheme.id || id,
+            name: cdnTheme.name || id,
+            desc: cdnTheme.desc || "",
+            accentLabel: cdnTheme.accentLabel || cdnTheme.accent || "#22c55e",
+            accent: cdnTheme.accent || "#22c55e",
+            bgImage: cdnTheme.bgImage,
+          };
+          cdnThemes.push(theme);
+        } catch (err) {
+          console.warn(`[ThemeService] Failed to load CDN theme ${id}:`, err);
+        }
+      }
+
+      if (cdnThemes.length > 0) {
+        console.log(`[ThemeService] Loaded ${cdnThemes.length} CDN themes`);
+      }
+    } catch (err) {
+      console.warn("[ThemeService] Failed to load CDN themes:", err);
+    }
+
+    this._cdnThemes = cdnThemes;
+    this._loading = false;
+    this.notify();
+    return cdnThemes;
+  }
+
+  /** Resolve a theme's background image URL */
+  async resolveBgUrl(theme: ThemeDefinition): Promise<string | undefined> {
+    if (!theme.bgImage) return undefined;
+    const cachedUrl = await getCachedAssetUrl(theme.bgImage);
+    return cachedUrl || theme.bgImage;
   }
 }
 
 // ===== Singleton Export =====
 
 export const themeService = new ThemeService();
-export { BUILTIN_THEMES };
 export default themeService;

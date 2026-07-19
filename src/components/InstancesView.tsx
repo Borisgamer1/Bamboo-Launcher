@@ -1732,12 +1732,15 @@ const ContentListView = ({
         });
       } catch { console.warn('[Instances] Failed to save instance settings'); }
     }
-    // Issue 21: Also decrement modCount when deleting a mod
-    if (item && item.type === 'mods') {
-      withUpdatedInstance(i => ({ ...i, modCount: Math.max(0, (i.modCount || 0) - 1) }));
-    }
-    updateContent(items => items.filter(c => c.id !== itemId));
+    // Atomically remove from content, installedMods, and decrement modCount
+    withUpdatedInstance(i => ({
+      ...i,
+      content: (i.content || []).filter(c => c.id !== itemId),
+      installedMods: (i.installedMods || []).filter(s => s !== itemId),
+      modCount: item && item.type === 'mods' ? Math.max(0, (i.modCount || 0) - 1) : i.modCount,
+    }));
   };
+  
 
   const handleUpdate = async (itemId: string) => {
     const item = (localInst.content || []).find(c => c.id === itemId);

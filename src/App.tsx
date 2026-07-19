@@ -78,7 +78,7 @@ const [showExitModal, setShowExitModal] = useState(false);
   const currentTheme = themeService.getTheme(themeId) ||
     availableThemes.find(t => t.id === themeId) ||
     themeService.getDefaultTheme();
-  const theme: ThemeType = currentTheme.themeType;
+  const theme: ThemeType = currentTheme.id as ThemeType;
 
   // Language
   const [lang, setLang] = useState<LanguageType>("de");
@@ -207,10 +207,11 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
     localStorage.setItem("bamboo-theme", themeId);
     const root = document.documentElement;
     root.style.setProperty("--theme-accent", currentTheme.accent);
-    root.style.setProperty("--theme-accent-light", currentTheme.accentLight);
-    root.style.setProperty("--theme-accent-dark", currentTheme.accentDark);
-    root.style.setProperty("--theme-glow", currentTheme.glowColor);
-  }, [themeId]);
+    // Derive lighter/darker variants from the single accent color
+    root.style.setProperty("--theme-accent-light", currentTheme.accent + '99');
+    root.style.setProperty("--theme-accent-dark", currentTheme.accent);
+    root.style.setProperty("--theme-glow", currentTheme.accent + '66');
+  }, [themeId, currentTheme.accent]);
 
   // ===== LAUNCH GAME =====
   const handleLaunchGame = (instanceId?: string) => {
