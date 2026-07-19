@@ -16,7 +16,6 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
 function getColorsFromAccent(accent: string): string[] {
   const rgb = hexToRgb(accent);
   if (!rgb) {
-    // Fallback green palette
     return [
       "rgba(34, 197, 94, ",
       "rgba(74, 222, 128, ",
@@ -48,25 +47,19 @@ interface Particle {
   angle: number;
   spin: number;
   type: "shape" | "spark";
-  /** Which polygon index to use (0-based), -1 for random */
   shapeIdx: number;
-  /** Per-particle stretch multiplier */
   stretchX: number;
   stretchY: number;
 }
 
 interface ParticleBackgroundProps {
-  /** Theme accent color in hex (#rrggbb) */
   accent: string;
-  /** Background image URL (optional) */
   bgImage?: string;
-  /** Custom polygon shapes for particles – array of polygons, each polygon is array of [x,y] points (normalized 0-1) */
   particleShapes?: number[][][];
-  /** Whether to show the background image (default true) */
+  /** PNG sprite URL for particle shapes — loaded and tinted with accent color */
+  particleImage?: string;
   showBgImage?: boolean;
-  /** Whether to show floating particle shapes (default true) */
   showParticles?: boolean;
-  /** Whether to show the cursor glow trail (default true) */
   showCursorGlow?: boolean;
 }
 
@@ -74,6 +67,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   accent,
   bgImage,
   particleShapes,
+  particleImage,
   showBgImage = true,
   showParticles = true,
   showCursorGlow = true,
@@ -83,23 +77,32 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   const bgRef = useRef<HTMLDivElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
 
-  // Keep track of mouse coordinates locally without React state updates!
   const mousePosRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const accentRef = useRef(accent);
   const shapesRef = useRef(particleShapes);
+  const spriteImgRef = useRef<HTMLImageElement | null>(null);
+  const spriteLoadedRef = useRef(false);
 
-  useEffect(() => {
-    accentRef.current = accent;
-  }, [accent]);
+  useEffect(() => { accentRef.current = accent; }, [accent]);
+  useEffect(() => { shapesRef.current = particleShapes; }, [particleShapes]);
 
+  // Load particle sprite image
   useEffect(() => {
-    shapesRef.current = particleShapes;
-  }, [particleShapes]);
+    if (!particleImage) {
+      spriteImgRef.current = null;
+      spriteLoadedRef.current = false;
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { spriteImgRef.current = img; spriteLoadedRef.current = true; };
+    img.onerror = () => { spriteImgRef.current = null; spriteLoadedRef.current = false; };
+    img.src = particleImage;
+  }, [particleImage]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -110,46 +113,36 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     };
-
     window.addEventListener("resize", resizeCanvas);
     resizeCanvas();
 
-    // Local mousemove listener directly on window
     const handleMouseMove = (e: MouseEvent) => {
       mousePosRef.current = { x: e.clientX, y: e.clientY };
-
-      // 1. Update background image parallax transform DIRECTLY on the DOM element!
       if (bgRef.current) {
-        const parallaxX = -(e.clientX - window.innerWidth / 2) * 0.012;
-        const parallaxY = -(e.clientY - window.innerHeight / 2) * 0.012;
-        bgRef.current.style.transform = `translate(${parallaxX}px, ${parallaxY}px) scale(1.03)`;
+        const px = -(e.clientX - window.innerWidth / 2) * 0.012;
+        const py = -(e.clientY - window.innerHeight / 2) * 0.012;
+        bgRef.current.style.transform = `translate(${px}px, ${py}px) scale(1.03)`;
       }
-
-      // 2. Update cursor trail glow position DIRECTLY on the DOM element!
       if (glowRef.current) {
         glowRef.current.style.left = `${e.clientX}px`;
         glowRef.current.style.top = `${e.clientY}px`;
       }
     };
-
     window.addEventListener("mousemove", handleMouseMove);
 
     const createParticle = (initY = false): Particle => {
       const size = Math.random() * 5 + 1.5;
-      const currentColors = getColorsFromAccent(accentRef.current);
-      const baseColor = currentColors[Math.floor(Math.random() * currentColors.length)];
+      const colors = getColorsFromAccent(accentRef.current);
+      const baseColor = colors[Math.floor(Math.random() * colors.length)];
       const shapes = shapesRef.current;
-
       let shapeIdx = -1;
       let stretchX = 1;
       let stretchY = 1;
       if (shapes && shapes.length > 0) {
         shapeIdx = Math.floor(Math.random() * shapes.length);
-        // Randomize stretch for variety (0.6 – 1.4)
         stretchX = 0.6 + Math.random() * 0.8;
         stretchY = 0.6 + Math.random() * 0.8;
       }
-
       return {
         x: Math.random() * canvas.width,
         y: initY ? Math.random() * canvas.height : canvas.height + 20,
@@ -167,7 +160,6 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       };
     };
 
-    // Initialize particles
     const particleCount = 40;
     for (let i = 0; i < particleCount; i++) {
       particles.push(createParticle(true));
@@ -178,24 +170,21 @@ export const ParticleBackground = React.memo(function ParticleBackground({
 
       const mPos = mousePosRef.current;
       const currentAccent = accentRef.current;
-
-      // Mouse glow radial gradient
-      const radialGradient = ctx.createRadialGradient(mPos.x, mPos.y, 10, mPos.x, mPos.y, 600);
       const rgb = hexToRgb(currentAccent);
-      if (rgb) {
-        radialGradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)`);
-      } else {
-        radialGradient.addColorStop(0, `rgba(34, 197, 94, 0.08)`);
-      }
-      radialGradient.addColorStop(0.4, "rgba(15, 23, 42, 0.03)");
-      radialGradient.addColorStop(1, "rgba(2, 6, 23, 0.85)");
 
-      ctx.fillStyle = radialGradient;
+      // Mouse glow gradient
+      const grad = ctx.createRadialGradient(mPos.x, mPos.y, 10, mPos.x, mPos.y, 600);
+      if (rgb) grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)`);
+      else grad.addColorStop(0, "rgba(34, 197, 94, 0.08)");
+      grad.addColorStop(0.4, "rgba(15, 23, 42, 0.03)");
+      grad.addColorStop(1, "rgba(2, 6, 23, 0.85)");
+      ctx.fillStyle = grad;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const shapes = shapesRef.current;
+      const sprite = spriteImgRef.current;
+      const useSprite = spriteLoadedRef.current && sprite;
 
-      // Update and draw particles
       particles.forEach((p, index) => {
         p.y += p.speedY;
         p.x += p.speedX;
@@ -211,52 +200,71 @@ export const ParticleBackground = React.memo(function ParticleBackground({
           p.y += dy * force * 0.0015;
         }
 
-        // Draw particle
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.angle);
 
-        ctx.beginPath();
+        const setGlow = () => {
+          if (rgb) ctx.shadowColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`;
+          else ctx.shadowColor = "rgba(34, 197, 94, 0.6)";
+          ctx.shadowBlur = p.size * 1.2;
+        };
 
-        if (p.type === "shape" && shapes && shapes.length > 0 && p.shapeIdx >= 0) {
-          // Draw custom polygon with random stretch
+        if (p.type === "shape" && useSprite) {
+          // === SPRITE PARTICLE: draw PNG, tint with accent via source-in ===
+          const s = p.size * 8 + 8;
+          const w = sprite.naturalWidth;
+          const h = sprite.naturalHeight;
+          const ratio = w / h;
+          const drawW = s * p.stretchX;
+          const drawH = s / ratio * p.stretchY;
+
+          // Draw the sprite
+          ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH);
+
+          // Tint: replace all visible pixels with accent color while preserving alpha
+          ctx.globalCompositeOperation = 'source-in';
+          ctx.fillStyle = `${p.color}${p.opacity * 0.7})`;
+          ctx.fillRect(-drawW / 2, -drawH / 2, drawW, drawH);
+          ctx.globalCompositeOperation = 'source-over';
+
+          // Glow effect behind the sprite
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+        } else if (p.type === "shape" && shapes && shapes.length > 0 && p.shapeIdx >= 0) {
+          ctx.beginPath();
           const polygon = shapes[p.shapeIdx % shapes.length];
           if (polygon && polygon.length >= 2) {
-            const s = p.size * 5; // scale factor
+            const s = p.size * 5;
             for (let i = 0; i < polygon.length; i++) {
               const [nx, ny] = polygon[i];
               const px = (nx - 0.5) * s * p.stretchX;
               const py = (ny - 0.5) * s * p.stretchY;
-              if (i === 0) ctx.moveTo(px, py);
-              else ctx.lineTo(px, py);
+              i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
             }
             ctx.closePath();
           } else {
-            // Fallback ellipse
             ctx.ellipse(0, 0, p.size * 1.5, p.size * 0.6, 0, 0, Math.PI * 2);
           }
+          ctx.fillStyle = `${p.color}${p.opacity})`;
+          setGlow();
+          ctx.fill();
         } else if (p.type === "shape") {
-          // No custom shapes — draw a flowing ellipse
+          ctx.beginPath();
           ctx.ellipse(0, 0, p.size * 1.5, p.size * 0.6, 0, 0, Math.PI * 2);
+          ctx.fillStyle = `${p.color}${p.opacity})`;
+          setGlow();
+          ctx.fill();
         } else {
-          // Sparks: small circles
+          ctx.beginPath();
           ctx.arc(0, 0, p.size * 0.5, 0, Math.PI * 2);
+          ctx.fillStyle = `${p.color}${p.opacity})`;
+          setGlow();
+          ctx.fill();
         }
 
-        ctx.fillStyle = `${p.color}${p.opacity})`;
-
-        // Shadow glow from accent
-        if (rgb) {
-          ctx.shadowColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`;
-        } else {
-          ctx.shadowColor = "rgba(34, 197, 94, 0.6)";
-        }
-        ctx.shadowBlur = p.size * 1.2;
-
-        ctx.fill();
         ctx.restore();
 
-        // Reset if out of boundaries
         if (p.y < -20 || p.x < -20 || p.x > canvas.width + 20) {
           particles[index] = createParticle(false);
         }
@@ -272,34 +280,28 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       window.removeEventListener("mousemove", handleMouseMove);
       cancelAnimationFrame(animationFrameId);
     };
-  }, []); // Empty dependency array means this only runs once on mount!
+  }, []);
 
   return (
     <div ref={containerRef} className="absolute inset-0 overflow-hidden select-none pointer-events-none z-0">
-      {/* Background Image with slow, beautiful parallax handled directly via DOM styled transform */}
       {showBgImage && (
         <div
           ref={bgRef}
           className="absolute inset-[-40px] bg-cover bg-center transition-all duration-1000 ease-out scale-105"
           style={{
             backgroundImage: bgImage ? `url('${bgImage}')` : undefined,
-            backgroundColor: bgImage ? undefined : `rgba(2, 6, 23, 1)`,
-            transform: `translate(0px, 0px) scale(1.03)`,
+            backgroundColor: bgImage ? undefined : "rgba(2, 6, 23, 1)",
+            transform: "translate(0px, 0px) scale(1.03)",
             filter: bgImage ? "brightness(0.35) contrast(1.08)" : undefined,
           }}
         />
       )}
-      {!showBgImage && (
-        <div className="absolute inset-0 bg-slate-950" />
-      )}
-      {/* Dark vignette gradient — always on top of background */}
+      {!showBgImage && <div className="absolute inset-0 bg-slate-950" />}
       <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/95 via-slate-950/40 to-slate-900/60" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(2,6,23,0.85)_100%)]" />
 
-      {/* Interactive canvas — always rendered to keep animation loop alive */}
       <canvas ref={canvasRef} className={`absolute inset-0 pointer-events-none ${showParticles ? 'mix-blend-screen' : 'hidden'}`} />
 
-      {/* High-performance cursor glow trail — only when cursor glow enabled */}
       {showCursorGlow && (
         <div
           ref={glowRef}
@@ -308,7 +310,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
             left: `${window.innerWidth / 2}px`,
             top: `${window.innerHeight / 2}px`,
             background: `radial-gradient(circle, ${accent}22 0%, transparent 70%)`,
-            filter: 'blur(80px)',
+            filter: "blur(80px)",
           }}
         />
       )}

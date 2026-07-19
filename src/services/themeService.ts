@@ -24,6 +24,8 @@ export interface ThemeDefinition {
   bgImage?: string;
   /** Custom particle shape polygons – each polygon is array of [x,y] points (normalized 0-1) */
   particleShapes?: number[][][];
+  /** PNG sprite path for particle shapes — loaded and tinted with accent color */
+  particleImage?: string;
 }
 
 // ===== Theme Service =====
@@ -140,6 +142,7 @@ class ThemeService {
           accent: meta.accent || '#22c55e',
           bgImage: meta.bgImage || undefined,
           particleShapes: meta.particleShapes || undefined,
+          particleImage: meta.particleImage || undefined,
         };
         backendThemes.push(theme);
       }
@@ -216,6 +219,7 @@ class ThemeService {
             accent: cdnTheme.accent || "#22c55e",
             bgImage: cdnTheme.bgImage,
             particleShapes: cdnTheme.particleShapes || undefined,
+            particleImage: cdnTheme.particleImage || undefined,
           };
           cdnThemes.push(theme);
         } catch (err) {

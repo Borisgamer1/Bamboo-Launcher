@@ -1181,7 +1181,7 @@ module.exports = function contentRoutes(app, ctx) {
       const assetType = validateType(req.params.type);
       if (!assetType) return res.status(400).json({ error: 'Invalid content type' });
 
-      const r = await pool.query('SELECT slug, thumbnail_url, preview_url, metadata FROM assets WHERE id = $1 AND asset_type = $2', [req.params.id, assetType]);
+      const r = await pool.query('SELECT slug, thumbnail_url, preview_url, metadata FROM assets WHERE (slug = $1 OR id::text = $1) AND asset_type = $2', [req.params.id, assetType]);
       if (!r.rows.length) return res.status(404).json({ error: 'Content not found' });
 
       const item = r.rows[0];
@@ -1203,6 +1203,24 @@ module.exports = function contentRoutes(app, ctx) {
           res.setHeader('Content-Type', mimeMap[ext] || 'image/png');
           res.setHeader('Cache-Control', 'public, max-age=86400');
           const stream = fs.createReadStream(thumbPath);
+          stream.pipe(res);
+          stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
+          return;
+        }
+      }
+
+      // Step 2.5: Fallback — check the metadata bgImage field and serve directly from disk
+      const meta = item.metadata || {};
+      if (meta.bgImage && typeof meta.bgImage === 'string' && !imageUrl) {
+        const bgPath = path.join(CONTENT_ROOT, meta.bgImage);
+        const resolvedBg = path.resolve(bgPath);
+        const resolvedRoot = path.resolve(CONTENT_ROOT);
+        if (resolvedBg.startsWith(resolvedRoot) && fs.existsSync(bgPath) && fs.statSync(bgPath).isFile()) {
+          const ext = path.extname(meta.bgImage).toLowerCase();
+          const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
+          res.setHeader('Content-Type', mimeMap[ext] || 'image/png');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          const stream = fs.createReadStream(bgPath);
           stream.pipe(res);
           stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
           return;

@@ -350,6 +350,7 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
         accent={currentTheme.accent}
         bgImage={currentTheme.bgImage ? `${API_BASE}/content/theme/${themeId}/image` : undefined}
         particleShapes={currentTheme.particleShapes}
+        particleImage={currentTheme.particleImage ? `https://raw.githubusercontent.com/Borisgamer1/Bamboo-Launcher---Content/main/${currentTheme.particleImage}` : undefined}
         showBgImage={showBgImage}
         showParticles={showParticles}
         showCursorGlow={showCursorGlow}
