@@ -65,6 +65,10 @@ interface ParticleBackgroundProps {
   bgBrightness?: number;
   /** Blur of background image in px (0–20, default 0) */
   bgBlur?: number;
+  /** Scale multiplier for sprite particles (default 8) */
+  particleSpriteSize?: number;
+  /** Number of particles on screen (default 40) */
+  particleCount?: number;
 }
 
 export const ParticleBackground = React.memo(function ParticleBackground({
@@ -77,6 +81,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   showCursorGlow = true,
   bgBrightness = 35,
   bgBlur = 0,
+  particleSpriteSize = 8,
+  particleCount = 40,
 }: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -88,9 +94,13 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   const shapesRef = useRef(particleShapes);
   const spriteImgRef = useRef<HTMLImageElement | null>(null);
   const spriteLoadedRef = useRef(false);
+  const spriteSizeRef = useRef(particleSpriteSize);
+  const particleCountRef = useRef(particleCount);
 
   useEffect(() => { accentRef.current = accent; }, [accent]);
   useEffect(() => { shapesRef.current = particleShapes; }, [particleShapes]);
+  useEffect(() => { spriteSizeRef.current = particleSpriteSize; }, [particleSpriteSize]);
+  useEffect(() => { particleCountRef.current = particleCount; }, [particleCount]);
 
   // Load particle sprite image
   useEffect(() => {
@@ -166,8 +176,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       };
     };
 
-    const particleCount = 40;
-    for (let i = 0; i < particleCount; i++) {
+    const initCount = particleCountRef.current;
+    for (let i = 0; i < initCount; i++) {
       particles.push(createParticle(true));
     }
 
@@ -218,7 +228,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
 
         if (p.type === "shape" && useSprite) {
           // === SPRITE PARTICLE: draw PNG, tint with accent via source-in ===
-          const s = p.size * 8 + 8;
+          const s = p.size * spriteSizeRef.current + 8;
           const w = sprite.naturalWidth;
           const h = sprite.naturalHeight;
           const ratio = w / h;

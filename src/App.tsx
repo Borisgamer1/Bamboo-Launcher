@@ -87,6 +87,14 @@ const [showExitModal, setShowExitModal] = useState(false);
     const saved = localStorage.getItem('bamboo-bgBlur');
     return saved !== null ? parseInt(saved) : 0;
   });
+  const [particleSpriteSize, setParticleSpriteSize] = useState(() => {
+    const saved = localStorage.getItem('bamboo-particleSpriteSize');
+    return saved !== null ? parseInt(saved) : 8;
+  });
+  const [particleCount, setParticleCount] = useState(() => {
+    const saved = localStorage.getItem('bamboo-particleCount');
+    return saved !== null ? parseInt(saved) : 40;
+  });
 
   // Persist changes
   useEffect(() => { localStorage.setItem('bamboo-showBgImage', String(showBgImage)); }, [showBgImage]);
@@ -94,6 +102,8 @@ const [showExitModal, setShowExitModal] = useState(false);
   useEffect(() => { localStorage.setItem('bamboo-showCursorGlow', String(showCursorGlow)); }, [showCursorGlow]);
   useEffect(() => { localStorage.setItem('bamboo-bgBrightness', String(bgBrightness)); }, [bgBrightness]);
   useEffect(() => { localStorage.setItem('bamboo-bgBlur', String(bgBlur)); }, [bgBlur]);
+  useEffect(() => { localStorage.setItem('bamboo-particleSpriteSize', String(particleSpriteSize)); }, [particleSpriteSize]);
+  useEffect(() => { localStorage.setItem('bamboo-particleCount', String(particleCount)); }, [particleCount]);
 
   // Resolve current theme: check ThemeService first, then fallback to built-in
   const currentTheme = themeService.getTheme(themeId) ||
@@ -366,6 +376,8 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
         showCursorGlow={showCursorGlow}
         bgBrightness={bgBrightness}
         bgBlur={bgBlur}
+        particleSpriteSize={particleSpriteSize}
+        particleCount={particleCount}
       />
       <Sidebar activeTab={activeTab} setActiveTab={handleSetActiveTab} theme={theme} lang={lang} />
 
@@ -400,7 +412,7 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
               {activeTab === "cosmetics" && <CosmeticsView setActiveTab={setActiveTab} lang={lang} activeAccount={activeAccount} />}
               {activeTab === "screenshots" && <ScreenshotsView setActiveTab={setActiveTab} lang={lang} />}
               {activeTab === "news" && <NewsEventsView theme={theme} lang={lang} />}
-              {activeTab === "settings" && <SettingsView setActiveTab={setActiveTab} theme={theme} themeId={themeId} setTheme={(t: any) => setThemeId(t)} accounts={accounts} setAccounts={setAccounts} activeAccount={activeAccount} setActiveAccount={setActiveAccount} lang={lang} setLang={setLang} showBgImage={showBgImage} setShowBgImage={setShowBgImage} showParticles={showParticles} setShowParticles={setShowParticles} showCursorGlow={showCursorGlow} setShowCursorGlow={setShowCursorGlow} />}
+              {activeTab === "settings" && <SettingsView setActiveTab={setActiveTab} theme={theme} themeId={themeId} setTheme={(t: any) => setThemeId(t)} accounts={accounts} setAccounts={setAccounts} activeAccount={activeAccount} setActiveAccount={setActiveAccount} lang={lang} setLang={setLang} showBgImage={showBgImage} setShowBgImage={setShowBgImage} showParticles={showParticles} setShowParticles={setShowParticles} showCursorGlow={showCursorGlow} setShowCursorGlow={setShowCursorGlow} bgBrightness={bgBrightness} setBgBrightness={setBgBrightness} bgBlur={bgBlur} setBgBlur={setBgBlur} particleSpriteSize={particleSpriteSize} setParticleSpriteSize={setParticleSpriteSize} particleCount={particleCount} setParticleCount={setParticleCount} />}
             </motion.div>
           </AnimatePresence>
           </Suspense>

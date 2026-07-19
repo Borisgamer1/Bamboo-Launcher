@@ -48,6 +48,10 @@ interface SettingsViewProps {
   setBgBrightness: (v: number) => void;
   bgBlur: number;
   setBgBlur: (v: number) => void;
+  particleSpriteSize: number;
+  setParticleSpriteSize: (v: number) => void;
+  particleCount: number;
+  setParticleCount: (v: number) => void;
 }
 
 type SettingsCategory = "general" | "ingame" | "themes" | "accounts";
@@ -73,6 +77,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setBgBrightness,
   bgBlur,
   setBgBlur,
+  particleSpriteSize,
+  setParticleSpriteSize,
+  particleCount,
+  setParticleCount,
 }) => {
   const t = translations[lang];
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>(() => {
@@ -1395,6 +1403,48 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                   <div className="flex justify-between text-[10px] text-slate-500 font-mono">
                     <span>Scharf</span>
                     <span>Unscharf</span>
+                  </div>
+                </div>
+
+                {/* Particle sprite size slider */}
+                <div className="bg-slate-900/20 border border-slate-800/40 p-4 rounded-2xl flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-200">Partikel-Sprite-Größe</span>
+                    <span className="text-xs font-mono font-black theme-text">{particleSpriteSize}{particleSpriteSize === 8 ? ' (Standard)' : ''}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={30}
+                    value={particleSpriteSize}
+                    onChange={(e) => setParticleSpriteSize(parseInt(e.target.value))}
+                    className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1.5 rounded-lg cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                    <span>Klein</span>
+                    <span>|•| Standard: 8</span>
+                    <span>Groß</span>
+                  </div>
+                </div>
+
+                {/* Particle count/frequency slider */}
+                <div className="bg-slate-900/20 border border-slate-800/40 p-4 rounded-2xl flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-200">Partikel-Häufigkeit</span>
+                    <span className="text-xs font-mono font-black theme-text">{particleCount}{particleCount === 40 ? ' (Standard)' : ''}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={5}
+                    max={200}
+                    value={particleCount}
+                    onChange={(e) => setParticleCount(parseInt(e.target.value))}
+                    className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1.5 rounded-lg cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                    <span>Wenig</span>
+                    <span>|•| Standard: 40</span>
+                    <span>Viel</span>
                   </div>
                 </div>
 
