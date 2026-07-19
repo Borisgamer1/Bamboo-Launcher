@@ -167,46 +167,28 @@ async function initDatabase() {
 
     // Seed default assets if empty (sample demo assets)
     const assetCount = await pool.query('SELECT COUNT(*) FROM assets');
+    // Built-in themes removed — all themes come from the admin panel only.
     
-    // Also upsert any missing theme slugs (syncs on every restart, handles new themes)
-    const builtinThemeSlugs = ['bamboo', 'cherry', 'frozen', 'nether', 'end', 'warden', 'copper', 'obsidian'];
-    const themeMetaMap = {
-      bamboo:    { accent:'#22c55e', bgImage:'/images/bamboo_forest.png', desc:'Bambus & Grün', accentLabel:'Grün' },
-      cherry:    { accent:'#f43f5e', bgImage:'/images/cherry_blossom.png', desc:'Kirschblüte & Pink', accentLabel:'Pink' },
-      frozen:    { accent:'#0ea5e9', bgImage:'/images/frozen_ice.png', desc:'Eis & Blau', accentLabel:'Eisblau' },
-      nether:    { accent:'#ef4444', bgImage:'/images/nether_amber.png', desc:'Nether & Rot', accentLabel:'Rot' },
-      end:       { accent:'#a855f7', bgImage:'/images/nether_amber.png', desc:'Purpur & Mystisch', accentLabel:'Purpur' },
-      warden:    { accent:'#14b8a6', bgImage:'/images/frozen_ice.png', desc:'Türkis & Modern', accentLabel:'Türkis' },
-      copper:    { accent:'#d97706', bgImage:'/images/nether_amber.png', desc:'Kupfer & Orange', accentLabel:'Orange' },
-      obsidian:  { accent:'#a78bfa', bgImage:'/images/bamboo_forest.png', desc:'Obsidian & Violett', accentLabel:'Violett' },
-    };
-    for (const slug of builtinThemeSlugs) {
-      const meta = themeMetaMap[slug] || {};
-      await pool.query(`
-        INSERT INTO assets (slug, name, description, asset_type, category, status, version, tags, metadata)
-        VALUES ($1, $2, $3, 'theme', $4, 'published', 1, $5, $6::jsonb)
-        ON CONFLICT (slug) DO UPDATE SET
-          name = EXCLUDED.name,
-          description = EXCLUDED.description,
-          category = EXCLUDED.category,
-          metadata = EXCLUDED.metadata,
-          updated_at = NOW()
-      `, [slug, slug.charAt(0).toUpperCase() + slug.slice(1), slug + ' theme', slug, '{theme}', JSON.stringify(meta)]);
+    // Cleanup: Delete old built-in theme rows from prior seed runs (if any still exist)
+    // This only affects rows with the 8 legacy slugs and asset_type = 'theme'.
+    // Custom admin themes are NOT affected.
+    try {
+      const cleanupResult = await pool.query(
+        "DELETE FROM assets WHERE slug = ANY($1::text[]) AND asset_type = 'theme'",
+        [['bamboo', 'cherry', 'frozen', 'nether', 'end', 'warden', 'copper', 'obsidian']]
+      );
+      if (cleanupResult.rowCount > 0) {
+        console.log(`[admin] Removed ${cleanupResult.rowCount} legacy built-in theme(s) from database`);
+      }
+    } catch (e) {
+      console.warn('[admin] Built-in theme cleanup skipped:', e.message);
     }
     
     if (parseInt(assetCount.rows[0].count) === 0) {
       const defaultAssets = [
         ['duck-crown', 'Duck Crown', 'A majestic crown for your duck character', 'cosmetic', 'hats', 'published', 1, '{crown,royal,gold}'],
         ['dragon-wings', 'Dragon Wings', 'Epic dragon wings cosmetic', 'cosmetic', 'wings', 'draft', 1, '{wings,dragon,epic}'],
-        // Built-in themes synced from the launcher
-        ['bamboo', 'Bamboo', 'Bamboo green theme - fresh & natural', 'theme', 'green', 'published', 1, '{theme,green,nature}', '{"accent":"#22c55e","accentLight":"#34d399","accentDark":"#16a34a","glowColor":"rgba(52,211,153,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"bamboo"}'],
-        ['cherry', 'Cherry', 'Cherry blossom pink theme', 'theme', 'pink', 'published', 1, '{theme,pink,spring}', '{"accent":"#f43f5e","accentLight":"#fb7185","accentDark":"#e11d48","glowColor":"rgba(244,63,94,0.5)","bgImage":"/images/cherry_blossom.png","themeType":"cherry"}'],
-        ['frozen', 'Icy Blue', 'Ice blue frozen theme', 'theme', 'blue', 'published', 1, '{theme,blue,ice}', '{"accent":"#0ea5e9","accentLight":"#38bdf8","accentDark":"#0284c7","glowColor":"rgba(14,165,233,0.5)","bgImage":"/images/frozen_ice.png","themeType":"frozen"}'],
-        ['nether', 'Nether Red', 'Dark red nether theme', 'theme', 'red', 'published', 1, '{theme,red,nether}', '{"accent":"#ef4444","accentLight":"#f87171","accentDark":"#dc2626","glowColor":"rgba(239,68,68,0.5)","bgImage":"/images/nether_amber.png","themeType":"nether"}'],
-        ['end', 'End Purple', 'Mystical purple end theme', 'theme', 'purple', 'published', 1, '{theme,purple,end}', '{"accent":"#a855f7","accentLight":"#c084fc","accentDark":"#7c3aed","glowColor":"rgba(168,85,247,0.5)","bgImage":"/images/nether_amber.png","themeType":"end"}'],
-        ['warden', 'Warden Cyan', 'Modern cyan warden theme', 'theme', 'cyan', 'published', 1, '{theme,cyan,warden}', '{"accent":"#14b8a6","accentLight":"#2dd4bf","accentDark":"#0d9488","glowColor":"rgba(20,184,166,0.5)","bgImage":"/images/frozen_ice.png","themeType":"warden"}'],
-        ['copper', 'Copper Orange', 'Warm orange copper theme', 'theme', 'orange', 'published', 1, '{theme,orange,copper}', '{"accent":"#d97706","accentLight":"#f59e0b","accentDark":"#b45309","glowColor":"rgba(217,119,6,0.5)","bgImage":"/images/nether_amber.png","themeType":"copper"}'],
-        ['obsidian', 'Obsidian Violet', 'Dark violet obsidian theme', 'theme', 'violet', 'published', 1, '{theme,violet,obsidian}', '{"accent":"#a78bfa","accentLight":"#c4b5fd","accentDark":"#8b5cf6","glowColor":"rgba(167,139,250,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"obsidian"}'],
+        
       ];
       for (const [slug, name, desc, type, cat, status, ver, tags, metadata] of defaultAssets) {
         await pool.query(
@@ -229,29 +211,6 @@ async function initDatabase() {
       console.warn('[admin] Background migration skipped:', e.message);
     }
 
-    // === Migrate existing themes: fill missing metadata with default values ===
-    try {
-      const themeMetaDefaults = {
-        bamboo:   '{"accent":"#22c55e","accentLight":"#34d399","accentDark":"#16a34a","glowColor":"rgba(52,211,153,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"bamboo","desc":"Bambus & Grün"}',
-        cherry:   '{"accent":"#f43f5e","accentLight":"#fb7185","accentDark":"#e11d48","glowColor":"rgba(244,63,94,0.5)","bgImage":"/images/cherry_blossom.png","themeType":"cherry","desc":"Kirschblüte & Pink"}',
-        frozen:   '{"accent":"#0ea5e9","accentLight":"#38bdf8","accentDark":"#0284c7","glowColor":"rgba(14,165,233,0.5)","bgImage":"/images/frozen_ice.png","themeType":"frozen","desc":"Eis & Blau"}',
-        nether:   '{"accent":"#ef4444","accentLight":"#f87171","accentDark":"#dc2626","glowColor":"rgba(239,68,68,0.5)","bgImage":"/images/nether_amber.png","themeType":"nether","desc":"Nether & Rot"}',
-        end:      '{"accent":"#a855f7","accentLight":"#c084fc","accentDark":"#7c3aed","glowColor":"rgba(168,85,247,0.5)","bgImage":"/images/nether_amber.png","themeType":"end","desc":"Purpur & Mystisch"}',
-        warden:   '{"accent":"#14b8a6","accentLight":"#2dd4bf","accentDark":"#0d9488","glowColor":"rgba(20,184,166,0.5)","bgImage":"/images/frozen_ice.png","themeType":"warden","desc":"Türkis & Modern"}',
-        copper:   '{"accent":"#d97706","accentLight":"#f59e0b","accentDark":"#b45309","glowColor":"rgba(217,119,6,0.5)","bgImage":"/images/nether_amber.png","themeType":"copper","desc":"Kupfer & Orange"}',
-        obsidian: '{"accent":"#a78bfa","accentLight":"#c4b5fd","accentDark":"#8b5cf6","glowColor":"rgba(167,139,250,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"obsidian","desc":"Obsidian & Violett"}',
-      };
-      for (const [slug, defaultMeta] of Object.entries(themeMetaDefaults)) {
-        await pool.query(`
-          UPDATE assets
-          SET metadata = $2::jsonb, updated_at = NOW()
-          WHERE slug = $1 AND asset_type = 'theme' AND (metadata IS NULL OR metadata = '{}'::jsonb OR metadata->>'accent' IS NULL)
-        `, [slug, defaultMeta]);
-      }
-      console.log('[admin] Theme metadata migration completed');
-    } catch (e) {
-      console.warn('[admin] Theme metadata migration skipped:', e.message);
-    }
 
     dbState.connected = true;
     console.log('[admin] PostgreSQL connected, all tables initialized');
