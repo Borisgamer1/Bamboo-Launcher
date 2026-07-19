@@ -136,8 +136,17 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
   useEffect(() => {
     setDetailTab("mods");
   }, [selectedInstance]);
+  
+  // RAM slider initialisiert von der aktuellen Instance
   const [ramAllocation, setRamAllocation] = useState(4096);
-  const [ramSliderValue, setRamSliderValue] = useState(4096);
+  const [ramSliderValue, setRamSliderValue] = useState(() => selectedInstance?.ram || 4096);
+  
+  // Update slider when selected instance changes
+  useEffect(() => {
+    if (selectedInstance?.ram) {
+      setRamSliderValue(selectedInstance.ram);
+    }
+  }, [selectedInstance?.id]);
   
   // Java scanning
   const [isScanningJava, setIsScanningJava] = useState(false);
@@ -543,7 +552,14 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
                   max={16384}
                   step={256}
                   value={ramSliderValue}
-                  onChange={(e) => setRamSliderValue(Number(e.target.value))}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setRamSliderValue(val);
+                    // Speichere RAM direkt auf der Instance
+                    setInstances(prev => prev.map(i =>
+                      i.id === inst.id ? { ...i, ram: val } : i
+                    ));
+                  }}
                   className="w-full accent-[var(--theme-accent)]"
                 />
                 <div className="flex justify-between text-[10px] text-slate-500 mt-1">
@@ -2134,22 +2150,24 @@ const ContentListView = ({
               Update All
             </button>
           )}
-          {/* Issue 24: Upload local mod/resourcepack/shader button */}
-          <button
-            onClick={handleUploadLocalMod}
-            disabled={uploadingFile}
-            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50 ${
-              uploadingFile
-                ? "theme-bg-light theme-text theme-border-light"
-                : "theme-bg-light hover:theme-bg-md theme-text theme-border-light"
-            }`}
-            title="Eigene Datei hochladen"
-          >
-            <Upload className={`w-3.5 h-3.5 ${uploadingFile ? 'animate-pulse' : ''}`} />
-            {uploadingFile ? `${uploadProgress}%` : 'Hochladen'}
-          </button>
-          {/* Issue 10: Modpack special treatment - only show Add Mods if ownContentManagement enabled */}
-          {(localInst.isModpack && detailTab === "mods" && !localInst.ownContentManagement) ? (
+          {/* Issue 24 + Issue 10: Upload button - hidden when modpack with ownContentManagement disabled */}
+          {!(localInst.isModpack && !localInst.ownContentManagement) && (
+            <button
+              onClick={handleUploadLocalMod}
+              disabled={uploadingFile}
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50 ${
+                uploadingFile
+                  ? "theme-bg-light theme-text theme-border-light"
+                  : "theme-bg-light hover:theme-bg-md theme-text theme-border-light"
+              }`}
+              title="Eigene Datei hochladen"
+            >
+              <Upload className={`w-3.5 h-3.5 ${uploadingFile ? 'animate-pulse' : ''}`} />
+              {uploadingFile ? `${uploadProgress}%` : 'Hochladen'}
+            </button>
+          )}
+          {/* Issue 10: Modpack special treatment - show warning + hide Add buttons if ownContentManagement disabled (all content types including data packs) */}
+          {(localInst.isModpack && !localInst.ownContentManagement && (detailTab === "mods" || detailTab === "datapacks")) ? (
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl font-bold">
                 <AlertTriangle className="w-3 h-3 inline mr-1" />

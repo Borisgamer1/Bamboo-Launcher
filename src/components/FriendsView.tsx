@@ -348,7 +348,10 @@ export const FriendsView = React.memo(function FriendsView({ lang, activeAccount
           </p>
           <div className="flex flex-col gap-3 items-center">
             <button
-              onClick={() => setActiveTab?.("settings")}
+              onClick={() => {
+                sessionStorage.setItem('bamboo-settings-category', 'accounts');
+                setActiveTab?.("settings");
+              }}
               className="px-6 py-3 rounded-xl text-sm font-bold bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white transition-all cursor-pointer shadow-lg shadow-blue-500/20"
             >
               <Settings className="w-4 h-4 inline mr-2" />

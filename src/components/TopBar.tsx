@@ -276,6 +276,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <div className="mt-2 pt-2 border-t border-slate-800/60 flex flex-col gap-1">
                   <button 
                     onClick={() => {
+                      // Set session flag so SettingsView knows to open accounts category
+                      sessionStorage.setItem('bamboo-settings-category', 'accounts');
                       setActiveTab("settings");
                       setProfileDropdownOpen(false);
                     }}

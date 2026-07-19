@@ -167,12 +167,30 @@ async function initDatabase() {
 
     // Seed default assets if empty (sample demo assets)
     const assetCount = await pool.query('SELECT COUNT(*) FROM assets');
+    
+    // Also upsert any missing theme slugs (syncs on every restart, handles new themes)
+    const builtinThemeSlugs = ['bamboo', 'cherry', 'frozen', 'nether', 'end', 'warden', 'copper', 'obsidian'];
+    for (const slug of builtinThemeSlugs) {
+      await pool.query(`
+        INSERT INTO assets (slug, name, description, asset_type, category, status, version, tags)
+        VALUES ($1, $2, $3, 'theme', $4, 'published', 1, $5)
+        ON CONFLICT (slug) DO NOTHING
+      `, [slug, slug.charAt(0).toUpperCase() + slug.slice(1), slug + ' theme', slug, '{theme}']);
+    }
+    
     if (parseInt(assetCount.rows[0].count) === 0) {
       const defaultAssets = [
         ['duck-crown', 'Duck Crown', 'A majestic crown for your duck character', 'cosmetic', 'hats', 'published', 1, '{crown,royal,gold}'],
-        ['bamboo-green-theme', 'Bamboo Green Theme', 'A fresh green theme inspired by bamboo forests', 'theme', 'green', 'published', 1, '{theme,green,nature}'],
-        ['cherry-blossom-theme', 'Cherry Blossom Theme', 'Beautiful cherry blossom pink theme', 'theme', 'pink', 'published', 1, '{theme,pink,spring}'],
         ['dragon-wings', 'Dragon Wings', 'Epic dragon wings cosmetic', 'cosmetic', 'wings', 'draft', 1, '{wings,dragon,epic}'],
+        // Built-in themes synced from the launcher
+        ['bamboo', 'Bamboo', 'Bamboo green theme - fresh & natural', 'theme', 'green', 'published', 1, '{theme,green,nature}'],
+        ['cherry', 'Cherry', 'Cherry blossom pink theme', 'theme', 'pink', 'published', 1, '{theme,pink,spring}'],
+        ['frozen', 'Icy Blue', 'Ice blue frozen theme', 'theme', 'blue', 'published', 1, '{theme,blue,ice}'],
+        ['nether', 'Nether Red', 'Dark red nether theme', 'theme', 'red', 'published', 1, '{theme,red,nether}'],
+        ['end', 'End Purple', 'Mystical purple end theme', 'theme', 'purple', 'published', 1, '{theme,purple,end}'],
+        ['warden', 'Warden Cyan', 'Modern cyan warden theme', 'theme', 'cyan', 'published', 1, '{theme,cyan,warden}'],
+        ['copper', 'Copper Orange', 'Warm orange copper theme', 'theme', 'orange', 'published', 1, '{theme,orange,copper}'],
+        ['obsidian', 'Obsidian Violet', 'Dark violet obsidian theme', 'theme', 'violet', 'published', 1, '{theme,violet,obsidian}'],
       ];
       for (const [slug, name, desc, type, cat, status, ver, tags] of defaultAssets) {
         await pool.query(

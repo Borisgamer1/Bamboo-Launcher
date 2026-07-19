@@ -1181,32 +1181,54 @@ module.exports = function contentRoutes(app, ctx) {
       const assetType = validateType(req.params.type);
       if (!assetType) return res.status(400).json({ error: 'Invalid content type' });
 
-      const r = await pool.query('SELECT slug, thumbnail_url, preview_url FROM assets WHERE id = $1 AND asset_type = $2', [req.params.id, assetType]);
+      const r = await pool.query('SELECT slug, thumbnail_url, preview_url, metadata FROM assets WHERE id = $1 AND asset_type = $2', [req.params.id, assetType]);
       if (!r.rows.length) return res.status(404).json({ error: 'Content not found' });
 
       const item = r.rows[0];
-      // Look for images in the content repo directory
-      const contentDir = path.join(CONTENT_ROOT, assetType + 's', item.slug);
-      if (!fs.existsSync(contentDir)) {
-        return res.status(404).json({ error: 'No content directory found' });
+      
+      // Step 1: If thumbnail_url or preview_url is set, redirect there
+      const imageUrl = item.thumbnail_url || item.preview_url;
+      if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
+        return res.redirect(imageUrl);
       }
 
-      const imageFiles = fs.readdirSync(contentDir).filter(f => /\.(png|jpg|jpeg|webp|gif)$/i.test(f));
-      if (imageFiles.length === 0) return res.status(404).json({ error: 'No images found' });
+      // Step 2: Look for images in the content repo directory
+      const contentDir = path.join(CONTENT_ROOT, assetType + 's', item.slug);
+      if (fs.existsSync(contentDir)) {
+        const imageFiles = fs.readdirSync(contentDir).filter(f => /\.(png|jpg|jpeg|webp|gif)$/i.test(f));
+        if (imageFiles.length > 0) {
+          const chosen = imageFiles.find(f => /preview|thumb/i.test(f)) || imageFiles[0];
+          const imagePath = path.join(contentDir, chosen);
+          if (fs.existsSync(imagePath)) {
+            const ext = path.extname(chosen).toLowerCase();
+            const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
+            res.setHeader('Content-Type', mimeMap[ext] || 'image/png');
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            const stream = fs.createReadStream(imagePath);
+            stream.pipe(res);
+            stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
+            return;
+          }
+        }
+      }
 
-      // Prefer files with 'preview' in name, then first image
-      const chosen = imageFiles.find(f => /preview|thumb/i.test(f)) || imageFiles[0];
-      const imagePath = path.join(contentDir, chosen);
+      // Step 3: If thumbnail_url is set as a local path, proxy from GitHub
+      if (imageUrl) {
+        const githubUrl = `https://raw.githubusercontent.com/${GITHUB_CONTENT_REPO}/${GITHUB_CONTENT_BRANCH}/${imageUrl.replace(/^\\/+/, '')}`;
+        try {
+          const https = require('https');
+          https.get(githubUrl, { headers: { 'User-Agent': 'Bamboo-Launcher/1.0' } }, (ghRes) => {
+            if (ghRes.statusCode === 200) {
+              ghRes.pipe(res);
+            } else {
+              return res.status(404).json({ error: 'Image not found' });
+            }
+          });
+          return;
+        } catch {}
+      }
 
-      if (!fs.existsSync(imagePath)) return res.status(404).json({ error: 'Image not found' });
-
-      const ext = path.extname(chosen).toLowerCase();
-      const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
-      res.setHeader('Content-Type', mimeMap[ext] || 'image/png');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      const stream = fs.createReadStream(imagePath);
-      stream.pipe(res);
-      stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
+      return res.status(404).json({ error: 'No images found for this cosmetic' });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1315,6 +1337,27 @@ module.exports = function contentRoutes(app, ctx) {
       const { files } = req.body;
       if (!Array.isArray(files) || files.length === 0) {
         return res.status(400).json({ error: 'files array required' });
+      }
+
+      // Backend file type validation for cosmetics
+      const extErrors = [];
+      for (const f of files) {
+        if (assetType === 'cosmetic') {
+          const ext = (f.fileName || f.filePath || '').split('.').pop()?.toLowerCase() || '';
+          const ft = f.fileType || guessFileType(f.filePath || '');
+          if (ft === 'model' && ext !== 'json') {
+            extErrors.push(`Model file "${f.fileName}" must be .json format`);
+          }
+          if (ft === 'texture' && ext !== 'png') {
+            extErrors.push(`Texture file "${f.fileName}" must be .png format`);
+          }
+          if (ft === 'icon' && !['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) {
+            extErrors.push(`Icon file "${f.fileName}" must be a standard image format`);
+          }
+        }
+      }
+      if (extErrors.length > 0) {
+        return res.status(400).json({ error: extErrors.join('. ') });
       }
 
       const assigned = [];

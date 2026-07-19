@@ -380,8 +380,48 @@ export const ModsView: React.FC<ModsViewProps> = ({ setActiveTab, searchQuery: i
         mrpackUrl: versionInfo.url,
       });
       if (result?.success && setInstances) {
+        const index = result.index;
+        const fileList = index?.files || [];
+        // Get default RAM from settings
+        let defaultRam = 6144;
+        try {
+          const settings = await window.electronAPI?.getSettings?.();
+          if (settings?.defaultRam && typeof settings.defaultRam === 'number') {
+            defaultRam = settings.defaultRam;
+          }
+        } catch {}
+        // Build content items from the modpack index files
+        const contentItems = fileList
+          .filter((f: any) => f.path && f.downloads?.[0])
+          .map((f: any) => {
+            const path = f.path;
+            let type: "mods" | "resourcepacks" | "shaderpacks" | "datapacks" | "worlds" | null = null;
+            if (path.startsWith('overrides/mods/') || path.startsWith('mods/')) type = 'mods';
+            else if (path.startsWith('overrides/resourcepacks/') || path.startsWith('resourcepacks/')) type = 'resourcepacks';
+            else if (path.startsWith('overrides/shaderpacks/') || path.startsWith('shaderpacks/')) type = 'shaderpacks';
+            else if (path.startsWith('overrides/datapacks/') || path.startsWith('datapacks/')) type = 'datapacks';
+            else if (path.startsWith('overrides/saves/') || path.startsWith('overrides/worlds/') || path.startsWith('saves/') || path.startsWith('worlds/')) type = 'worlds';
+            if (!type) return null; // Skip config, scripts, etc.
+            const fileName = path.split('/').pop() || f.filename || path;
+            return {
+              id: fileName.replace(/\.(jar|zip|disabled)$/i, '') + '_' + Date.now(),
+              name: fileName.replace(/\.(jar|zip|disabled|png)$/i, '').replace(/[-_]/g, ' '),
+              fileName: fileName,
+              version: index.name || 'Modpack',
+              type,
+              enabled: true,
+              locked: true,
+            };
+          })
+          .filter(Boolean) as ContentItem[];
         setInstances(prev => prev.map(i =>
-          i.id === newId ? { ...i, modCount: result.modCount || 0, size: `${result.modCount || 0} Mods` } : i
+          i.id === newId ? { 
+            ...i, 
+            modCount: contentItems.filter(c => c.type === 'mods').length,
+            size: `${contentItems.length} Inhalte`,
+            content: contentItems,
+            ram: defaultRam,
+          } : i
         ));
       }
     } catch (e: any) {

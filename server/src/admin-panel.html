@@ -1099,8 +1099,12 @@ async function saveContent() {
     data.metadata.rarity = data.rarity;
     data.metadata.accentColor = data.accentColor;
     // Add file assignments
-    const files = gatherFileAssignments('cosmetic');
-    if (files.length > 0) data.metadata._files = files;
+    try {
+      const files = gatherFileAssignments('cosmetic');
+      if (files.length > 0) data.metadata._files = files;
+    } catch (e) {
+      return; // Validation error already shown as toast
+    }
   } else if (type === 'theme') {
     data.metadata.accentColor = document.getElementById('theme-accent').value;
     data.metadata.backgroundColor = document.getElementById('theme-bg').value;
@@ -1163,21 +1167,57 @@ async function saveContent() {
 
 function gatherFileAssignments(type) {
   const files = [];
+  const errors = [];
+  
   const pickers = document.querySelectorAll(`#fields-${type} .file-picker`);
   pickers.forEach(p => {
     const hidden = p.querySelector('.file-picker-hidden');
     if (hidden && hidden.value) {
       const fileType = p.dataset.fileType || 'other';
-      files.push({ filePath: hidden.value, fileType, fileName: hidden.value.split('/').pop() });
+      const fileName = hidden.value.split('/').pop() || '';
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      
+      // File type validation for cosmetics
+      if (type === 'cosmetic') {
+        if (fileType === 'model' && ext !== 'json') {
+          errors.push(`Modell muss im .json-Format vorliegen (${fileName})`);
+          return;
+        }
+        if (fileType === 'texture' && ext !== 'png') {
+          errors.push(`Texturen müssen im .png-Format vorliegen (${fileName})`);
+          return;
+        }
+        if (fileType === 'icon' && !['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) {
+          errors.push(`Icon muss ein gültiges Bildformat sein (${fileName})`);
+          return;
+        }
+      }
+      files.push({ filePath: hidden.value, fileType, fileName });
     }
   });
+  
   const checks = document.querySelectorAll(`#fields-${type} .file-checkbox-item.selected`);
   checks.forEach(c => {
     const filePath = c.dataset.path;
     if (filePath) {
-      files.push({ filePath, fileType: c.dataset.fileType || 'texture', fileName: filePath.split('/').pop() });
+      const fileType = c.dataset.fileType || 'texture';
+      const fileName = filePath.split('/').pop() || '';
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      
+      // Texture validation for cosmetics
+      if (type === 'cosmetic' && fileType === 'texture' && ext !== 'png') {
+        errors.push(`Texturen müssen im .png-Format vorliegen (${fileName})`);
+        return;
+      }
+      files.push({ filePath, fileType, fileName });
     }
   });
+  
+  if (errors.length > 0) {
+    showToast(errors.join('\n'), 'error');
+    throw new Error(errors[0]);
+  }
+  
   return files;
 }
 

@@ -34,6 +34,7 @@ interface CosmeticItem {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  fileCount: number;
 }
 
 interface CosmeticsViewProps {

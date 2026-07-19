@@ -91,8 +91,8 @@ export const NewsEventsView: React.FC<Props> = ({ theme, lang }) => {
     setNewsLoading(true);
     setNewsError(null);
     try {
-      const url = new URL(`${API_BASE}/news`);
-      url.searchParams.set("visible", "true");
+      const url = new URL(`${API_BASE}/content/news`);
+      url.searchParams.set("active", "true");
       url.searchParams.set("limit", "50");
       if (activeCategory !== "all") url.searchParams.set("category", activeCategory);
       if (search) url.searchParams.set("search", search);
@@ -108,8 +108,8 @@ export const NewsEventsView: React.FC<Props> = ({ theme, lang }) => {
     setEventsLoading(true);
     setEventsError(null);
     try {
-      const url = new URL(`${API_BASE}/events`);
-      url.searchParams.set("visible", "true");
+      const url = new URL(`${API_BASE}/content/event`);
+      url.searchParams.set("active", "true");
       url.searchParams.set("limit", "20");
       const res = await fetch(url.toString());
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

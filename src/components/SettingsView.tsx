@@ -55,7 +55,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLang
 }) => {
   const t = translations[lang];
-  const [activeCategory, setActiveCategory] = useState<SettingsCategory>("general");
+  const [activeCategory, setActiveCategory] = useState<SettingsCategory>(() => {
+    // Check if we should open accounts category directly
+    try {
+      const saved = sessionStorage.getItem('bamboo-settings-category');
+      if (saved === 'accounts' || saved === 'general' || saved === 'ingame' || saved === 'themes') {
+        sessionStorage.removeItem('bamboo-settings-category');
+        return saved as SettingsCategory;
+      }
+    } catch {}
+    return "general";
+  });
 
   // Settings State
   // General
@@ -240,7 +250,12 @@ const [showSavedToast, setShowSavedToast] = useState(false);
       online: false
     };
 
-    setAccounts([...accounts, newAcc]);
+    const updatedAccounts = [...accounts, newAcc];
+    setAccounts(updatedAccounts);
+    // Auto-select first account if this is the only one
+    if (updatedAccounts.length === 1) {
+      setActiveAccount(newAcc);
+    }
     setShowAddAccountModal(false);
     setNewWorldName("");
     setNewAccountType("Offline");
@@ -305,7 +320,14 @@ const [showSavedToast, setShowSavedToast] = useState(false);
           online: true,
           uuid: result.uuid,
         };
-        setAccounts(prev => [...prev, newAcc]);
+        setAccounts(prev => {
+          const updated = [...prev, newAcc];
+          // Auto-select first account if this is the only one
+          if (updated.length === 1) {
+            setActiveAccount(newAcc);
+          }
+          return updated;
+        });
       }
     });
     return () => {

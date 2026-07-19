@@ -103,6 +103,7 @@ const [showExitModal, setShowExitModal] = useState(false);
 
   // Issue 22: When clicking sidebar mods tab while in instance mod browser, go to global mode
   const handleSetActiveTab = (tab: TabType) => {
+    // Locked tabs (friends, multiplayer) are allowed to show their 'not logged in' UI
     if (tab === 'mods' && activeTab === 'mods' && modBrowserInstanceId) {
       // Already in mods tab with instance context - go to global
       setModBrowserInstanceId(null);
@@ -232,7 +233,7 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
       folderName,
       profileName: target.name,
       version: target.minecraftVersion,
-      ram: 4,
+      ram: target.ram || 4,
       modLoader: target.modloader === "Vanilla" ? "vanilla" : target.modloader.toLowerCase(),
       loaderVersion: target.modloaderVersion || "",
       javaPath: target.javaVersion === "Automatisch" ? "" : (target.javaVersion || ""),

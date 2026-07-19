@@ -2661,11 +2661,13 @@ ipcMain.handle('install-modpack-mrpack', async (_event, { folderName, mcVersion,
     if (!res.ok) throw new Error('mrpack download fehlgeschlagen ' + res.status);
     const buf = await res.arrayBuffer();
     fs.writeFileSync(mrpackPath, Buffer.from(buf));
-    // ZIP mit PowerShell extrahieren
+    // ZIP mit AdmZip extrahieren (unterstützt .mrpack nativ, kein Expand-Archive nötig)
     const extractDir = path.join(tempDir, 'extracted');
     if (!fs.existsSync(extractDir)) fs.mkdirSync(extractDir, { recursive: true });
     try {
-      execSync(`powershell -c "Expand-Archive -Path '${mrpackPath}' -DestinationPath '${extractDir}' -Force"`, { encoding: 'utf8', timeout: 60000 });
+      const zip = new AdmZip(mrpackPath);
+      zip.extractAllTo(extractDir, true);
+      console.log('[install-modpack-mrpack] Extraktion erfolgreich mit AdmZip');
     } catch (_) {
       // Fallback: tar (falls verfügbar)
       try { execSync(`tar -xf "${mrpackPath}" -C "${extractDir}"`, { encoding: 'utf8', timeout: 60000 }); } catch (_2) { throw new Error('mrpack konnte nicht entpackt werden'); }
@@ -2674,14 +2676,33 @@ ipcMain.handle('install-modpack-mrpack', async (_event, { folderName, mcVersion,
     if (!fs.existsSync(indexJson)) throw new Error('modrinth.index.json nicht gefunden');
     const index = JSON.parse(fs.readFileSync(indexJson, 'utf8'));
     const files = index.files || [];
-    // overrides kopieren
+    // overrides KOPIEREN (Überschreiben: alte Dateien werden ersetzt)
     for (const sub of ['overrides', 'client-overrides']) {
       const src = path.join(extractDir, sub);
       if (fs.existsSync(src)) {
-        copyRecursiveSync(src, gameDir);
+        copyRecursiveOverwriteSync(src, gameDir);
       }
     }
-    // Mods herunterladen
+    // Alle vorhandenen Mod-Verzeichnisse INHALTLICH bereinigen (alte Mod-JARs, die nicht mehr im Index sind, werden gelöscht)
+    const knownPaths = new Set(files.map(f => f.path.replace(/\\/g, '/')));
+    for (const contentSubDir of ['mods', 'resourcepacks', 'shaderpacks', 'datapacks']) {
+      const dir = path.join(gameDir, contentSubDir);
+      if (fs.existsSync(dir)) {
+        const entries = fs.readdirSync(dir);
+        for (const entry of entries) {
+          const entryPath = (contentSubDir + '/' + entry).replace(/\\/g, '/');
+          if (!knownPaths.has(entryPath) && !knownPaths.has('overrides/' + entryPath)) {
+            try {
+              fs.unlinkSync(path.join(dir, entry));
+              console.log('[install-modpack-mrpack] Alte nicht mehr benötigte Datei gelöscht:', entryPath);
+            } catch (e) {
+              console.warn('[install-modpack-mrpack] Konnte alte Datei nicht löschen:', entryPath, e.message);
+            }
+          }
+        }
+      }
+    }
+    // Mods herunterladen (alte Versionen werden überschrieben)
     let modCount = 0;
     for (const file of files) {
       try {
@@ -2692,7 +2713,10 @@ ipcMain.handle('install-modpack-mrpack', async (_event, { folderName, mcVersion,
         const destPath = path.join(gameDir, file.path);
         const destDir = path.dirname(destPath);
         if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-        if (fs.existsSync(destPath)) { modCount++; continue; }
+        // Alte Datei löschen falls vorhanden (für Update)
+        if (fs.existsSync(destPath)) {
+          try { fs.unlinkSync(destPath); } catch (e) { console.warn('[Modpack] Konnte alte Datei nicht löschen:', file.path, e.message); }
+        }
         const fileRes = await fetch(downloadUrl);
         if (!fileRes.ok) continue;
         const fileBuf = await fileRes.arrayBuffer();
@@ -2725,6 +2749,21 @@ function copyRecursiveSync(src, dest) {
   }
 }
 
+// Overwrite-variant: ersetzt IMMER existierende Dateien (wichtig für Modpack-Updates)
+function copyRecursiveOverwriteSync(src, dest) {
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
+      copyRecursiveOverwriteSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
 ipcMain.handle('download-mod', async (_event, { folderName, versionId, downloadUrl, filename, itemType }) => {
   const rootPath = 'C:\\BambooLaufwerk';
   const gameDir = path.join(rootPath, 'profiles', folderName);
@@ -2732,7 +2771,16 @@ ipcMain.handle('download-mod', async (_event, { folderName, versionId, downloadU
   const destDir = path.join(gameDir, subDir);
   if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
   const destPath = path.join(destDir, filename);
-  if (fs.existsSync(destPath)) return { success: true, path: destPath };
+  
+  // Always delete existing file first so the update flow works correctly
+  if (fs.existsSync(destPath)) {
+    try {
+      fs.unlinkSync(destPath);
+      console.log('[download-mod] Vorhandene Datei gelöscht vor Download:', destPath);
+    } catch (e) {
+      console.warn('[download-mod] Konnte vorhandene Datei nicht löschen:', e.message);
+    }
+  }
   
   const res = await fetch(downloadUrl);
   if (!res.ok || res.status !== 200) throw new Error(`Download fehlgeschlagen (${res.status})`);
@@ -3200,8 +3248,9 @@ ipcMain.handle('delete-content-file', async (_event, { folderName, fileName, typ
   }
   
   if (!fs.existsSync(resolved)) {
-    console.warn('[delete-content-file] Datei nicht gefunden:', resolved);
-    return false;
+    // Don't throw if file doesn't exist - the update flow may have already deleted it
+    console.log('[delete-content-file] Datei nicht gefunden (bereits gelöscht?):', resolved);
+    return true;
   }
   
   try {
