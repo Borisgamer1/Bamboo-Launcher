@@ -1269,7 +1269,20 @@ const [showSavedToast, setShowSavedToast] = useState(false);
             {/* 3. THEMES CATEGORY */}
             {activeCategory === "themes" && (
               <div className="flex flex-col gap-5">
-                <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider border-b border-slate-900 pb-3">{t.launcherThemes}</h3>
+                <div className="flex items-center justify-between border-b border-slate-900 pb-3">
+                  <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider">{t.launcherThemes}</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      themeService.refreshBackendThemes().then(() => {
+                        setThemeVersion(v => v + 1);
+                      });
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-900/40 hover:bg-slate-800/60 text-slate-400 hover:text-slate-200 text-[10px] font-bold transition-all cursor-pointer"
+                  >
+                    Aktualisieren
+                  </button>
+                </div>
                 <p className="text-xs text-slate-400 leading-normal">Select a launcher aesthetic theme. Changing themes instantly updates the background image, accent colors, glowing indicators, and particle configurations globally.</p>
 
                 {/* Background / Particle Toggles */}

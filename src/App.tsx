@@ -24,6 +24,7 @@ import { ToastProvider, useToast } from "./components/Toast";
 import { contentSyncService } from "./services/contentSync";
 import { themeService, type ThemeDefinition as BambooTheme } from "./services/themeService";
 import { assetManager } from "./services/assetManager";
+import { API_BASE } from "./services/api";
 
 // Re-export for backward compatibility
 export type { ThemeDefinition as BambooTheme } from "./services/themeService";
@@ -345,7 +346,7 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
     <div className="relative w-screen h-screen bg-slate-950 text-slate-100 flex overflow-hidden font-sans select-none">
       <ParticleBackground
         accent={currentTheme.accent}
-        bgImage={currentTheme.bgImage}
+        bgImage={currentTheme.bgImage ? `${API_BASE}/content/theme/${themeId}/image` : undefined}
         particleShapes={currentTheme.particleShapes}
         showBgImage={showBgImage}
         showParticles={showParticles}

@@ -896,7 +896,7 @@ function renderContentCard(type, item) {
 
   let previewHtml = '';
   if (item.thumbnailUrl) {
-    previewHtml = `<img src="/api/content/${type}/${item.id}/image" alt="" onerror="this.parentElement.innerHTML='<svg class=\\"ico placeholder-icon\\"><use href=\\"#ico-${getIconForType(type)}\\"\\/></svg>'">`;
+    previewHtml = `<img src="/api/content/${type}/${item.id}/image" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><svg class="ico placeholder-icon" style="display:none"><use href="#ico-${getIconForType(type)}"/></svg>`;
   } else {
     previewHtml = `<svg class="ico placeholder-icon"><use href="#ico-${getIconForType(type)}"/></svg>`;
   }
