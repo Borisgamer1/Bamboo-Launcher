@@ -178,9 +178,16 @@ class ThemeService {
         merged.push(cdnTheme);
       }
     }
+    const builtinIds = new Set(BUILTIN_THEMES.map(t => t.id));
     for (const backendTheme of backend) {
       const existingIdx = merged.findIndex((t) => t.id === backendTheme.id);
       if (existingIdx >= 0) {
+        // Only override built-in themes if backend item has real metadata
+        // (accent differs from the bamboo default, or name differs from id)
+        const isBuiltin = builtinIds.has(backendTheme.id);
+        if (isBuiltin && backendTheme.accent === '#22c55e' && backendTheme.name === backendTheme.id) {
+          continue; // skip — no real metadata, keep the built-in version
+        }
         merged[existingIdx] = backendTheme;
       } else {
         merged.push(backendTheme);

@@ -185,7 +185,12 @@ async function initDatabase() {
       await pool.query(`
         INSERT INTO assets (slug, name, description, asset_type, category, status, version, tags, metadata)
         VALUES ($1, $2, $3, 'theme', $4, 'published', 1, $5, $6::jsonb)
-        ON CONFLICT (slug) DO NOTHING
+        ON CONFLICT (slug) DO UPDATE SET
+          name = EXCLUDED.name,
+          description = EXCLUDED.description,
+          category = EXCLUDED.category,
+          metadata = EXCLUDED.metadata,
+          updated_at = NOW()
       `, [slug, slug.charAt(0).toUpperCase() + slug.slice(1), slug + ' theme', slug, '{theme}', JSON.stringify(meta)]);
     }
     
@@ -205,7 +210,7 @@ async function initDatabase() {
       ];
       for (const [slug, name, desc, type, cat, status, ver, tags, metadata] of defaultAssets) {
         await pool.query(
-          'INSERT INTO assets (slug, name, description, asset_type, category, status, version, tags, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ON CONFLICT (slug) DO NOTHING',
+          'INSERT INTO assets (slug, name, description, asset_type, category, status, version, tags, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ON CONFLICT (slug) DO UPDATE SET name=EXCLUDED.name, description=EXCLUDED.description, category=EXCLUDED.category, metadata=EXCLUDED.metadata, updated_at=NOW()',
           [slug, name, desc, type, cat, status, ver, tags, metadata]
         );
       }
@@ -222,6 +227,30 @@ async function initDatabase() {
       }
     } catch (e) {
       console.warn('[admin] Background migration skipped:', e.message);
+    }
+
+    // === Migrate existing themes: fill missing metadata with default values ===
+    try {
+      const themeMetaDefaults = {
+        bamboo:   '{"accent":"#22c55e","accentLight":"#34d399","accentDark":"#16a34a","glowColor":"rgba(52,211,153,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"bamboo"}',
+        cherry:   '{"accent":"#f43f5e","accentLight":"#fb7185","accentDark":"#e11d48","glowColor":"rgba(244,63,94,0.5)","bgImage":"/images/cherry_blossom.png","themeType":"cherry"}',
+        frozen:   '{"accent":"#0ea5e9","accentLight":"#38bdf8","accentDark":"#0284c7","glowColor":"rgba(14,165,233,0.5)","bgImage":"/images/frozen_ice.png","themeType":"frozen"}',
+        nether:   '{"accent":"#ef4444","accentLight":"#f87171","accentDark":"#dc2626","glowColor":"rgba(239,68,68,0.5)","bgImage":"/images/nether_amber.png","themeType":"nether"}',
+        end:      '{"accent":"#a855f7","accentLight":"#c084fc","accentDark":"#7c3aed","glowColor":"rgba(168,85,247,0.5)","bgImage":"/images/nether_amber.png","themeType":"end"}',
+        warden:   '{"accent":"#14b8a6","accentLight":"#2dd4bf","accentDark":"#0d9488","glowColor":"rgba(20,184,166,0.5)","bgImage":"/images/frozen_ice.png","themeType":"warden"}',
+        copper:   '{"accent":"#d97706","accentLight":"#f59e0b","accentDark":"#b45309","glowColor":"rgba(217,119,6,0.5)","bgImage":"/images/nether_amber.png","themeType":"copper"}',
+        obsidian: '{"accent":"#a78bfa","accentLight":"#c4b5fd","accentDark":"#8b5cf6","glowColor":"rgba(167,139,250,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"obsidian"}',
+      };
+      for (const [slug, defaultMeta] of Object.entries(themeMetaDefaults)) {
+        await pool.query(`
+          UPDATE assets
+          SET metadata = $2::jsonb, updated_at = NOW()
+          WHERE slug = $1 AND asset_type = 'theme' AND (metadata IS NULL OR metadata = '{}'::jsonb OR metadata->>'accent' IS NULL)
+        `, [slug, defaultMeta]);
+      }
+      console.log('[admin] Theme metadata migration completed');
+    } catch (e) {
+      console.warn('[admin] Theme metadata migration skipped:', e.message);
     }
 
     dbState.connected = true;
