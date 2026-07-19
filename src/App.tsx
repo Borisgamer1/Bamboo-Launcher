@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { RunningInstanceBadge } from "./components/RunningInstanceBadge";
 
-import { ParticleBackground, ThemeType } from "./components/ParticleBackground";
+import { ParticleBackground } from "./components/ParticleBackground";
 import { Sidebar, TabType } from "./components/Sidebar";
 import { TopBar, Account } from "./components/TopBar";
 import type { Instance } from "./components/InstancesView";
@@ -78,7 +78,6 @@ const [showExitModal, setShowExitModal] = useState(false);
   const currentTheme = themeService.getTheme(themeId) ||
     availableThemes.find(t => t.id === themeId) ||
     themeService.getDefaultTheme();
-  const theme: ThemeType = currentTheme.id as ThemeType;
 
   // Language
   const [lang, setLang] = useState<LanguageType>("de");
@@ -333,7 +332,11 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
     <ErrorBoundary>
     <ToastProvider>
     <div className="relative w-screen h-screen bg-slate-950 text-slate-100 flex overflow-hidden font-sans select-none">
-      <ParticleBackground theme={theme} />
+      <ParticleBackground
+        accent={currentTheme.accent}
+        bgImage={currentTheme.bgImage}
+        particleShapes={currentTheme.particleShapes}
+      />
       <Sidebar activeTab={activeTab} setActiveTab={handleSetActiveTab} theme={theme} lang={lang} />
 
       <div className="flex-1 h-full flex flex-col justify-between overflow-hidden z-10 relative">

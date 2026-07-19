@@ -1042,6 +1042,10 @@ async function openEditEditor(type, id) {
       document.getElementById('theme-accent').value = meta.accent || '';
       document.getElementById('theme-accent-hex').value = meta.accent || '#10b981';
       fillFilePicker('theme-bg-image', meta.bgImage || '');
+      // Load particle shapes into the shape editor
+      const shapes = meta.particleShapes || [];
+      document.getElementById('theme-particle-shapes').value = JSON.stringify(shapes);
+      shapeEditor.load(shapes);
     } else if (type === 'news') {
       const meta = item.metadata || {};
       document.getElementById('news-subtitle').value = meta.subtitle || '';
@@ -1108,6 +1112,13 @@ async function saveContent() {
       data.metadata.accentLabel = document.getElementById('theme-accent-label').value;
       data.metadata.accent = document.getElementById('theme-accent').value;
       data.metadata.bgImage = getFilePickerValue('theme-bg-image');
+      // Save particle shapes from editor
+      const shapesRaw = document.getElementById('theme-particle-shapes').value;
+      if (shapesRaw) {
+        try { data.metadata.particleShapes = JSON.parse(shapesRaw); } catch { data.metadata.particleShapes = []; }
+      } else {
+        data.metadata.particleShapes = [];
+      }
       const files = gatherFileAssignments('theme');
       if (files.length > 0) data.metadata._files = files;
   } else if (type === 'news') {
@@ -1830,6 +1841,20 @@ function buildTypeFields() {
         <img class="file-picker-preview" id="theme-bg-image-preview" style="display:none" alt="" onerror="this.style.display='none'">
       </div>
       <div class="help-text">Das Hintergrundbild erscheint im Launcher als Theme-Hintergrund und im Backend als Icon.</div>
+
+      <label style="margin-top:22px">Partikel-Formen (Polygone) <span style="color:var(--text-muted);font-weight:400;font-size:11px">– In den Canvas klicken, um Polygon-Ecken zu setzen</span></label>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">
+        <canvas id="theme-shape-canvas" width="300" height="200"
+          style="border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);cursor:crosshair;max-width:100%"></canvas>
+        <div style="display:flex;flex-direction:column;gap:6px;justify-content:flex-end">
+          <button type="button" class="btn btn-sm btn-primary" onclick="shapeEditor.addPolygon()" style="font-size:11px">+ Polygon hinzufügen</button>
+          <button type="button" class="btn btn-sm btn-ghost" onclick="shapeEditor.undoPoint()" style="font-size:11px">Letzten Punkt rückgängig</button>
+          <button type="button" class="btn btn-sm btn-ghost" onclick="shapeEditor.clearCurrent()" style="font-size:11px">Aktuelles löschen</button>
+          <button type="button" class="btn btn-sm btn-danger" onclick="shapeEditor.clearAll()" style="font-size:11px">Alle löschen</button>
+        </div>
+      </div>
+      <div id="theme-shape-status" class="help-text" style="margin-top:8px">Keine Formen definiert. Klicke in den Canvas, um Ecken eines Polygons zu setzen.</div>
+      <input type="hidden" id="theme-particle-shapes" value="">
     </div>
 
     <!-- NEWS FIELDS -->
@@ -1994,9 +2019,206 @@ function buildTypeFields() {
 </div>
 
 <script>
-// Initialize type fields after DOM ready
+// ===== Shape Editor for Themes =====
+// Canvas-based polygon editor for particle shapes
+// Stores normalized coordinates (0-1) as [[[x1,y1],[x2,y2],...], ...]
+const shapeEditor = {
+  polygons: [],
+  currentPolygon: [],
+  canvas: null,
+  ctx: null,
+
+  init() {
+    this.canvas = document.getElementById('theme-shape-canvas');
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext('2d');
+    if (!this.ctx) return;
+
+    this.canvas.addEventListener('click', (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+
+      // Check if clicking near the first point to close polygon
+      if (this.currentPolygon.length >= 3) {
+        const first = this.currentPolygon[0];
+        const dx = x - first[0];
+        const dy = y - first[1];
+        if (Math.sqrt(dx*dx + dy*dy) < 0.04) {
+          // Close the polygon
+          this.polygons.push([...this.currentPolygon]);
+          this.currentPolygon = [];
+          this.sync();
+          this.render();
+          return;
+        }
+      }
+
+      this.currentPolygon.push([x, y]);
+      this.render();
+    });
+
+    this.render();
+  },
+
+  render() {
+    const canvas = this.canvas;
+    const ctx = this.ctx;
+    if (!canvas || !ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Clear
+    ctx.clearRect(0, 0, w, h);
+
+    // Draw subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < 10; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * w / 10, 0);
+      ctx.lineTo(i * w / 10, h);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i * h / 10);
+      ctx.lineTo(w, i * h / 10);
+      ctx.stroke();
+    }
+
+    // Draw completed polygons
+    this.polygons.forEach((poly, pi) => {
+      if (poly.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(poly[0][0] * w, poly[0][1] * h);
+      for (let i = 1; i < poly.length; i++) {
+        ctx.lineTo(poly[i][0] * w, poly[i][1] * h);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `hsla(${pi * 60}, 70%, 50%, 0.12)`;
+      ctx.fill();
+      ctx.strokeStyle = `hsla(${pi * 60}, 70%, 60%, 0.7)`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Draw vertex dots
+      poly.forEach(([px, py]) => {
+        ctx.beginPath();
+        ctx.arc(px * w, py * h, 3, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${pi * 60}, 80%, 70%, 1)`;
+        ctx.fill();
+      });
+    });
+
+    // Draw current polygon being edited
+    if (this.currentPolygon.length >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(this.currentPolygon[0][0] * w, this.currentPolygon[0][1] * h);
+      for (let i = 1; i < this.currentPolygon.length; i++) {
+        ctx.lineTo(this.currentPolygon[i][0] * w, this.currentPolygon[i][1] * h);
+      }
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Draw a small circle at first point to indicate click-to-close
+      if (this.currentPolygon.length >= 3) {
+        const first = this.currentPolygon[0];
+        ctx.beginPath();
+        ctx.arc(first[0] * w, first[1] * h, 6, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // Dots for current polygon vertices
+    this.currentPolygon.forEach(([px, py]) => {
+      ctx.beginPath();
+      ctx.arc(px * w, py * h, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#10b981';
+      ctx.fill();
+    });
+
+    // Update status text
+    this.updateStatus();
+  },
+
+  updateStatus() {
+    const statusEl = document.getElementById('theme-shape-status');
+    if (!statusEl) return;
+    const total = this.polygons.length;
+    const current = this.currentPolygon.length;
+    let msg = '';
+    if (total === 0 && current === 0) {
+      msg = 'Keine Formen definiert. Klicke in den Canvas, um Ecken eines Polygons zu setzen.';
+    } else if (current > 0) {
+      msg = `Aktuelles Polygon: ${current} Ecke${current > 1 ? 'n' : ''} (bei ≥3 Ecken: auf den ersten Punkt klicken zum Schließen). Gesamt: ${total} Polygon${total !== 1 ? 'e' : ''}.`;
+    } else {
+      msg = `${total} Polygon${total !== 1 ? 'e' : ''} definiert. Klicke in den Canvas für ein neues Polygon.`;
+    }
+    statusEl.textContent = msg;
+  },
+
+  addPolygon() {
+    if (this.currentPolygon.length < 2) return;
+    this.polygons.push([...this.currentPolygon]);
+    this.currentPolygon = [];
+    this.sync();
+    this.render();
+  },
+
+  undoPoint() {
+    if (this.currentPolygon.length > 0) {
+      this.currentPolygon.pop();
+      this.render();
+    } else if (this.polygons.length > 0) {
+      this.currentPolygon = this.polygons.pop();
+      this.sync();
+      this.render();
+    }
+  },
+
+  clearCurrent() {
+    this.currentPolygon = [];
+    this.render();
+  },
+
+  clearAll() {
+    this.polygons = [];
+    this.currentPolygon = [];
+    this.sync();
+    this.render();
+  },
+
+  load(shapes) {
+    if (!Array.isArray(shapes) || shapes.length === 0) {
+      this.polygons = [];
+      this.currentPolygon = [];
+      this.sync();
+      this.render();
+      return;
+    }
+    this.polygons = shapes.filter(p => Array.isArray(p) && p.length >= 2);
+    this.currentPolygon = [];
+    this.sync();
+    this.render();
+  },
+
+  sync() {
+    // Merge completed polygons into the hidden input
+    const all = [...this.polygons];
+    document.getElementById('theme-particle-shapes').value = JSON.stringify(all);
+  },
+};
+
+// Initialize shape editor after DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('type-fields-container').innerHTML = buildTypeFields();
+  // Init shape editor if the canvas exists
+  setTimeout(() => shapeEditor.init(), 100);
 });
 </script>
 
