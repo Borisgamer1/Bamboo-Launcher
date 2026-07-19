@@ -204,7 +204,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     setCosmeticsError(null);
     try {
       // Nur aktive Cosmetics im Launcher anzeigen (inaktive/Draft-Items ausblenden)
-      const res = await fetch(`${API_BASE}/cosmetics?active=true&limit=100`, {
+      const res = await fetch(`${API_BASE}/content/cosmetics?active=true&limit=100`, {
         headers: getLauncherHeaders(),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -402,9 +402,9 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
                           <div className="flex items-center gap-3 min-w-0 flex-1">
                             {/* Preview image */}
                             <div className="w-14 h-14 rounded-xl bg-slate-900 border border-slate-800 overflow-hidden shrink-0 flex items-center justify-center relative">
-                              {(cosmetic.previewUrl || cosmetic.slug) ? (
+                              {(cosmetic.fileCount > 0 && (cosmetic.previewUrl || cosmetic.id)) ? (
                                 <img 
-                                  src={cosmetic.previewUrl || `${API_BASE}/cosmetics/${cosmetic.slug}/image`} 
+                                  src={cosmetic.previewUrl || `${API_BASE}/content/cosmetics/${cosmetic.id}/image`} 
                                   alt={cosmetic.name} 
                                   className="w-full h-full object-cover"
                                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />

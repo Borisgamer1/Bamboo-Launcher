@@ -17,7 +17,11 @@ module.exports = function contentRoutes(app, ctx) {
   const crypto = require('crypto');
 
   // ===== Configuration =====
-  const CONTENT_ROOT = process.env.BAMBOO_CONTENT_REPO || path.resolve(__dirname, '..', '..', '..', 'BambooContent');
+  const CONTENT_ROOT = process.env.BAMBOO_CONTENT_REPO || (
+    process.env.NODE_ENV === 'production'
+      ? '/tmp/bamboo-content'
+      : path.resolve(__dirname, '..', '..', '..', 'BambooContent')
+  );
 
   // Allowed content types (mapped to asset_type in the assets table)
   // Backgrounds are part of themes — not a standalone content type.

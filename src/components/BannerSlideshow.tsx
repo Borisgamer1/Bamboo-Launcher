@@ -25,7 +25,7 @@ export const BannerSlideshow = React.memo(function BannerSlideshow({ accentText 
 
   const fetchBanners = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/banners?active=true`);
+      const res = await fetch(`${API_BASE}/content/banner?active=true`);
       if (!res.ok) return;
       const data = await res.json();
       setBanners(data.data || []);

@@ -66,8 +66,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, theme, activ
       setNewsLoading(true);
       setNewsError(null);
       try {
-        const url = new URL(`${API_BASE}/news`);
-        url.searchParams.set("visible", "true");
+        const url = new URL(`${API_BASE}/content/news`);
+        url.searchParams.set("active", "true");
         url.searchParams.set("limit", "3");
         const res = await fetch(url.toString());
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -83,8 +83,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, theme, activ
     const fetchDashboardEvents = async () => {
       setEventsLoading(true);
       try {
-        const url = new URL(`${API_BASE}/events`);
-        url.searchParams.set("visible", "true");
+        const url = new URL(`${API_BASE}/content/event`);
+        url.searchParams.set("active", "true");
         url.searchParams.set("limit", "4");
         const res = await fetch(url.toString());
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
