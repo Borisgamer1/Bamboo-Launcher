@@ -329,6 +329,30 @@ body {
 .media-preview-pane .preview-info p { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
 .media-preview-pane .preview-info strong { color: var(--text-primary); }
 
+/* ===== Filter Badge ===== */
+.filter-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-dim); border: 1px solid rgba(16,185,129,0.2); padding: 3px 10px; border-radius: 20px; }
+.filter-badge.filter-all { color: var(--text-muted); background: var(--bg-card); border-color: var(--border-subtle); }
+.filter-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block; }
+
+/* ===== Media Content Split Layout ===== */
+.media-content-wrapper { display: flex; gap: 16px; min-height: 300px; }
+.media-main-area { flex: 1; min-width: 0; }
+.media-info-panel { width: 240px; flex-shrink: 0; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; }
+.info-placeholder { padding: 30px 16px; text-align: center; font-size: 12px; color: var(--text-muted); flex: 1; display: flex; align-items: center; justify-content: center; }
+.info-panel-header { padding: 16px; text-align: center; border-bottom: 1px solid var(--border-subtle); }
+.info-preview { width: 80px; height: 80px; margin: 0 auto 10px; background: var(--bg-tertiary); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.info-preview img { width: 100%; height: 100%; object-fit: cover; }
+.info-preview-icon { width: 32px; height: 32px; color: var(--text-muted); opacity: 0.5; }
+.info-filename { font-size: 13px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 16px; }
+.info-filetype { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.info-details { padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); }
+.info-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px; font-size: 11px; }
+.info-label { color: var(--text-muted); white-space: nowrap; }
+.info-value { color: var(--text-secondary); text-align: right; word-break: break-all; }
+.info-value.path { font-family: var(--font-mono); font-size: 10px; }
+.info-actions { display: flex; gap: 4px; padding: 10px 16px; flex-wrap: wrap; margin-top: auto; }
+.info-actions .btn { flex: 1; justify-content: center; }
+
 /* ===== Publish Panel ===== */
 .publish-panel {
   background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl);
@@ -412,6 +436,11 @@ body {
     <symbol id="ico-sort" viewBox="0 0 24 24"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="M21 16l-4 4-4-4"/><path d="M17 20V4"/></symbol>
     <symbol id="ico-tag" viewBox="0 0 24 24"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></symbol>
     <symbol id="ico-check-square" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="ico-chevron-left" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></symbol>
+    <symbol id="ico-arrow-left" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+    <symbol id="ico-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
+    <symbol id="ico-image-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
+    <symbol id="ico-cube" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></symbol>
   </defs>
 </svg>
 
@@ -1067,8 +1096,10 @@ function fillFilePicker(fieldId, value) {
   const display = document.getElementById(fieldId + '-display');
   const hidden = document.getElementById(fieldId + '-hidden');
   const preview = document.getElementById(fieldId + '-preview');
-  if (display) display.textContent = value || 'Keine Datei ausgewählt';
-  if (display) display.className = 'file-picker-value' + (value ? '' : ' empty');
+  // Zeige nur den Dateinamen, nicht den gesamten Pfad
+  const fileName = value ? value.split('/').pop() : null;
+  if (display) display.textContent = fileName || 'Keine Datei ausgewählt';
+  if (display) display.className = 'file-picker-value' + (fileName ? '' : ' empty');
   if (hidden) hidden.value = value || '';
   if (preview) {
     const isImage = value && /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(value);
@@ -1110,23 +1141,15 @@ async function loadAvailableTextures() {
     container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Lade verfügbare Texturen...</div>';
     // Use empty search to recursively find all .png files in the repo
     const texUrl = API + '/api/content/files?type=texture&q=.png&limit=200';
-    console.log('🔍 [DEBUG] loadAvailableTextures URL:', texUrl);
 
     const r = await fetch(texUrl, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const data = await r.json();
-    console.log('🔍 [DEBUG] loadAvailableTextures status:', r.status);
-    console.log('🔍 [DEBUG] loadAvailableTextures success:', data.success);
-    console.log('🔍 [DEBUG] loadAvailableTextures items.length:', data.items ? data.items.length : 0);
-    console.log('🔍 [DEBUG] loadAvailableTextures total:', data.total);
-    console.log('🔍 [DEBUG] loadAvailableTextures source:', data.source);
 
     if (!data.success) throw new Error(data.error);
     const images = data.items.filter(i => i.type === 'file');
-    console.log('🔍 [DEBUG] loadAvailableTextures after type===file filter:', images.length);
     if (images.length === 0) {
-      console.log('🔍 [DEBUG] loadAvailableTextures -> NO TEXTURES FOUND');
       container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Keine Texturen im Repository gefunden. Dateien im Content Repository ablegen.</div>';
       return;
     }
@@ -1152,6 +1175,16 @@ async function loadAvailableTextures() {
 }
 
 // ===== File Picker (opens Media Browser) =====
+// Intelligent file selection: auto-navigates to the right directory
+// and sets the correct file type filter based on context.
+const FILE_PICKER_PRESETS = {
+  model:    { dir: 'cosmetic_models/', type: 'model',  label: 'Modelle (.json, .bbmodel)' },
+  texture:  { dir: 'cosmetic_models/', type: 'texture', label: 'Texturen (.png)' },
+  background: { dir: 'ThemeBackgrounds/', type: 'image',  label: 'Hintergrundbilder' },
+  image:    { dir: '',                  type: 'image',  label: 'Bilder' },
+  icon:     { dir: '',                  type: 'icon',   label: 'Icons' },
+};
+
 function openFilePicker(fieldId, type, filterType) {
   openMediaBrowser('select', { fieldId, type, filterType });
 }
@@ -1165,6 +1198,16 @@ async function openMediaBrowser(mode, callback) {
   mediaBrowserState.dir = '';
   mediaBrowserState.search = '';
   mediaBrowserState.type = 'all';
+  mediaBrowserState._history = [];
+
+  // Intelligente Dateiauswahl: Auto-Navigation + Filter basierend auf Kontext
+  if (callback && callback.filterType) {
+    const preset = FILE_PICKER_PRESETS[callback.filterType];
+    if (preset) {
+      mediaBrowserState.dir = preset.dir;
+      mediaBrowserState.type = preset.type;
+    }
+  }
 
   document.getElementById('media-browser-title').textContent = mode === 'select' ? 'Datei auswählen' : 'Media Browser';
   document.getElementById('media-browser').classList.add('open');
@@ -1182,70 +1225,60 @@ async function loadMediaBrowser() {
     if (mediaBrowserState.type !== 'all') params.set('type', mediaBrowserState.type);
 
     const requestUrl = API + '/api/content/files?' + params;
-    console.log('🔍 [DEBUG] loadMediaBrowser REQUEST URL:', requestUrl);
 
     const r = await fetch(requestUrl, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
-    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE status:', r.status);
-    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE content-type:', r.headers.get('content-type'));
-
-    // Log raw text first in case JSON parsing fails
-    const rawText = await r.text();
-    console.log('🔍 [DEBUG] loadMediaBrowser RAW response (first 500 chars):', rawText.substring(0, 500));
 
     let data;
     try {
-      data = JSON.parse(rawText);
+      data = await r.json();
     } catch (parseErr) {
-      console.error('🔍 [DEBUG] loadMediaBrowser JSON PARSE ERROR:', parseErr.message);
-      console.error('🔍 [DEBUG] Full raw response:', rawText);
+      const rawText = await r.text();
       throw new Error('Ungültige Server-Antwort: ' + rawText.substring(0, 200));
     }
-
-    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE success:', data.success);
-    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE items.length:', data.items ? data.items.length : 'N/A');
-    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE total:', data.total);
-    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE source:', data.source);
-    console.log('🔍 [DEBUG] loadMediaBrowser RESPONSE first 3 items:', data.items ? data.items.slice(0, 3).map(i => i.type + ':' + i.name).join(', ') : 'NONE');
 
     if (!data.success) throw new Error(data.error);
 
     renderMediaBrowser(data);
   } catch (e) {
-    console.error('🔍 [DEBUG] loadMediaBrowser ERROR:', e.message);
     container.innerHTML = `<div class="empty-state"><h3>Fehler</h3><p>${e.message}</p></div>`;
   }
 }
 
 function renderMediaBrowser(data) {
   const container = document.getElementById('media-browser-content');
-  console.log('🔍 [DEBUG] renderMediaBrowser CALLED');
-  console.log('🔍 [DEBUG]   data.success:', data.success);
-  console.log('🔍 [DEBUG]   data.total:', data.total);
-  console.log('🔍 [DEBUG]   data.items.length:', data.items ? data.items.length : 0);
-  console.log('🔍 [DEBUG]   data.path:', data.path);
-  console.log('🔍 [DEBUG]   data.source:', data.source);
-  console.log('🔍 [DEBUG]   mediaBrowserState.dir:', mediaBrowserState.dir);
-  console.log('🔍 [DEBUG]   mediaBrowserState.search:', mediaBrowserState.search);
-  console.log('🔍 [DEBUG]   mediaBrowserState.type:', mediaBrowserState.type);
-  console.log('🔍 [DEBUG]   mediaBrowserState.view:', mediaBrowserState.view);
-  console.log('🔍 [DEBUG]   mediaBrowserState.mode:', mediaBrowserState.mode);
 
-  // Build breadcrumb
+  // Build breadcrumb with back button
   const parts = data.path ? data.path.split('/').filter(Boolean) : [];
+  const hasParent = data.parentDir || (parts.length > 0);
+  const parentDir = data.parentDir || (parts.length > 0 ? parts.slice(0, -1).join('/') : '');
+
   let breadcrumb = `<span class="path-item" onclick="mediaBrowserState.dir='';loadMediaBrowser()">root</span>`;
   parts.forEach((p, i) => {
     const path = parts.slice(0, i + 1).join('/');
-    breadcrumb += `<span class="path-sep">/</span><span class="path-item" onclick="mediaBrowserState.dir='${path}';loadMediaBrowser()">${p}</span>`;
+    breadcrumb += `<span class="path-sep">/</span><span class="path-item" onclick="navigateToDir('${encodeURIComponent(path)}')">${escapeHtml(p)}</span>`;
   });
+
+  // Count dirs and files
+  const dirCount = data.items ? data.items.filter(i => i.type === 'directory').length : 0;
+  const fileCount = data.items ? data.items.filter(i => i.type === 'file').length : 0;
+
+  // Build filter badge
+  const filterLabel = getFilterLabel(mediaBrowserState.type);
+  const filterBadge = mediaBrowserState.type !== 'all'
+    ? `<span class="filter-badge"><span class="filter-dot"></span> ${escapeHtml(filterLabel)}</span>`
+    : '<span class="filter-badge filter-all">Alle Dateien</span>';
 
   const isSelection = mediaBrowserState.mode === 'select';
 
   container.innerHTML = `
     <div class="media-toolbar">
-      <div class="media-path">${breadcrumb}</div>
-      <div class="search-box" style="max-width:200px;flex:none">
+      <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;overflow:hidden">
+        ${hasParent ? `<button class="btn btn-xs btn-ghost" onclick="navigateToDir('${encodeURIComponent(parentDir)}')" title="Zurück" style="padding:4px 6px;margin-right:4px"><svg class="ico ico-sm"><use href="#ico-chevron-left"/></svg></button>` : ''}
+        <div class="media-path">${breadcrumb}</div>
+      </div>
+      <div class="search-box" style="max-width:180px;flex:none">
         <svg class="ico ico-sm"><use href="#ico-search"/></svg>
         <input type="text" placeholder="Suchen..." value="${escapeHtml(mediaBrowserState.search)}" oninput="onMediaSearch(this.value)">
       </div>
@@ -1253,19 +1286,42 @@ function renderMediaBrowser(data) {
         <option value="all" ${mediaBrowserState.type === 'all' ? 'selected' : ''}>Alle</option>
         <option value="image" ${mediaBrowserState.type === 'image' ? 'selected' : ''}>Bilder</option>
         <option value="model" ${mediaBrowserState.type === 'model' ? 'selected' : ''}>Modelle</option>
+        <option value="texture" ${mediaBrowserState.type === 'texture' ? 'selected' : ''}>Texturen</option>
         <option value="json" ${mediaBrowserState.type === 'json' ? 'selected' : ''}>JSON</option>
         <option value="audio" ${mediaBrowserState.type === 'audio' ? 'selected' : ''}>Audio</option>
       </select>
       <button class="btn btn-xs btn-ghost" onclick="mediaBrowserState.view='grid';loadMediaBrowser()" title="Grid"><svg class="ico ico-sm"><use href="#ico-grid"/></svg></button>
       <button class="btn btn-xs btn-ghost" onclick="mediaBrowserState.view='list';loadMediaBrowser()" title="Liste"><svg class="ico ico-sm"><use href="#ico-list"/></svg></button>
+    <symbol id="ico-chevron-left" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></symbol>
+    <symbol id="ico-arrow-left" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+    <symbol id="ico-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
     </div>
-    <div style="margin-bottom:10px;font-size:11px;color:var(--text-muted)">${data.total} Einträge</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;font-size:11px;color:var(--text-muted)">
+      ${filterBadge}
+      <span>${dirCount > 0 ? dirCount + ' Ordner' : ''}${dirCount > 0 && fileCount > 0 ? ' · ' : ''}${fileCount > 0 ? fileCount + ' Dateien' : ''}</span>
+      <span style="margin-left:auto">Quelle: ${data.source === 'github' ? 'GitHub' : 'Lokal'}</span>
+    </div>
   `;
 
-  if (data.items.length === 0) {
-    container.innerHTML += `<div class="empty-state"><h3>Keine Dateien gefunden</h3><p>Der Inhalt existiert noch nicht im Repository.</p></div>`;
+  if (!data.items || data.items.length === 0) {
+    const emptyMsg = mediaBrowserState.type !== 'all'
+      ? `Für den Filter „${escapeHtml(filterLabel)}“ wurden keine passenden Dateien gefunden.`
+      : 'Der Inhalt existiert noch nicht im Repository.';
+    container.innerHTML += `<div class="empty-state"><h3>Keine Dateien gefunden</h3><p>${emptyMsg}</p></div>`;
     return;
   }
+
+  // Media content area with split layout
+  const contentWrapper = document.createElement('div');
+  contentWrapper.className = 'media-content-wrapper';
+  const mainArea = document.createElement('div');
+  mainArea.className = 'media-main-area';
+  const infoPanel = document.createElement('div');
+  infoPanel.className = 'media-info-panel';
+  infoPanel.innerHTML = '<div class="info-placeholder">Wähle eine Datei aus, um Details zu sehen</div>';
+
+  // Store selected item for info panel
+  let selectedItem = null;
 
   if (mediaBrowserState.view === 'grid') {
     const grid = document.createElement('div');
@@ -1280,42 +1336,57 @@ function renderMediaBrowser(data) {
 
       let thumbHtml;
       if (isDir) {
-        thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-folder"/></svg></div><div class="media-name">${item.name}</div>`;
+        thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-folder"/></svg></div><div class="media-name">${escapeHtml(item.name)}</div>`;
       } else if (isImage) {
-        thumbHtml = `<div class="media-thumb"><img src="/api/content/files/serve?path=${encodeURIComponent(item.path)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><svg class="media-icon" style="display:none"><use href="#ico-image"/></svg></div><div class="media-name">${item.name}</div>`;
-      } else if (/\.(glb|gltf)$/i.test(item.name)) {
-        thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-box"/></svg></div><div class="media-name">${item.name}</div>`;
+        thumbHtml = `<div class="media-thumb"><img src="/api/content/files/serve?path=${encodeURIComponent(item.path)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><svg class="media-icon" style="display:none"><use href="#ico-image"/></svg></div><div class="media-name">${escapeHtml(item.name)}</div>`;
+      } else if (/\.(glb|gltf|bbmodel)$/i.test(item.name)) {
+        thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-box"/></svg></div><div class="media-name">${escapeHtml(item.name)}</div>`;
+      } else if (/\.json$/i.test(item.name)) {
+        thumbHtml = `<div class="media-thumb"><svg class="media-icon" style="color:var(--cyan)"><use href="#ico-code"/></svg></div><div class="media-name">${escapeHtml(item.name)}</div>`;
       } else {
-        thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-file"/></svg></div><div class="media-name">${item.name}</div>`;
+        thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-file"/></svg></div><div class="media-name">${escapeHtml(item.name)}</div>`;
       }
 
       thumbHtml += `<div class="media-check"><svg class="ico ico-sm"><use href="#ico-check"/></svg></div>`;
       itemDiv.innerHTML = thumbHtml;
 
       if (isDir) {
-        itemDiv.onclick = () => { mediaBrowserState.dir = item.path; loadMediaBrowser(); };
+        itemDiv.ondblclick = () => { mediaBrowserState.dir = item.path; loadMediaBrowser(); };
+        itemDiv.onclick = () => {
+          // Single click shows info, double click navigates
+          selectedItem = item;
+          updateInfoPanel(infoPanel, item);
+        };
       } else if (isSelection) {
         itemDiv.onclick = () => {
           document.querySelectorAll('.media-grid-item.selectable').forEach(el => el.classList.remove('selected'));
           itemDiv.classList.add('selected');
-          selectFile(item.path);
+          selectedItem = item;
+          updateInfoPanel(infoPanel, item);
+        };
+        itemDiv.ondblclick = () => {
+          if (!isDir) selectFile(item.path);
         };
       } else {
-        itemDiv.onclick = () => showFilePreview(item);
+        itemDiv.onclick = () => {
+          selectedItem = item;
+          updateInfoPanel(infoPanel, item);
+        };
       }
 
       grid.appendChild(itemDiv);
     });
-    container.appendChild(grid);
+    mainArea.appendChild(grid);
   } else {
     // List view
     const table = document.createElement('table');
     table.className = 'media-list';
     table.innerHTML = `
       <thead><tr>
-        <th style="width:50%">Name</th>
-        <th style="width:120px">Größe</th>
-        <th style="width:160px">Geändert</th>
+        <th style="width:40%">Name</th>
+        <th style="width:80px">Typ</th>
+        <th style="width:100px">Größe</th>
+        <th style="width:140px">Geändert</th>
         <th style="width:60px"></th>
       </tr></thead>
       <tbody></tbody>
@@ -1325,10 +1396,11 @@ function renderMediaBrowser(data) {
     data.items.forEach(item => {
       const isDir = item.type === 'directory';
       const isImage = isDir ? false : /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(item.name);
-      const icon = isDir ? 'folder' : isImage ? 'image' : /\.(glb|gltf)$/i.test(item.name) ? 'box' : 'file';
+      const icon = isDir ? 'folder' : isImage ? 'image' : /\.(glb|gltf|bbmodel)$/i.test(item.name) ? 'box' : /\.json$/i.test(item.name) ? 'code' : 'file';
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td class="ml-name"><svg class="ml-icon"><use href="#ico-${icon}"/></svg>${item.name}</td>
+        <td class="ml-name"><svg class="ml-icon"><use href="#ico-${icon}"/></svg>${escapeHtml(item.name)}</td>
+        <td style="font-size:11px;color:var(--text-muted)">${isDir ? 'Ordner' : getFileTypeLabel(item.name)}</td>
         <td class="ml-size">${isDir ? (item.fileCount + ' Dateien') : formatBytes(item.size)}</td>
         <td class="ml-mtime">${item.mtime ? timeAgo(item.mtime) : '—'}</td>
         <td>${isSelection && !isDir ? '<button class="btn btn-xs btn-primary" onclick="event.stopPropagation();selectFile(\'' + item.path + '\')">Auswählen</button>' : ''}</td>
@@ -1339,15 +1411,77 @@ function renderMediaBrowser(data) {
         tr.onclick = () => {
           document.querySelectorAll('.media-list tr').forEach(el => el.classList.remove('selected'));
           tr.classList.add('selected');
-          selectFile(item.path);
+          selectedItem = item;
+          updateInfoPanel(infoPanel, item);
         };
+        tr.ondblclick = () => selectFile(item.path);
       } else {
-        tr.onclick = () => showFilePreview(item);
+        tr.onclick = () => {
+          selectedItem = item;
+          updateInfoPanel(infoPanel, item);
+        };
       }
       tbody.appendChild(tr);
     });
-    container.appendChild(table);
+    mainArea.appendChild(table);
   }
+
+  contentWrapper.appendChild(mainArea);
+  contentWrapper.appendChild(infoPanel);
+  container.appendChild(contentWrapper);
+}
+
+function getFilterLabel(type) {
+  const labels = {
+    all: 'Alle Dateien', image: 'Bilder', model: 'Modelle (.json, .bbmodel)',
+    texture: 'Texturen (.png)', json: 'JSON', audio: 'Audio',
+    font: 'Schriftarten', icon: 'Icons', archive: 'Archive', glb: '3D-Modelle'
+  };
+  return labels[type] || type;
+}
+
+function getFileTypeLabel(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const labels = {
+    png: 'Bild', jpg: 'Bild', jpeg: 'Bild', webp: 'Bild', gif: 'Bild', svg: 'Vektor',
+    json: 'JSON', glb: '3D-Modell', gltf: '3D-Modell', bbmodel: 'Blockbench',
+    mp3: 'Audio', ogg: 'Audio', wav: 'Audio',
+    ttf: 'Schrift', otf: 'Schrift', woff2: 'Schrift',
+    zip: 'Archiv',
+  };
+  return labels[ext] || ext.toUpperCase();
+}
+
+function updateInfoPanel(panel, item) {
+  const isDir = item.type === 'directory';
+  const isImage = !isDir && /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(item.name);
+  const ext = item.name.includes('.') ? item.name.split('.').pop().toLowerCase() : '';
+  const fileType = isDir ? 'Ordner' : getFileTypeLabel(item.name);
+
+  panel.innerHTML = `
+    <div class="info-panel-header">
+      <div class="info-preview">
+        ${isDir
+          ? `<svg class="info-preview-icon"><use href="#ico-folder"/></svg>`
+          : isImage
+            ? `<img src="/api/content/files/serve?path=${encodeURIComponent(item.path)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><svg class="info-preview-icon" style="display:none"><use href="#ico-image"/></svg>`
+            : `<svg class="info-preview-icon"><use href="#ico-file"/></svg>`
+        }
+      </div>
+      <div class="info-filename">${escapeHtml(item.name)}</div>
+      <div class="info-filetype">${fileType}</div>
+    </div>
+    <div class="info-details">
+      <div class="info-row"><span class="info-label">Pfad</span><span class="info-value path">${escapeHtml(item.path)}</span></div>
+      <div class="info-row"><span class="info-label">Größe</span><span class="info-value">${isDir ? '—' : formatBytes(item.size)}</span></div>
+      <div class="info-row"><span class="info-label">Typ</span><span class="info-value">${isDir ? 'Verzeichnis' : ext.toUpperCase()}</span></div>
+      <div class="info-row"><span class="info-label">Geändert</span><span class="info-value">${item.mtime ? new Date(item.mtime).toLocaleString('de-DE') : '—'}</span></div>
+    </div>
+    <div class="info-actions">
+      <button class="btn btn-xs btn-ghost" onclick="navigator.clipboard.writeText('${item.path}');showToast('Pfad kopiert','success')">Pfad kopieren</button>
+      ${!isDir && mediaBrowserState.mode === 'select' ? `<button class="btn btn-xs btn-primary" onclick="selectFile('${item.path}')">Auswählen</button>` : ''}
+    </div>
+  `;
 }
 
 function selectFile(filePath) {
@@ -1383,11 +1517,44 @@ async function showFilePreview(item) {
   setTimeout(() => infoDiv.remove(), 5000);
 }
 
+function navigateToDir(dirPath) {
+  mediaBrowserState.dir = decodeURIComponent(dirPath);
+  loadMediaBrowser();
+}
+
 function onMediaSearch(value) {
   mediaBrowserState.search = value;
   clearTimeout(mediaBrowserState._searchTimer);
   mediaBrowserState._searchTimer = setTimeout(() => loadMediaBrowser(), 300);
 }
+
+// ===== Keyboard Shortcuts =====
+document.addEventListener('keydown', (e) => {
+  const mediaBrowser = document.getElementById('media-browser');
+  const editorModal = document.getElementById('editor-modal');
+
+  // ESC: Close modals
+  if (e.key === 'Escape') {
+    if (mediaBrowser && mediaBrowser.classList.contains('open')) {
+      closeModal();
+      e.preventDefault();
+    }
+  }
+
+  // Enter: Confirm selection in media browser
+  if (e.key === 'Enter' && mediaBrowser && mediaBrowser.classList.contains('open')) {
+    const selected = document.querySelector('.media-grid-item.selected, .media-list tr.selected');
+    if (selected && mediaBrowserState.mode === 'select') {
+      // Find the file path from the selected item
+      const nameEl = selected.querySelector('.media-name') || selected.querySelector('.ml-name');
+      const cb = mediaBrowserState.callback;
+      if (cb && cb.fieldId) {
+        const fp = selected.getAttribute('data-path');
+        if (fp) selectFile(fp);
+      }
+    }
+  }
+});
 
 // ===== Actions =====
 async function toggleActive(type, id) {
