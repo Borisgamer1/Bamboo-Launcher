@@ -171,14 +171,14 @@ async function initDatabase() {
     // Also upsert any missing theme slugs (syncs on every restart, handles new themes)
     const builtinThemeSlugs = ['bamboo', 'cherry', 'frozen', 'nether', 'end', 'warden', 'copper', 'obsidian'];
     const themeMetaMap = {
-      bamboo:    { accent:'#22c55e', accentLight:'#34d399', accentDark:'#16a34a', glowColor:'rgba(52,211,153,0.5)', bgImage:'/images/bamboo_forest.png', themeType:'bamboo' },
-      cherry:    { accent:'#f43f5e', accentLight:'#fb7185', accentDark:'#e11d48', glowColor:'rgba(244,63,94,0.5)', bgImage:'/images/cherry_blossom.png', themeType:'cherry' },
-      frozen:    { accent:'#0ea5e9', accentLight:'#38bdf8', accentDark:'#0284c7', glowColor:'rgba(14,165,233,0.5)', bgImage:'/images/frozen_ice.png', themeType:'frozen' },
-      nether:    { accent:'#ef4444', accentLight:'#f87171', accentDark:'#dc2626', glowColor:'rgba(239,68,68,0.5)', bgImage:'/images/nether_amber.png', themeType:'nether' },
-      end:       { accent:'#a855f7', accentLight:'#c084fc', accentDark:'#7c3aed', glowColor:'rgba(168,85,247,0.5)', bgImage:'/images/nether_amber.png', themeType:'end' },
-      warden:    { accent:'#14b8a6', accentLight:'#2dd4bf', accentDark:'#0d9488', glowColor:'rgba(20,184,166,0.5)', bgImage:'/images/frozen_ice.png', themeType:'warden' },
-      copper:    { accent:'#d97706', accentLight:'#f59e0b', accentDark:'#b45309', glowColor:'rgba(217,119,6,0.5)', bgImage:'/images/nether_amber.png', themeType:'copper' },
-      obsidian:  { accent:'#a78bfa', accentLight:'#c4b5fd', accentDark:'#8b5cf6', glowColor:'rgba(167,139,250,0.5)', bgImage:'/images/bamboo_forest.png', themeType:'obsidian' },
+      bamboo:    { accent:'#22c55e', accentLight:'#34d399', accentDark:'#16a34a', glowColor:'rgba(52,211,153,0.5)', bgImage:'/images/bamboo_forest.png', themeType:'bamboo', desc:'Bambus & Grün' },
+      cherry:    { accent:'#f43f5e', accentLight:'#fb7185', accentDark:'#e11d48', glowColor:'rgba(244,63,94,0.5)', bgImage:'/images/cherry_blossom.png', themeType:'cherry', desc:'Kirschblüte & Pink' },
+      frozen:    { accent:'#0ea5e9', accentLight:'#38bdf8', accentDark:'#0284c7', glowColor:'rgba(14,165,233,0.5)', bgImage:'/images/frozen_ice.png', themeType:'frozen', desc:'Eis & Blau' },
+      nether:    { accent:'#ef4444', accentLight:'#f87171', accentDark:'#dc2626', glowColor:'rgba(239,68,68,0.5)', bgImage:'/images/nether_amber.png', themeType:'nether', desc:'Nether & Rot' },
+      end:       { accent:'#a855f7', accentLight:'#c084fc', accentDark:'#7c3aed', glowColor:'rgba(168,85,247,0.5)', bgImage:'/images/nether_amber.png', themeType:'end', desc:'Purpur & Mystisch' },
+      warden:    { accent:'#14b8a6', accentLight:'#2dd4bf', accentDark:'#0d9488', glowColor:'rgba(20,184,166,0.5)', bgImage:'/images/frozen_ice.png', themeType:'warden', desc:'Türkis & Modern' },
+      copper:    { accent:'#d97706', accentLight:'#f59e0b', accentDark:'#b45309', glowColor:'rgba(217,119,6,0.5)', bgImage:'/images/nether_amber.png', themeType:'copper', desc:'Kupfer & Orange' },
+      obsidian:  { accent:'#a78bfa', accentLight:'#c4b5fd', accentDark:'#8b5cf6', glowColor:'rgba(167,139,250,0.5)', bgImage:'/images/bamboo_forest.png', themeType:'obsidian', desc:'Obsidian & Violett' },
     };
     for (const slug of builtinThemeSlugs) {
       const meta = themeMetaMap[slug] || {};
@@ -232,14 +232,14 @@ async function initDatabase() {
     // === Migrate existing themes: fill missing metadata with default values ===
     try {
       const themeMetaDefaults = {
-        bamboo:   '{"accent":"#22c55e","accentLight":"#34d399","accentDark":"#16a34a","glowColor":"rgba(52,211,153,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"bamboo"}',
-        cherry:   '{"accent":"#f43f5e","accentLight":"#fb7185","accentDark":"#e11d48","glowColor":"rgba(244,63,94,0.5)","bgImage":"/images/cherry_blossom.png","themeType":"cherry"}',
-        frozen:   '{"accent":"#0ea5e9","accentLight":"#38bdf8","accentDark":"#0284c7","glowColor":"rgba(14,165,233,0.5)","bgImage":"/images/frozen_ice.png","themeType":"frozen"}',
-        nether:   '{"accent":"#ef4444","accentLight":"#f87171","accentDark":"#dc2626","glowColor":"rgba(239,68,68,0.5)","bgImage":"/images/nether_amber.png","themeType":"nether"}',
-        end:      '{"accent":"#a855f7","accentLight":"#c084fc","accentDark":"#7c3aed","glowColor":"rgba(168,85,247,0.5)","bgImage":"/images/nether_amber.png","themeType":"end"}',
-        warden:   '{"accent":"#14b8a6","accentLight":"#2dd4bf","accentDark":"#0d9488","glowColor":"rgba(20,184,166,0.5)","bgImage":"/images/frozen_ice.png","themeType":"warden"}',
-        copper:   '{"accent":"#d97706","accentLight":"#f59e0b","accentDark":"#b45309","glowColor":"rgba(217,119,6,0.5)","bgImage":"/images/nether_amber.png","themeType":"copper"}',
-        obsidian: '{"accent":"#a78bfa","accentLight":"#c4b5fd","accentDark":"#8b5cf6","glowColor":"rgba(167,139,250,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"obsidian"}',
+        bamboo:   '{"accent":"#22c55e","accentLight":"#34d399","accentDark":"#16a34a","glowColor":"rgba(52,211,153,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"bamboo","desc":"Bambus & Grün"}',
+        cherry:   '{"accent":"#f43f5e","accentLight":"#fb7185","accentDark":"#e11d48","glowColor":"rgba(244,63,94,0.5)","bgImage":"/images/cherry_blossom.png","themeType":"cherry","desc":"Kirschblüte & Pink"}',
+        frozen:   '{"accent":"#0ea5e9","accentLight":"#38bdf8","accentDark":"#0284c7","glowColor":"rgba(14,165,233,0.5)","bgImage":"/images/frozen_ice.png","themeType":"frozen","desc":"Eis & Blau"}',
+        nether:   '{"accent":"#ef4444","accentLight":"#f87171","accentDark":"#dc2626","glowColor":"rgba(239,68,68,0.5)","bgImage":"/images/nether_amber.png","themeType":"nether","desc":"Nether & Rot"}',
+        end:      '{"accent":"#a855f7","accentLight":"#c084fc","accentDark":"#7c3aed","glowColor":"rgba(168,85,247,0.5)","bgImage":"/images/nether_amber.png","themeType":"end","desc":"Purpur & Mystisch"}',
+        warden:   '{"accent":"#14b8a6","accentLight":"#2dd4bf","accentDark":"#0d9488","glowColor":"rgba(20,184,166,0.5)","bgImage":"/images/frozen_ice.png","themeType":"warden","desc":"Türkis & Modern"}',
+        copper:   '{"accent":"#d97706","accentLight":"#f59e0b","accentDark":"#b45309","glowColor":"rgba(217,119,6,0.5)","bgImage":"/images/nether_amber.png","themeType":"copper","desc":"Kupfer & Orange"}',
+        obsidian: '{"accent":"#a78bfa","accentLight":"#c4b5fd","accentDark":"#8b5cf6","glowColor":"rgba(167,139,250,0.5)","bgImage":"/images/bamboo_forest.png","themeType":"obsidian","desc":"Obsidian & Violett"}',
       };
       for (const [slug, defaultMeta] of Object.entries(themeMetaDefaults)) {
         await pool.query(`

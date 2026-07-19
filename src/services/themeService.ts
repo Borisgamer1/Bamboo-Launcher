@@ -331,7 +331,7 @@ class ThemeService {
     const backendThemes: ThemeDefinition[] = [];
 
     try {
-      const res = await fetch(`${API_BASE}/content/theme?status=published&limit=100`, {
+      const res = await fetch(`${API_BASE}/content/theme?limit=250`, {
         headers: { ...getLauncherHeaders(), 'Accept': 'application/json' },
       });
 
@@ -345,15 +345,36 @@ class ThemeService {
       const items = data.data || data.items || data || [];
       const list = Array.isArray(items) ? items : (Array.isArray(items.data) ? items.data : []);
 
+      const builtinIds = new Set(BUILTIN_THEMES.map(t => t.id));
+
       for (const item of list) {
         const slug = item.slug || item.id;
         if (!slug) continue;
 
         const meta = item.metadata || {};
+
+        // Determine description: prefer metadata desc, then item desc, then fallback
+        let desc = slug + ' theme';
+        if (meta.desc && typeof meta.desc === 'string' && meta.desc.trim()) {
+          desc = meta.desc;
+        } else if (item.description && typeof item.description === 'string' && item.description.trim()) {
+          desc = item.description;
+        }
+
+        // For built-in themes with no real metadata, don't override — use the built-in desc
+        const isBuiltin = builtinIds.has(slug);
+        const hasRealMeta = meta.accent && meta.accent !== '#22c55e' &&
+          (!isBuiltin || (meta.themeType && meta.themeType !== 'bamboo'));
+
+        if (isBuiltin && !hasRealMeta) {
+          // This is a built-in theme with stale/empty metadata — skip it
+          continue;
+        }
+
         const theme: ThemeDefinition = {
           id: slug,
           name: item.name || slug,
-          desc: meta.desc || item.description || slug + ' theme',
+          desc,
           category: 'cdn',
           themeType: (meta.themeType as ThemeType) || 'bamboo',
           bgImage: meta.bgImage || undefined,
@@ -362,7 +383,7 @@ class ThemeService {
           accentDark: meta.accentDark || '#16a34a',
           glowColor: meta.glowColor || 'rgba(52,211,153,0.5)',
           fontFamily: meta.fontFamily,
-          fromCdn: false, // comes from backend, not CDN cache
+          fromCdn: false,
         };
         backendThemes.push(theme);
       }
