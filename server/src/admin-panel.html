@@ -1033,6 +1033,8 @@ async function openEditEditor(type, id) {
       const accent = item.accentColor || (item.metadata && item.metadata.accentColor) || '';
       document.getElementById('editor-accent').value = accent;
       document.getElementById('editor-accent-hex').value = accent || '#10b981';
+      // Load texture list and select already-assigned textures
+      await loadAvailableTextures();
       if (item.files) fillFilePickers(type, item);
     } else if (type === 'theme') {
       const meta = item.metadata || {};
@@ -1179,8 +1181,8 @@ function gatherFileAssignments(type) {
       
       // File type validation for cosmetics
       if (type === 'cosmetic') {
-        if (fileType === 'model' && ext !== 'json') {
-          errors.push(`Modell muss im .json-Format vorliegen (${fileName})`);
+        if (fileType === 'model' && !['json', 'bbmodel'].includes(ext)) {
+          errors.push(`Modell muss im .json oder .bbmodel Format vorliegen (${fileName})`);
           return;
         }
         if (fileType === 'texture' && ext !== 'png') {
@@ -1265,9 +1267,11 @@ function fillFilePickers(type, item) {
 // ===== Load available texture files from repo =====
 async function loadAvailableTextures() {
   const container = document.getElementById('cosmetic-textures');
+  const statusEl = document.getElementById('cosmetic-textures-status');
   if (!container) return;
   try {
-    container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Lade verfügbare Texturen...</div>';
+    if (statusEl) statusEl.textContent = 'Lade verfügbare Texturen...';
+    container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Lade...</div>';
     // Use empty search to recursively find all .png files in the repo
     const texUrl = API + '/api/content/files?type=texture&q=.png&limit=200';
 
@@ -1280,6 +1284,7 @@ async function loadAvailableTextures() {
     const images = data.items.filter(i => i.type === 'file');
     if (images.length === 0) {
       container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:8px">Keine Texturen im Repository gefunden. Dateien im Content Repository ablegen.</div>';
+      if (statusEl) statusEl.textContent = 'Keine Texturen gefunden';
       return;
     }
     container.innerHTML = images.map(f => `
@@ -1289,6 +1294,7 @@ async function loadAvailableTextures() {
         <span class="fb-size">${formatBytes(f.size)}</span>
       </div>
     `).join('');
+    if (statusEl) statusEl.textContent = images.length + ' Texturen verfügbar – Klicken zum Auswählen (Mehrfachauswahl möglich)';
     // If editing, select already-assigned texture files
     if (editingItem && editingItem.files) {
       editingItem.files.forEach(f => {
@@ -1300,6 +1306,7 @@ async function loadAvailableTextures() {
     }
   } catch (e) {
     container.innerHTML = '<div style="font-size:11px;color:var(--danger);padding:8px">Fehler beim Laden: ' + e.message + '</div>';
+    if (statusEl) statusEl.textContent = 'Fehler beim Laden';
   }
 }
 
@@ -1778,23 +1785,20 @@ function buildTypeFields() {
           <input type="text" id="editor-tags" placeholder="z.B. crown,royal,gold">
           <div class="help-text">Komma-getrennte Tags</div>
         </div>
-      </div>
-
-      <label>Model (GLB/GLTF)</label>
-      <div class="file-picker" data-file-type="model" onclick="openFilePicker('cosmetic-model','cosmetic','model')">
-        <span class="file-picker-value empty" id="cosmetic-model-display">Keine Datei ausgewählt</span>
-        <span class="file-picker-btn">Auswählen</span>
-        <input type="hidden" class="file-picker-hidden" id="cosmetic-model-hidden">
-      </div>
-
-      <label>Texturen (PNG)</label>
-      <div class="file-checkbox-list" id="cosmetic-textures"></div>
+      </div><label>Modell (.json) <span style="color:var(--text-muted);font-weight:400;font-size:11px">– 1 Datei, Minecraft-Modellformat</span></label>
+            <div class="file-picker" data-file-type="model" onclick="openFilePicker('cosmetic-model','cosmetic','model')">
+              <span class="file-picker-value empty" id="cosmetic-model-display">Keine Modelldatei ausgewählt</span>
+              <span class="file-picker-btn">Auswählen</span>
+              <input type="hidden" class="file-picker-hidden" id="cosmetic-model-hidden">
+            </div><label>Texturen (.png) <span style="color:var(--text-muted);font-weight:400;font-size:11px">– mehrere Dateien möglich (1–8+)</span></label>
+            <div id="cosmetic-textures-status" style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Lade verfügbare Texturen...</div>
+            <div class="file-checkbox-list" id="cosmetic-textures"></div>
 
       <div class="form-row">
         <div>
-          <label>Icon</label>
+          <label>Icon <span style="color:var(--text-muted);font-weight:400;font-size:11px">– PNG, JPG, WebP, SVG, GIF</span></label>
           <div class="file-picker" data-file-type="icon" onclick="openFilePicker('cosmetic-icon','cosmetic','image')">
-            <span class="file-picker-value empty" id="cosmetic-icon-display">Keine Datei ausgewählt</span>
+            <span class="file-picker-value empty" id="cosmetic-icon-display">Keine Icon-Datei ausgewählt</span>
             <span class="file-picker-btn">Auswählen</span>
             <input type="hidden" class="file-picker-hidden" id="cosmetic-icon-hidden">
           </div>
