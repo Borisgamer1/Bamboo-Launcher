@@ -38,6 +38,12 @@ interface SettingsViewProps {
   setActiveAccount: (account: Account) => void;
   lang: LanguageType;
   setLang: (lang: LanguageType) => void;
+  showBgImage: boolean;
+  setShowBgImage: (v: boolean) => void;
+  showParticles: boolean;
+  setShowParticles: (v: boolean) => void;
+  showCursorGlow: boolean;
+  setShowCursorGlow: (v: boolean) => void;
 }
 
 type SettingsCategory = "general" | "ingame" | "themes" | "accounts";
@@ -52,7 +58,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   activeAccount,
   setActiveAccount,
   lang,
-  setLang
+  setLang,
+  showBgImage,
+  setShowBgImage,
+  showParticles,
+  setShowParticles,
+  showCursorGlow,
+  setShowCursorGlow,
 }) => {
   const t = translations[lang];
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>(() => {
@@ -1259,6 +1271,71 @@ const [showSavedToast, setShowSavedToast] = useState(false);
               <div className="flex flex-col gap-5">
                 <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider border-b border-slate-900 pb-3">{t.launcherThemes}</h3>
                 <p className="text-xs text-slate-400 leading-normal">Select a launcher aesthetic theme. Changing themes instantly updates the background image, accent colors, glowing indicators, and particle configurations globally.</p>
+
+                {/* Background / Particle Toggles */}
+                <div className="flex flex-col gap-3 p-4 bg-slate-900/15 border border-slate-800/40 rounded-2xl">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Hintergrund-Optionen</span>
+
+                  {/* Show/hide background image */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="block text-xs font-bold text-slate-200">Hintergrundbild anzeigen</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block leading-normal">Theme-Hintergrundbild ein-/ausblenden (dunkler Fallback)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowBgImage(!showBgImage)}
+                      className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${
+                        showBgImage ? "theme-bg" : "bg-slate-800"
+                      }`}
+                    >
+                      <div
+                        className="w-5 h-5 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300"
+                        style={{ transform: showBgImage ? "translateX(20px)" : "translateX(0)" }}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Show/hide particles */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="block text-xs font-bold text-slate-200">Fliegende Formen anzeigen</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block leading-normal">Partikel-Formen im Hintergrund ein-/ausblenden</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowParticles(!showParticles)}
+                      className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${
+                        showParticles ? "theme-bg" : "bg-slate-800"
+                      }`}
+                    >
+                      <div
+                        className="w-5 h-5 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300"
+                        style={{ transform: showParticles ? "translateX(20px)" : "translateX(0)" }}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Show/hide cursor glow */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="block text-xs font-bold text-slate-200">Cursor-Glow anzeigen</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block leading-normal">Den Leuchteffekt um den Mauszeiger ein-/ausblenden</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCursorGlow(!showCursorGlow)}
+                      className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${
+                        showCursorGlow ? "theme-bg" : "bg-slate-800"
+                      }`}
+                    >
+                      <div
+                        className="w-5 h-5 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300"
+                        style={{ transform: showCursorGlow ? "translateX(20px)" : "translateX(0)" }}
+                      />
+                    </button>
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                   {themesList.map((t) => {

@@ -62,12 +62,21 @@ interface ParticleBackgroundProps {
   bgImage?: string;
   /** Custom polygon shapes for particles – array of polygons, each polygon is array of [x,y] points (normalized 0-1) */
   particleShapes?: number[][][];
+  /** Whether to show the background image (default true) */
+  showBgImage?: boolean;
+  /** Whether to show floating particle shapes (default true) */
+  showParticles?: boolean;
+  /** Whether to show the cursor glow trail (default true) */
+  showCursorGlow?: boolean;
 }
 
 export const ParticleBackground = React.memo(function ParticleBackground({
   accent,
   bgImage,
   particleShapes,
+  showBgImage = true,
+  showParticles = true,
+  showCursorGlow = true,
 }: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -268,34 +277,43 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   return (
     <div ref={containerRef} className="absolute inset-0 overflow-hidden select-none pointer-events-none z-0">
       {/* Background Image with slow, beautiful parallax handled directly via DOM styled transform */}
-      <div
-        ref={bgRef}
-        className="absolute inset-[-40px] bg-cover bg-center transition-all duration-1000 ease-out scale-105"
-        style={{
-          backgroundImage: bgImage ? `url('${bgImage}')` : undefined,
-          backgroundColor: bgImage ? undefined : `rgba(2, 6, 23, 1)`,
-          transform: `translate(0px, 0px) scale(1.03)`,
-          filter: bgImage ? "brightness(0.35) contrast(1.08)" : undefined,
-        }}
-      />
-      {/* Dark vignette gradient */}
+      {showBgImage && (
+        <div
+          ref={bgRef}
+          className="absolute inset-[-40px] bg-cover bg-center transition-all duration-1000 ease-out scale-105"
+          style={{
+            backgroundImage: bgImage ? `url('${bgImage}')` : undefined,
+            backgroundColor: bgImage ? undefined : `rgba(2, 6, 23, 1)`,
+            transform: `translate(0px, 0px) scale(1.03)`,
+            filter: bgImage ? "brightness(0.35) contrast(1.08)" : undefined,
+          }}
+        />
+      )}
+      {!showBgImage && (
+        <div className="absolute inset-0 bg-slate-950" />
+      )}
+      {/* Dark vignette gradient — always on top of background */}
       <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/95 via-slate-950/40 to-slate-900/60" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(2,6,23,0.85)_100%)]" />
 
-      {/* Interactive canvas */}
-      <canvas ref={canvasRef} className="absolute inset-0 mix-blend-screen pointer-events-none" />
+      {/* Interactive canvas — only when particles enabled */}
+      {showParticles && (
+        <canvas ref={canvasRef} className="absolute inset-0 mix-blend-screen pointer-events-none" />
+      )}
 
-      {/* High-performance cursor glow trail — uses accent via CSS variable */}
-      <div
-        ref={glowRef}
-        className="fixed w-[400px] h-[400px] rounded-full pointer-events-none z-10 -translate-x-1/2 -translate-y-1/2 will-change-transform"
-        style={{
-          left: `${window.innerWidth / 2}px`,
-          top: `${window.innerHeight / 2}px`,
-          background: `radial-gradient(circle, ${accent}22 0%, transparent 70%)`,
-          filter: 'blur(80px)',
-        }}
-      />
+      {/* High-performance cursor glow trail — only when cursor glow enabled */}
+      {showCursorGlow && (
+        <div
+          ref={glowRef}
+          className="fixed w-[400px] h-[400px] rounded-full pointer-events-none z-10 -translate-x-1/2 -translate-y-1/2 will-change-transform"
+          style={{
+            left: `${window.innerWidth / 2}px`,
+            top: `${window.innerHeight / 2}px`,
+            background: `radial-gradient(circle, ${accent}22 0%, transparent 70%)`,
+            filter: 'blur(80px)',
+          }}
+        />
+      )}
     </div>
   );
 });

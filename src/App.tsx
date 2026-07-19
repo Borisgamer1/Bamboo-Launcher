@@ -74,10 +74,21 @@ const [showExitModal, setShowExitModal] = useState(false);
   const [themeId, setThemeId] = useState(() => localStorage.getItem("bamboo-theme") || "bamboo");
   const [availableThemes, setAvailableThemes] = useState<BambooTheme[]>(() => themeService.getThemes());
 
+  // Background / particle toggles — persisted in localStorage
+  const [showBgImage, setShowBgImage] = useState(() => localStorage.getItem('bamboo-showBgImage') !== 'false');
+  const [showParticles, setShowParticles] = useState(() => localStorage.getItem('bamboo-showParticles') !== 'false');
+  const [showCursorGlow, setShowCursorGlow] = useState(() => localStorage.getItem('bamboo-showCursorGlow') !== 'false');
+
+  // Persist changes
+  useEffect(() => { localStorage.setItem('bamboo-showBgImage', String(showBgImage)); }, [showBgImage]);
+  useEffect(() => { localStorage.setItem('bamboo-showParticles', String(showParticles)); }, [showParticles]);
+  useEffect(() => { localStorage.setItem('bamboo-showCursorGlow', String(showCursorGlow)); }, [showCursorGlow]);
+
   // Resolve current theme: check ThemeService first, then fallback to built-in
   const currentTheme = themeService.getTheme(themeId) ||
     availableThemes.find(t => t.id === themeId) ||
     themeService.getDefaultTheme();
+  const theme: string = currentTheme.id;
 
   // Language
   const [lang, setLang] = useState<LanguageType>("de");
@@ -336,6 +347,9 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
         accent={currentTheme.accent}
         bgImage={currentTheme.bgImage}
         particleShapes={currentTheme.particleShapes}
+        showBgImage={showBgImage}
+        showParticles={showParticles}
+        showCursorGlow={showCursorGlow}
       />
       <Sidebar activeTab={activeTab} setActiveTab={handleSetActiveTab} theme={theme} lang={lang} />
 
@@ -370,7 +384,7 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
               {activeTab === "cosmetics" && <CosmeticsView setActiveTab={setActiveTab} lang={lang} activeAccount={activeAccount} />}
               {activeTab === "screenshots" && <ScreenshotsView setActiveTab={setActiveTab} lang={lang} />}
               {activeTab === "news" && <NewsEventsView theme={theme} lang={lang} />}
-              {activeTab === "settings" && <SettingsView setActiveTab={setActiveTab} theme={theme} themeId={themeId} setTheme={(t: any) => setThemeId(t)} accounts={accounts} setAccounts={setAccounts} activeAccount={activeAccount} setActiveAccount={setActiveAccount} lang={lang} setLang={setLang} />}
+              {activeTab === "settings" && <SettingsView setActiveTab={setActiveTab} theme={theme} themeId={themeId} setTheme={(t: any) => setThemeId(t)} accounts={accounts} setAccounts={setAccounts} activeAccount={activeAccount} setActiveAccount={setActiveAccount} lang={lang} setLang={setLang} showBgImage={showBgImage} setShowBgImage={setShowBgImage} showParticles={showParticles} setShowParticles={setShowParticles} showCursorGlow={showCursorGlow} setShowCursorGlow={setShowCursorGlow} />}
             </motion.div>
           </AnimatePresence>
           </Suspense>
