@@ -17,11 +17,18 @@ module.exports = function contentRoutes(app, ctx) {
   const crypto = require('crypto');
 
   // ===== Configuration =====
+  // Local filesystem path for the content repo (if cloned locally)
   const CONTENT_ROOT = process.env.BAMBOO_CONTENT_REPO || (
     process.env.NODE_ENV === 'production'
       ? '/tmp/bamboo-content'
       : path.resolve(__dirname, '..', '..', '..', 'BambooContent')
   );
+  // GitHub Content Repository (public) — used as PRIMARY source on Render,
+  // and as fallback when local filesystem has no files.
+  const GITHUB_CONTENT_REPO = process.env.GITHUB_CONTENT_REPO || 'Borisgamer1/Bamboo-Launcher---Content';
+  const GITHUB_CONTENT_BRANCH = process.env.GITHUB_CONTENT_BRANCH || 'main';
+  // Cache for GitHub API responses (avoids rate-limit issues)
+  let _githubCache = { data: null, timestamp: 0, ttlMs: 30 * 1000 }; // 30s cache
 
   // Allowed content types (mapped to asset_type in the assets table)
   // Backgrounds are part of themes — not a standalone content type.
@@ -240,6 +247,90 @@ module.exports = function contentRoutes(app, ctx) {
     }
   }
 
+  /** Fetch file tree from GitHub API (public repos only, no auth needed) */
+  async function fetchGithubFileTree() {
+    const now = Date.now();
+    if (_githubCache.data && (now - _githubCache.timestamp) < _githubCache.ttlMs) {
+      return _githubCache.data;
+    }
+
+    const url = `https://api.github.com/repos/${GITHUB_CONTENT_REPO}/git/trees/${GITHUB_CONTENT_BRANCH}?recursive=1`;
+    console.log('[content] Fetching GitHub file tree:', url);
+
+    try {
+      const https = require('https');
+      const data = await new Promise((resolve, reject) => {
+        https.get(url, { headers: { 'User-Agent': 'Bamboo-Launcher/1.0' } }, (res) => {
+          let body = '';
+          res.on('data', chunk => body += chunk);
+          res.on('end', () => {
+            if (res.statusCode === 200) {
+              try { resolve(JSON.parse(body)); }
+              catch (e) { reject(new Error('Invalid JSON from GitHub: ' + e.message)); }
+            } else {
+              reject(new Error('GitHub API returned ' + res.statusCode + ': ' + body.substring(0, 200)));
+            }
+          });
+        }).on('error', reject);
+      });
+
+      if (!data.tree || !Array.isArray(data.tree)) {
+        throw new Error('GitHub API response missing tree array');
+      }
+
+      // Convert to our item format
+      const items = data.tree
+        .filter(item => item.type === 'blob') // files only, skip trees (directories are inferred)
+        .map(item => {
+          const fullPath = item.path.replace(/\\/g, '/');
+          const name = fullPath.split('/').pop();
+          return {
+            name,
+            path: fullPath,
+            type: 'file',
+            size: item.size || 0,
+            sha: item.sha,
+            mtime: new Date().toISOString(), // GitHub tree API doesn't provide mtime per file
+          };
+        });
+
+      // Build directory entries from file paths
+      const dirs = new Map();
+      for (const item of items) {
+        const parts = item.path.split('/');
+        if (parts.length > 1) {
+          for (let i = 1; i <= parts.length; i++) {
+            const dirPath = parts.slice(0, i).join('/');
+            if (!dirs.has(dirPath) && i < parts.length) {
+              dirs.set(dirPath, { name: parts[i-1], path: dirPath, type: 'directory', fileCount: 0 });
+            }
+          }
+        }
+      }
+
+      // Count files per directory
+      for (const item of items) {
+        const dirPart = item.path.includes('/') ? item.path.substring(0, item.path.lastIndexOf('/')) : '';
+        if (dirPart && dirs.has(dirPart)) {
+          dirs.get(dirPart).fileCount++;
+        }
+      }
+
+      const result = { files: items, dirs: Array.from(dirs.values()) };
+      _githubCache = { data: result, timestamp: now, ttlMs: 30000 };
+      console.log('[content] GitHub tree fetched:', items.length, 'files,', dirs.size, 'directories');
+      return result;
+    } catch (err) {
+      console.warn('[content] GitHub API error:', err.message);
+      return { files: [], dirs: [] };
+    }
+  }
+
+  /** Get file data (content) from raw.githubusercontent.com */
+  function getGitHubRawUrl(filePath) {
+    return `https://raw.githubusercontent.com/${GITHUB_CONTENT_REPO}/${GITHUB_CONTENT_BRANCH}/${filePath}`;
+  }
+
   /** Validate content type */
   function validateType(assetType) {
     if (!assetType) return 'cosmetic';
@@ -261,29 +352,15 @@ module.exports = function contentRoutes(app, ctx) {
   // ====================================================================
 
   // ===== GET /api/content/files — Browse/search files in the repo =====
-  app.get('/api/content/files', authenticateAdmin, (req, res) => {
+  // PRIMARY: fetches file tree from the PUBLIC GitHub Content Repository via GitHub API.
+  // FALLBACK: reads from local filesystem (BAMBOO_CONTENT_REPO) when GitHub is unavailable.
+  app.get('/api/content/files', authenticateAdmin, async (req, res) => {
     try {
-      if (!fs.existsSync(CONTENT_ROOT)) {
-        return res.json({ success: true, items: [], path: '/', total: 0, page: 1, limit: 50 });
-      }
-
       const subDir = (req.query.dir || '').replace(/\\\\/g, '/').replace(/\.\./g, '');
       const searchQuery = (req.query.q || '').trim().toLowerCase();
       const typeFilter = (req.query.type || 'all').toLowerCase();
       const page = Math.max(1, parseInt(req.query.page || '1'));
       const limit = Math.min(200, Math.max(1, parseInt(req.query.limit || '50')));
-
-      const browsePath = subDir ? path.join(CONTENT_ROOT, subDir) : CONTENT_ROOT;
-
-      const resolved = path.resolve(browsePath);
-      const resolvedRoot = path.resolve(CONTENT_ROOT);
-      if (!resolved.startsWith(resolvedRoot)) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-
-      if (!fs.existsSync(browsePath)) {
-        return res.status(404).json({ error: 'Directory not found' });
-      }
 
       const typeMatch = {
         image: f => /\.(png|jpg|jpeg|webp|gif|svg|ico)$/i.test(f),
@@ -292,52 +369,141 @@ module.exports = function contentRoutes(app, ctx) {
         json: f => /\.json$/i.test(f),
         font: f => /\.(ttf|otf|woff2)$/i.test(f),
         archive: f => /\.zip$/i.test(f),
-        // Context-specific filters for the Asset Browser
         texture: f => /\.(png)$/i.test(f),
         glb: f => /\.(glb|gltf|bbmodel|json)$/i.test(f),
         icon: f => /\.(png|jpg|jpeg|webp|gif|svg|ico)$/i.test(f),
       };
 
       let allItems = [];
+      let source = 'unknown';
 
-      if (searchQuery) {
-        const walkDir = (dir, baseDir, depth) => {
-          if (depth > 8) return;
-          let entries;
-          try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-          for (const e of entries) {
-            if (e.name === '.git' || e.name === 'node_modules' || e.name === 'manifest.json') continue;
-            const full = path.join(dir, e.name);
-            const rel = path.relative(baseDir, full).replace(/\\\\/g, '/');
-            if (e.isDirectory()) {
-              walkDir(full, baseDir, depth + 1);
-            } else if (e.isFile()) {
-              if (rel.toLowerCase().includes(searchQuery)) {
+      // ---- STEP 1: Try local filesystem (fast, for local dev) ----
+      if (fs.existsSync(CONTENT_ROOT)) {
+        const rootFiles = fs.readdirSync(CONTENT_ROOT, { withFileTypes: true });
+        const hasRealFiles = rootFiles.some(e =>
+          e.isFile() && e.name !== '.git' && e.name !== 'manifest.json' && e.name !== 'README.md'
+        );
+        const hasRealDirs = rootFiles.some(e =>
+          e.isDirectory() && e.name !== '.git'
+        );
+
+        if (hasRealFiles || hasRealDirs) {
+          source = 'filesystem';
+          const browsePath = subDir ? path.join(CONTENT_ROOT, subDir) : CONTENT_ROOT;
+          const resolved = path.resolve(browsePath);
+          const resolvedRoot = path.resolve(CONTENT_ROOT);
+          if (!resolved.startsWith(resolvedRoot)) {
+            return res.status(403).json({ error: 'Access denied' });
+          }
+          if (!fs.existsSync(browsePath)) {
+            return res.status(404).json({ error: 'Directory not found' });
+          }
+
+          if (searchQuery) {
+            const walkDir = (dir, baseDir, depth) => {
+              if (depth > 8) return;
+              let entries;
+              try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+              for (const e of entries) {
+                if (e.name === '.git' || e.name === 'node_modules' || e.name === 'manifest.json') continue;
+                const full = path.join(dir, e.name);
+                const rel = path.relative(baseDir, full).replace(/\\\\/g, '/');
+                if (e.isDirectory()) {
+                  walkDir(full, baseDir, depth + 1);
+                } else if (e.isFile()) {
+                  if (rel.toLowerCase().includes(searchQuery)) {
+                    try {
+                      const stat = fs.statSync(full);
+                      allItems.push({ name: e.name, path: rel, type: 'file', size: stat.size, mtime: stat.mtime.toISOString() });
+                    } catch {}
+                  }
+                }
+              }
+            };
+            walkDir(browsePath, CONTENT_ROOT, 0);
+          } else {
+            const entries = fs.readdirSync(browsePath, { withFileTypes: true });
+            for (const e of entries) {
+              if (e.name === '.git' || e.name === 'node_modules' || e.name === 'manifest.json') continue;
+              const full = path.join(browsePath, e.name);
+              const rel = path.relative(CONTENT_ROOT, full).replace(/\\\\/g, '/');
+              if (e.isDirectory()) {
+                let childCount = 0;
+                try { childCount = fs.readdirSync(full).filter(x => !x.startsWith('.')).length; } catch {}
+                allItems.push({ name: e.name, path: rel, type: 'directory', fileCount: childCount });
+              } else if (e.isFile()) {
                 try {
                   const stat = fs.statSync(full);
                   allItems.push({ name: e.name, path: rel, type: 'file', size: stat.size, mtime: stat.mtime.toISOString() });
                 } catch {}
               }
             }
+            allItems.sort((a, b) => {
+              if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+              return a.name.localeCompare(b.name);
+            });
           }
-        };
-        walkDir(browsePath, CONTENT_ROOT, 0);
-      } else {
-        const entries = fs.readdirSync(browsePath, { withFileTypes: true });
-        for (const e of entries) {
-          if (e.name === '.git' || e.name === 'node_modules' || e.name === 'manifest.json') continue;
-          const full = path.join(browsePath, e.name);
-          const rel = path.relative(CONTENT_ROOT, full).replace(/\\\\/g, '/');
-          if (e.isDirectory()) {
-            let childCount = 0;
-            try { childCount = fs.readdirSync(full).filter(x => !x.startsWith('.')).length; } catch {}
-            allItems.push({ name: e.name, path: rel, type: 'directory', fileCount: childCount });
-          } else if (e.isFile()) {
-            try {
-              const stat = fs.statSync(full);
-              allItems.push({ name: e.name, path: rel, type: 'file', size: stat.size, mtime: stat.mtime.toISOString() });
-            } catch {}
-          }
+        }
+      }
+
+      // ---- STEP 2: If no local files, fall back to GitHub API ----
+      if (allItems.length === 0) {
+        source = 'github';
+        const ghData = await fetchGithubFileTree();
+
+        if (searchQuery) {
+          // Recursive search through all files matching the query
+          allItems.push(...ghData.files
+            .filter(f => f.path.toLowerCase().includes(searchQuery))
+            .map(f => ({
+              name: f.name,
+              path: f.path,
+              type: 'file',
+              size: f.size,
+              mtime: f.mtime,
+            }))
+          );
+        } else if (subDir) {
+          // Filter items to show only those within the requested subdirectory
+          const prefix = subDir + '/';
+          allItems.push(
+            ...ghData.dirs
+              .filter(d => d.path === subDir || (d.path.startsWith(prefix) && !d.path.substring(prefix.length).includes('/')))
+              .map(d => ({
+                name: d.name,
+                path: d.path,
+                type: 'directory',
+                fileCount: d.fileCount,
+              }))
+          );
+          allItems.push(
+            ...ghData.files
+              .filter(f => f.path.startsWith(prefix) && !f.path.substring(prefix.length).includes('/'))
+              .map(f => ({
+                name: f.name,
+                path: f.path,
+                type: 'file',
+                size: f.size,
+                mtime: f.mtime,
+              }))
+          );
+        } else {
+          // Root level — show top-level dirs and files
+          const topLevelDirs = ghData.dirs.filter(d => !d.path.includes('/'));
+          const topLevelFiles = ghData.files.filter(f => !f.path.includes('/'));
+          allItems.push(...topLevelDirs.map(d => ({
+            name: d.name,
+            path: d.path,
+            type: 'directory',
+            fileCount: d.fileCount,
+          })));
+          allItems.push(...topLevelFiles.map(f => ({
+            name: f.name,
+            path: f.path,
+            type: 'file',
+            size: f.size,
+            mtime: f.mtime,
+          })));
         }
 
         allItems.sort((a, b) => {
@@ -346,10 +512,12 @@ module.exports = function contentRoutes(app, ctx) {
         });
       }
 
+      // ---- STEP 3: Apply type filter and search ----
       if (typeFilter !== 'all' && typeMatch[typeFilter]) {
         allItems = allItems.filter(i => i.type === 'directory' || typeMatch[typeFilter](i.name));
       }
 
+      // ---- STEP 4: Paginate ----
       const total = allItems.length;
       const offset = (page - 1) * limit;
       const items = allItems.slice(offset, offset + limit);
@@ -357,6 +525,7 @@ module.exports = function contentRoutes(app, ctx) {
 
       return res.json({
         success: true,
+        source,
         path: subDir || '/',
         parentDir: parentDir || null,
         items,
@@ -366,52 +535,57 @@ module.exports = function contentRoutes(app, ctx) {
         totalPages: Math.ceil(total / limit),
       });
     } catch (err) {
+      console.error('[content] File browsing error:', err.message);
       return res.status(500).json({ error: err.message });
     }
   });
 
   // ===== GET /api/content/files/preview — Get file preview data =======
-  app.get('/api/content/files/preview', authenticateAdmin, (req, res) => {
+  // Returns file metadata. For images, includes a serve URL for the browser.
+  // Tries local filesystem first, falls back to GitHub raw content.
+  app.get('/api/content/files/preview', authenticateAdmin, async (req, res) => {
     try {
       const filePath = (req.query.path || '').replace(/\\\\/g, '/').replace(/\.\./g, '');
       if (!filePath) return res.status(400).json({ error: 'File path required' });
 
       const fullPath = path.join(CONTENT_ROOT, filePath);
-      const resolved = path.resolve(fullPath);
-      const resolvedRoot = path.resolve(CONTENT_ROOT);
-      if (!resolved.startsWith(resolvedRoot)) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-
-      if (!fs.existsSync(fullPath)) {
-        return res.status(404).json({ error: 'File not found' });
-      }
-
-      const stat = fs.statSync(fullPath);
       const ext = path.extname(filePath).toLowerCase();
       const isImage = /^\.(png|jpg|jpeg|webp|gif|svg|ico)$/i.test(ext);
 
       const preview = {
         name: path.basename(filePath),
         path: filePath,
-        size: stat.size,
-        mtime: stat.mtime.toISOString(),
         ext,
         isImage,
+        // URL for binary serving (works with local filesystem AND GitHub)
+        url: `/api/content/files/serve?path=${encodeURIComponent(filePath)}`,
       };
 
-      if (isImage) {
-        const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
-        preview.mimeType = mimeMap[ext] || 'image/png';
-        if (stat.size < 1024 * 1024) {
-          const data = fs.readFileSync(fullPath);
-          preview.base64 = `data:${preview.mimeType};base64,${data.toString('base64')}`;
-        }
+      // Try local filesystem first
+      const resolved = path.resolve(fullPath);
+      const resolvedRoot = path.resolve(CONTENT_ROOT);
+      let hasLocal = false;
+      if (resolved.startsWith(resolvedRoot) && fs.existsSync(fullPath)) {
+        try {
+          const stat = fs.statSync(fullPath);
+          preview.size = stat.size;
+          preview.mtime = stat.mtime.toISOString();
+          hasLocal = true;
+
+          if (isImage && stat.size < 1024 * 1024) {
+            const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+            preview.mimeType = mimeMap[ext] || 'image/png';
+            const data = fs.readFileSync(fullPath);
+            preview.base64 = `data:${preview.mimeType};base64,${data.toString('base64')}`;
+            preview.source = 'filesystem';
+          }
+        } catch {}
       }
 
-      // Also return a direct URL for image serving in the browser
-      if (isImage) {
-        preview.url = `/api/content/files/serve?path=${encodeURIComponent(filePath)}`;
+      if (!hasLocal) {
+        preview.source = 'github';
+        // Size info from GitHub API is available via the file list, not here
+        preview.size = 0;
       }
 
       return res.json({ success: true, data: preview });
@@ -421,36 +595,65 @@ module.exports = function contentRoutes(app, ctx) {
   });
 
   // ===== GET /api/content/files/serve — Direct file serving ===========
-  app.get('/api/content/files/serve', authenticateAdmin, (req, res) => {
+  // PRIMARY: proxies from raw.githubusercontent.com (public repo, no auth needed).
+  // FALLBACK: reads from local filesystem when GitHub is unavailable.
+  app.get('/api/content/files/serve', authenticateAdmin, async (req, res) => {
     try {
       const filePath = (req.query.path || '').replace(/\\\\/g, '/').replace(/\.\./g, '');
       if (!filePath) return res.status(400).json({ error: 'File path required' });
 
+      // ---- STEP 1: Try local filesystem first ----
       const fullPath = path.join(CONTENT_ROOT, filePath);
       const resolved = path.resolve(fullPath);
       const resolvedRoot = path.resolve(CONTENT_ROOT);
-      if (!resolved.startsWith(resolvedRoot)) {
-        return res.status(403).json({ error: 'Access denied' });
+      if (resolved.startsWith(resolvedRoot)) {
+        if (fs.existsSync(fullPath)) {
+          const ext = path.extname(filePath).toLowerCase();
+          const mimeMap = {
+            '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+            '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+            '.json': 'application/json', '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json',
+            '.bbmodel': 'application/octet-stream',
+          };
+          const mimeType = mimeMap[ext] || 'application/octet-stream';
+          res.setHeader('Content-Type', mimeType);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          const stream = fs.createReadStream(fullPath);
+          stream.pipe(res);
+          stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
+          return;
+        }
       }
 
-      if (!fs.existsSync(fullPath)) {
-        return res.status(404).json({ error: 'File not found' });
+      // ---- STEP 2: Fall back to GitHub raw content ----
+      const githubUrl = `https://raw.githubusercontent.com/${GITHUB_CONTENT_REPO}/${GITHUB_CONTENT_BRANCH}/${filePath}`;
+      console.log('[content] Proxying file from GitHub:', githubUrl);
+      try {
+        const https = require('https');
+        const ghReq = https.get(githubUrl, { headers: { 'User-Agent': 'Bamboo-Launcher/1.0' } }, (ghRes) => {
+          if (ghRes.statusCode === 200) {
+            const ext = path.extname(filePath).toLowerCase();
+            const mimeMap = {
+              '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+              '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+              '.json': 'application/json', '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json',
+              '.bbmodel': 'application/octet-stream',
+            };
+            res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            ghRes.pipe(res);
+          } else if (ghRes.statusCode === 404) {
+            return res.status(404).json({ error: 'File not found in repository' });
+          } else {
+            return res.status(ghRes.statusCode).json({ error: 'GitHub error: ' + ghRes.statusCode });
+          }
+        });
+        ghReq.on('error', (err) => {
+          return res.status(502).json({ error: 'GitHub proxy error: ' + err.message });
+        });
+      } catch (err) {
+        return res.status(502).json({ error: 'GitHub proxy error: ' + err.message });
       }
-
-      const ext = path.extname(filePath).toLowerCase();
-      const mimeMap = {
-        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
-        '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
-        '.json': 'application/json', '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json',
-        '.bbmodel': 'application/octet-stream',
-      };
-      const mimeType = mimeMap[ext] || 'application/octet-stream';
-
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      const stream = fs.createReadStream(fullPath);
-      stream.pipe(res);
-      stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }

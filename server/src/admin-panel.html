@@ -1236,7 +1236,7 @@ function renderMediaBrowser(data) {
       if (isDir) {
         thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-folder"/></svg></div><div class="media-name">${item.name}</div>`;
       } else if (isImage) {
-        thumbHtml = `<div class="media-thumb"><img src="/api/content/files/preview?path=${encodeURIComponent(item.path)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><svg class="media-icon" style="display:none"><use href="#ico-image"/></svg></div><div class="media-name">${item.name}</div>`;
+        thumbHtml = `<div class="media-thumb"><img src="/api/content/files/serve?path=${encodeURIComponent(item.path)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><svg class="media-icon" style="display:none"><use href="#ico-image"/></svg></div><div class="media-name">${item.name}</div>`;
       } else if (/\.(glb|gltf)$/i.test(item.name)) {
         thumbHtml = `<div class="media-thumb"><svg class="media-icon"><use href="#ico-box"/></svg></div><div class="media-name">${item.name}</div>`;
       } else {

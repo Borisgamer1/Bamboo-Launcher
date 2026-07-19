@@ -183,6 +183,18 @@ async function initDatabase() {
       console.log('[admin] Default sample assets seeded');
     }
 
+    // === Migrate deprecated 'background' asset_type to 'theme' ===
+    try {
+      const bgResult = await pool.query(
+        "UPDATE assets SET asset_type = 'theme', updated_at = NOW() WHERE asset_type = 'background'"
+      );
+      if (bgResult.rowCount > 0) {
+        console.log(`[admin] Migrated ${bgResult.rowCount} background(s) to theme type`);
+      }
+    } catch (e) {
+      console.warn('[admin] Background migration skipped:', e.message);
+    }
+
     dbState.connected = true;
     console.log('[admin] PostgreSQL connected, all tables initialized');
   } catch (err) {
