@@ -296,10 +296,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/95 via-slate-950/40 to-slate-900/60" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(2,6,23,0.85)_100%)]" />
 
-      {/* Interactive canvas — only when particles enabled */}
-      {showParticles && (
-        <canvas ref={canvasRef} className="absolute inset-0 mix-blend-screen pointer-events-none" />
-      )}
+      {/* Interactive canvas — always rendered to keep animation loop alive */}
+      <canvas ref={canvasRef} className={`absolute inset-0 pointer-events-none ${showParticles ? 'mix-blend-screen' : 'hidden'}`} />
 
       {/* High-performance cursor glow trail — only when cursor glow enabled */}
       {showCursorGlow && (

@@ -316,21 +316,23 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
     // Start CDN asset sync + self-healing via AssetManager
     assetManager.startAutoSync();
 
-    // After initial sync, try to load CDN themes
-    const loadCdnThemes = async () => {
+    // Load CDN + backend themes on startup so the saved theme applies immediately
+    const loadAllThemes = async () => {
       try {
         // Wait a moment for initial sync to complete
         await new Promise(r => setTimeout(r, 3000));
-        const cdnThemes = await themeService.loadCdnThemes();
-        if (cdnThemes.length > 0) {
-          setAvailableThemes(themeService.getThemes());
-          console.log(`[App] CDN themes loaded: ${cdnThemes.length} themes`);
-        }
+        const [cdnThemes] = await Promise.all([
+          themeService.loadCdnThemes(),
+          themeService.loadBackendThemes(),
+        ]);
+        const all = themeService.getThemes();
+        setAvailableThemes(all);
+        console.log(`[App] Themes loaded: ${cdnThemes.length} CDN + ${all.length - cdnThemes.length} backend`);
       } catch {
-        // CDN themes are optional - built-in fallback always works
+        console.warn('[App] Failed to load themes on startup');
       }
     };
-    loadCdnThemes();
+    loadAllThemes();
 
     return () => {
       assetManager.stopAutoSync();
