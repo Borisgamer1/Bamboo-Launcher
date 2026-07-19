@@ -1192,23 +1192,51 @@ module.exports = function contentRoutes(app, ctx) {
         return res.redirect(imageUrl);
       }
 
-      // Step 2: Look for images in the content repo directory
+      // Step 2: Serve the thumbnail_url file directly from disk (if it exists locally)
+      if (imageUrl) {
+        const thumbPath = path.join(CONTENT_ROOT, imageUrl);
+        const resolvedThumb = path.resolve(thumbPath);
+        const resolvedRoot = path.resolve(CONTENT_ROOT);
+        if (resolvedThumb.startsWith(resolvedRoot) && fs.existsSync(thumbPath) && fs.statSync(thumbPath).isFile()) {
+          const ext = path.extname(imageUrl).toLowerCase();
+          const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+          res.setHeader('Content-Type', mimeMap[ext] || 'image/png');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          const stream = fs.createReadStream(thumbPath);
+          stream.pipe(res);
+          stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
+          return;
+        }
+      }
+
+      // Step 3: Fallback — scan the content repo directory recursively for any image files
       const contentDir = path.join(CONTENT_ROOT, assetType + 's', item.slug);
       if (fs.existsSync(contentDir)) {
-        const imageFiles = fs.readdirSync(contentDir).filter(f => /\.(png|jpg|jpeg|webp|gif)$/i.test(f));
-        if (imageFiles.length > 0) {
-          const chosen = imageFiles.find(f => /preview|thumb/i.test(f)) || imageFiles[0];
-          const imagePath = path.join(contentDir, chosen);
-          if (fs.existsSync(imagePath)) {
-            const ext = path.extname(chosen).toLowerCase();
-            const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
-            res.setHeader('Content-Type', mimeMap[ext] || 'image/png');
-            res.setHeader('Cache-Control', 'public, max-age=86400');
-            const stream = fs.createReadStream(imagePath);
-            stream.pipe(res);
-            stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
-            return;
+        const allImages = [];
+        const walkImages = (dir) => {
+          let entries;
+          try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+          for (const entry of entries) {
+            if (entry.name === '.git' || entry.name === 'node_modules') continue;
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              walkImages(full);
+            } else if (entry.isFile() && /\.(png|jpg|jpeg|webp|gif)$/i.test(entry.name)) {
+              allImages.push(full);
+            }
           }
+        };
+        walkImages(contentDir);
+        if (allImages.length > 0) {
+          const chosen = allImages.find(f => /preview|thumb/i.test(path.basename(f))) || allImages[0];
+          const ext = path.extname(chosen).toLowerCase();
+          const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
+          res.setHeader('Content-Type', mimeMap[ext] || 'image/png');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          const stream = fs.createReadStream(chosen);
+          stream.pipe(res);
+          stream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: 'Stream error' }); });
+          return;
         }
       }
 
