@@ -255,8 +255,10 @@ module.exports = function contentRoutes(app, ctx) {
   async function fetchGithubFileTree() {
     const now = Date.now();
     if (_githubCache.data && (now - _githubCache.timestamp) < _githubCache.ttlMs) {
+      console.log('[content] GitHub cache HIT —', _githubCache.data.files.length, 'files cached');
       return _githubCache.data;
     }
+    console.log('[content] GitHub cache MISS — fetching fresh data');
 
     const url = `https://api.github.com/repos/${GITHUB_CONTENT_REPO}/git/trees/${GITHUB_CONTENT_BRANCH}?recursive=1`;
     console.log('[content] Fetching GitHub file tree:', url);
@@ -264,7 +266,10 @@ module.exports = function contentRoutes(app, ctx) {
     try {
       const https = require('https');
       const data = await new Promise((resolve, reject) => {
-        https.get(url, { headers: { 'User-Agent': 'Bamboo-Launcher/1.0' } }, (res) => {
+        const req = https.get(url, {
+          headers: { 'User-Agent': 'Bamboo-Launcher/1.0' },
+          timeout: 15000, // 15s timeout
+        }, (res) => {
           let body = '';
           res.on('data', chunk => body += chunk);
           res.on('end', () => {
@@ -275,7 +280,14 @@ module.exports = function contentRoutes(app, ctx) {
               reject(new Error('GitHub API returned ' + res.statusCode + ': ' + body.substring(0, 200)));
             }
           });
-        }).on('error', reject);
+        });
+        req.on('timeout', () => {
+          req.destroy();
+          const timeoutErr = new Error('GitHub API request timed out after 15s');
+          timeoutErr.code = 'ETIMEDOUT';
+          reject(timeoutErr);
+        });
+        req.on('error', reject);
       });
 
       if (!data.tree || !Array.isArray(data.tree)) {
@@ -501,12 +513,17 @@ module.exports = function contentRoutes(app, ctx) {
   // PRIMARY: fetches file tree from the PUBLIC GitHub Content Repository via GitHub API.
   // FALLBACK: reads from local filesystem (BAMBOO_CONTENT_REPO) when GitHub is unavailable.
   app.get('/api/content/files', authenticateAdmin, async (req, res) => {
+    const _reqStart = Date.now();
+    const _reqId = Math.random().toString(36).substring(2, 8);
+
     try {
       const subDir = (req.query.dir || '').replace(/\\\\/g, '/').replace(/\.\./g, '');
       const searchQuery = (req.query.q || '').trim().toLowerCase();
       const typeFilter = (req.query.type || 'all').toLowerCase();
       const page = Math.max(1, parseInt(req.query.page || '1'));
       const limit = Math.min(200, Math.max(1, parseInt(req.query.limit || '50')));
+
+      console.log(`[files:${_reqId}] Request — dir="${subDir}" q="${searchQuery}" type="${typeFilter}" page=${page} limit=${limit}`);
 
       const typeMatch = {
         image: f => /\.(png|jpg|jpeg|webp|gif|svg|ico)$/i.test(f),
@@ -532,16 +549,20 @@ module.exports = function contentRoutes(app, ctx) {
         const hasRealDirs = rootFiles.some(e =>
           e.isDirectory() && e.name !== '.git'
         );
+        console.log(`[files:${_reqId}] FS check — exists=true hasRealFiles=${hasRealFiles} hasRealDirs=${hasRealDirs} root="${CONTENT_ROOT}"`);
 
         if (hasRealFiles || hasRealDirs) {
           source = 'filesystem';
           const browsePath = subDir ? path.join(CONTENT_ROOT, subDir) : CONTENT_ROOT;
+          console.log(`[files:${_reqId}] FS browse — path="${browsePath}"`);
           const resolved = path.resolve(browsePath);
           const resolvedRoot = path.resolve(CONTENT_ROOT);
           if (!resolved.startsWith(resolvedRoot)) {
+            console.error(`[files:${_reqId}] Zugriff verweigert: ${resolved} not under ${resolvedRoot}`);
             return res.status(403).json({ error: 'Access denied' });
           }
           if (!fs.existsSync(browsePath)) {
+            console.warn(`[files:${_reqId}] Verzeichnis nicht gefunden: ${browsePath}`);
             return res.status(404).json({ error: 'Directory not found' });
           }
 
@@ -589,12 +610,17 @@ module.exports = function contentRoutes(app, ctx) {
               return a.name.localeCompare(b.name);
             });
           }
+          console.log(`[files:${_reqId}] FS result — ${allItems.length} items`);
         }
+      } else {
+        console.log(`[files:${_reqId}] FS check — exists=false root="${CONTENT_ROOT}"`);
       }
 
       // ---- STEP 2: If no local files, fall back to GitHub API ----
       if (allItems.length === 0) {
         source = 'github';
+        console.log(`[files:${_reqId}] Fallback to GitHub API — cache=${_githubCache.data ? 'HIT' : 'MISS'} cacheAge=${_githubCache.timestamp ? ((Date.now()-_githubCache.timestamp)/1000).toFixed(1)+'s' : 'N/A'}`);
+
         let ghData;
         try {
           ghData = await fetchGithubFileTree();
@@ -603,14 +629,20 @@ module.exports = function contentRoutes(app, ctx) {
           _githubApiStatus.lastAttempt = new Date().toISOString();
           _githubApiStatus.lastError = null;
           _githubApiStatus.errorCount = 0;
+          console.log(`[files:${_reqId}] GitHub OK — ${ghData.files.length} files, ${ghData.dirs.length} dirs`);
         } catch (ghErr) {
-          // Log the full error details
-          console.error('[content] Datei-Browser: GitHub API fehlgeschlagen:', ghErr.message);
+          console.error(`[files:${_reqId}] === GITHUB API FEHLGESCHLAGEN ===`);
+          console.error(`[files:${_reqId}]   Message: ${ghErr.message}`);
+          console.error(`[files:${_reqId}]   Stack:   ${ghErr.stack || '(kein Stack)'}`);
+          console.error(`[files:${_reqId}]   Repo:    ${GITHUB_CONTENT_REPO}`);
+          console.error(`[files:${_reqId}]   Branch:  ${GITHUB_CONTENT_BRANCH}`);
+          if (ghErr.code) console.error(`[files:${_reqId}]   Code:    ${ghErr.code}`);
           if (ghErr.githubDetail) {
-            console.error('[content]   Typ:', ghErr.githubDetail.type);
-            console.error('[content]   Repo:', ghErr.githubDetail.repo);
+            console.error(`[files:${_reqId}]   Typ:     ${ghErr.githubDetail.type}`);
+            console.error(`[files:${_reqId}]   URL:     ${ghErr.githubDetail.url}`);
           }
-          // Return a proper error instead of silently returning empty items
+          console.error(`[files:${_reqId}]   Dauer:   ${Date.now()-_reqStart}ms`);
+
           return res.status(ghErr.statusCode || 502).json({
             success: false,
             error: 'Dateien konnten nicht aus dem GitHub Repository geladen werden.',
@@ -631,7 +663,7 @@ module.exports = function contentRoutes(app, ctx) {
         }
 
         if (searchQuery) {
-          // Recursive search through all files matching the query
+          const before = allItems.length;
           allItems.push(...ghData.files
             .filter(f => f.path.toLowerCase().includes(searchQuery))
             .map(f => ({
@@ -642,47 +674,28 @@ module.exports = function contentRoutes(app, ctx) {
               mtime: f.mtime,
             }))
           );
+          console.log(`[files:${_reqId}] GitHub search q="${searchQuery}" — ${allItems.length-before} matches`);
         } else if (subDir) {
-          // Filter items to show only those within the requested subdirectory
           const prefix = subDir + '/';
+          const before = allItems.length;
           allItems.push(
             ...ghData.dirs
               .filter(d => d.path === subDir || (d.path.startsWith(prefix) && !d.path.substring(prefix.length).includes('/')))
-              .map(d => ({
-                name: d.name,
-                path: d.path,
-                type: 'directory',
-                fileCount: d.fileCount,
-              }))
+              .map(d => ({ name: d.name, path: d.path, type: 'directory', fileCount: d.fileCount }))
           );
           allItems.push(
             ...ghData.files
               .filter(f => f.path.startsWith(prefix) && !f.path.substring(prefix.length).includes('/'))
-              .map(f => ({
-                name: f.name,
-                path: f.path,
-                type: 'file',
-                size: f.size,
-                mtime: f.mtime,
-              }))
+              .map(f => ({ name: f.name, path: f.path, type: 'file', size: f.size, mtime: f.mtime }))
           );
+          console.log(`[files:${_reqId}] GitHub subdir "${subDir}" — ${allItems.length-before} items`);
         } else {
-          // Root level — show top-level dirs and files
+          const before = allItems.length;
           const topLevelDirs = ghData.dirs.filter(d => !d.path.includes('/'));
           const topLevelFiles = ghData.files.filter(f => !f.path.includes('/'));
-          allItems.push(...topLevelDirs.map(d => ({
-            name: d.name,
-            path: d.path,
-            type: 'directory',
-            fileCount: d.fileCount,
-          })));
-          allItems.push(...topLevelFiles.map(f => ({
-            name: f.name,
-            path: f.path,
-            type: 'file',
-            size: f.size,
-            mtime: f.mtime,
-          })));
+          allItems.push(...topLevelDirs.map(d => ({ name: d.name, path: d.path, type: 'directory', fileCount: d.fileCount })));
+          allItems.push(...topLevelFiles.map(f => ({ name: f.name, path: f.path, type: 'file', size: f.size, mtime: f.mtime })));
+          console.log(`[files:${_reqId}] GitHub root — ${allItems.length-before} items (${topLevelDirs.length} dirs, ${topLevelFiles.length} files)`);
         }
 
         allItems.sort((a, b) => {
@@ -691,9 +704,13 @@ module.exports = function contentRoutes(app, ctx) {
         });
       }
 
-      // ---- STEP 3: Apply type filter and search ----
+      // ---- STEP 3: Apply type filter ----
+      const beforeFilter = allItems.length;
       if (typeFilter !== 'all' && typeMatch[typeFilter]) {
         allItems = allItems.filter(i => i.type === 'directory' || typeMatch[typeFilter](i.name));
+      }
+      if (typeFilter !== 'all') {
+        console.log(`[files:${_reqId}] Filter type="${typeFilter}" — ${beforeFilter} → ${allItems.length} items`);
       }
 
       // ---- STEP 4: Paginate ----
@@ -701,6 +718,9 @@ module.exports = function contentRoutes(app, ctx) {
       const offset = (page - 1) * limit;
       const items = allItems.slice(offset, offset + limit);
       const parentDir = subDir ? subDir.split('/').slice(0, -1).join('/') : null;
+
+      const duration = Date.now() - _reqStart;
+      console.log(`[files:${_reqId}] Response — ${total} total, ${items.length} returned, source=${source}, ${duration}ms`);
 
       return res.json({
         success: true,
@@ -714,7 +734,10 @@ module.exports = function contentRoutes(app, ctx) {
         totalPages: Math.ceil(total / limit),
       });
     } catch (err) {
-      console.error('[content] File browsing error:', err.message);
+      console.error(`[files:${_reqId}] === UNBEHANDELTER FEHLER ===`);
+      console.error(`[files:${_reqId}]   Message: ${err.message}`);
+      console.error(`[files:${_reqId}]   Stack:   ${err.stack || '(kein Stack)'}`);
+      console.error(`[files:${_reqId}]   Dauer:   ${Date.now()-_reqStart}ms`);
       return res.status(500).json({ error: err.message });
     }
   });
