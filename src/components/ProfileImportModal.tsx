@@ -23,7 +23,6 @@ import {
   FileText,
   ArrowRight,
   RefreshCw,
-  Share2,
 } from "lucide-react";
 import type { Instance } from "./InstancesView";
 import type {
@@ -36,7 +35,6 @@ import type {
   ImportResult,
 } from "../services/profileImport";
 import { profileImportService } from "../services/profileImport";
-import { bambooShareService } from "../services/bambooShare";
 import { LanguageType } from "../lib/translations";
 import { useToast } from "./Toast";
 
@@ -47,7 +45,6 @@ interface ProfileImportModalProps {
   setInstances: React.Dispatch<React.SetStateAction<Instance[]>>;
   lang: LanguageType;
   initialFile?: string;
-  initialCode?: string;
 }
 
 export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
@@ -57,7 +54,6 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
   setInstances,
   lang,
   initialFile,
-  initialCode,
 }) => {
   const t = (de: string, en: string) => (lang === "de" ? de : en);
   const { addToast } = useToast();
@@ -68,8 +64,6 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
 
   // File selection
   const [selectedFile, setSelectedFile] = useState<string | null>(initialFile || null);
-  const [selectedCode, setSelectedCode] = useState(initialCode || "");
-  const [isCodeMode, setIsCodeMode] = useState(!!initialCode);
 
   // Preview
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -100,10 +94,6 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  // Code loading
-  const [isCodeLoading, setIsCodeLoading] = useState(false);
-  const [codeError, setCodeError] = useState<string | null>(null);
-
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -112,20 +102,15 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
       setImportResult(null);
       setImportError(null);
       setPreviewError(null);
-      setCodeError(null);
       setSelectedFile(initialFile || null);
-      setSelectedCode(initialCode || "");
-      setIsCodeMode(!!initialCode);
 
       if (initialFile) {
         loadPreview(initialFile);
-      } else if (initialCode) {
-        loadCodePreview(initialCode);
       } else {
         setStep("select");
       }
     }
-  }, [isOpen, initialFile, initialCode]);
+  }, [isOpen, initialFile]);
 
   // Subscribe to import progress
   useEffect(() => {
@@ -150,42 +135,6 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
     }
   };
 
-  const loadCodePreview = async (code: string) => {
-    setIsCodeLoading(true);
-    setCodeError(null);
-    try {
-      const info = await bambooShareService.getShareInfo(code.toUpperCase());
-      // Create a preview from the share info
-      const p: ImportPreview = {
-        format: "bamboo",
-        title: info.title,
-        minecraftVersion: info.minecraftVersion,
-        modloader: info.modloader,
-        modloaderVersion: info.modloaderVersion,
-        description: info.description,
-        author: info.authorName,
-        fileSize: info.fileSize,
-        totalFiles: info.modCount + info.resourcepackCount + info.shaderCount + info.datapackCount + info.worldCount,
-        modCount: info.modCount,
-        resourcepackCount: info.resourcepackCount,
-        shaderCount: info.shaderCount,
-        datapackCount: info.datapackCount,
-        worldCount: info.worldCount,
-        hasIcon: false,
-        hasBanner: false,
-        hasConfig: true,
-        hasScreenshots: false,
-      };
-      setPreview(p);
-      setTargetName(profileImportService.generateUniqueName(p.title, instances));
-      setStep("preview");
-    } catch (err: any) {
-      setCodeError(err.message);
-    } finally {
-      setIsCodeLoading(false);
-    }
-  };
-
   const handleSelectFile = async () => {
     const result = await window.electronAPI?.showOpenDialog?.({
       properties: ["openFile"],
@@ -203,13 +152,6 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
     }
   };
 
-  const handleValidateAndLoadCode = async () => {
-    if (!selectedCode.trim() || selectedCode.trim().length < 4) return;
-    
-    setIsCodeMode(true);
-    await loadCodePreview(selectedCode.trim());
-  };
-
   const handleCheckConflicts = async () => {
     if (!preview) return;
     setIsCheckingConflicts(true);
@@ -225,7 +167,7 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
   };
 
   const handleStartImport = async () => {
-    if (!preview || !selectedFile && !selectedCode) return;
+    if (!preview || !selectedFile) return;
 
     setIsImporting(true);
     setImportError(null);
@@ -244,25 +186,8 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
 
     let result: ImportResult;
 
-    if (selectedCode && isCodeMode) {
-      // Download share first, then import
-      try {
-        const downloaded = await bambooShareService.downloadShare(selectedCode);
-        // Save downloaded file temporarily
-        const tempPath = await window.electronAPI?.saveTempFile?.({
-          data: Array.from(new Uint8Array(downloaded.data)),
-          fileName: downloaded.fileName,
-        });
-        if (!tempPath) throw new Error(t("Konnte Temp-Datei nicht erstellen", "Could not create temp file"));
-        result = await profileImportService.importProfile(tempPath, preview, options, instances);
-      } catch (err: any) {
-        result = { success: false, error: err.message };
-      }
-    } else if (selectedFile) {
-      result = await profileImportService.importProfile(selectedFile, preview, options, instances);
-    } else {
-      result = { success: false, error: t("Keine Datei ausgewählt", "No file selected") };
-    }
+    result = await profileImportService.importProfile(selectedFile, preview, options, instances);
+
 
     if (result.success && result.instanceName) {
       setImportResult(result);
@@ -403,54 +328,6 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
                   </div>
                 </button>
 
-                {/* Divider */}
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-px bg-slate-800" />
-                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                    {t("oder", "or")}
-                  </span>
-                  <div className="flex-1 h-px bg-slate-800" />
-                </div>
-
-                {/* Code Input */}
-                <div className="bg-slate-900/20 border border-slate-800 rounded-2xl p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Share2 className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-bold text-amber-200">
-                      {t("Bamboo Share Code eingeben", "Enter Bamboo Share Code")}
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={selectedCode}
-                      onChange={(e) => setSelectedCode(e.target.value.toUpperCase())}
-                      placeholder="XXXXXXXX"
-                      maxLength={8}
-                      className="flex-1 bg-slate-950 border border-slate-700 focus:border-amber-500/50 rounded-xl py-3 px-4 text-sm font-bold text-slate-200 placeholder-slate-600 outline-none transition-all tracking-[0.2em] uppercase text-center"
-                      onKeyDown={(e) => e.key === "Enter" && handleValidateAndLoadCode()}
-                    />
-                    <button
-                      onClick={handleValidateAndLoadCode}
-                      disabled={selectedCode.length < 4 || isCodeLoading}
-                      className="bg-amber-500 hover:bg-amber-400 text-slate-950 px-5 py-3 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isCodeLoading ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Search className="w-4 h-4" />
-                      )}
-                      {t("Laden", "Load")}
-                    </button>
-                  </div>
-                  {codeError && (
-                    <p className="text-xs text-rose-400 mt-2 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" />
-                      {codeError}
-                    </p>
-                  )}
-                </div>
-
                 {/* Cancel */}
                 <button
                   onClick={onClose}
@@ -465,7 +342,7 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
             {step === "preview" && preview && (
               <div className="flex flex-col gap-4">
                 {/* Loading state */}
-                {(isLoadingPreview || isCodeLoading) && (
+                {isLoadingPreview && (
                   <div className="flex flex-col items-center justify-center py-8 gap-3">
                     <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
                     <p className="text-sm text-slate-300">{t("Lade Paketinformationen...", "Loading package info...")}</p>
@@ -479,7 +356,7 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
                   </div>
                 )}
 
-                {!isLoadingPreview && !isCodeLoading && (
+                {!isLoadingPreview && (
                   <>
                     {/* Package Info Card */}
                     <div className="bg-gradient-to-br from-slate-900/60 to-slate-950/60 border border-slate-800/60 rounded-2xl p-5">
@@ -709,7 +586,7 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
             )}
 
             {/* Error state with retry */}
-            {previewError && !isLoadingPreview && !isCodeLoading && step === "select" && (
+            {previewError && !isLoadingPreview && step === "select" && (
               <div className="flex flex-col gap-3">
                 <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-2.5">
                   <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />

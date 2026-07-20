@@ -15,8 +15,6 @@ import {
   Check,
   FileArchive,
   AlertTriangle,
-  Copy,
-  Share2,
   ExternalLink,
   FileUp,
   Loader2,
@@ -25,7 +23,6 @@ import {
 import type { Instance, ContentItem } from "./InstancesView";
 import type { ExportFormat, ExportOptions, ExportProgress } from "../services/profileExport";
 import { profileExportService } from "../services/profileExport";
-import { bambooShareService } from "../services/bambooShare";
 import { LanguageType } from "../lib/translations";
 import { useToast } from "./Toast";
 
@@ -46,7 +43,7 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
   const { addToast } = useToast();
 
   // Step tracking
-  type Step = "options" | "progress" | "complete" | "share";
+  type Step = "options" | "progress" | "complete";
   const [step, setStep] = useState<Step>("options");
 
   // Export options
@@ -84,12 +81,7 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Share state
-  const [shareToBamboo, setShareToBamboo] = useState(false);
-  const [shareCode, setShareCode] = useState<string | null>(null);
-  const [isCreatingShare, setIsCreatingShare] = useState(false);
-  const [shareError, setShareError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+
 
   // Reset state when modal opens
   useEffect(() => {
@@ -97,11 +89,7 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
       setStep("options");
       setExportResult(null);
       setError(null);
-      setShareCode(null);
-      setShareError(null);
       setIsExporting(false);
-      setIsCreatingShare(false);
-      setCopied(false);
       setProgress({ phase: "preparing", percent: 0, message: "" });
     }
   }, [isOpen]);
@@ -146,12 +134,7 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
         fileSize: result.fileSize,
       });
 
-      if (shareToBamboo && result.filePath) {
-        setStep("share");
-        await createBambooShare(result);
-      } else {
-        setStep("complete");
-      }
+      setStep("complete");
     } else {
       setError(result.error || t("Export fehlgeschlagen", "Export failed"));
     }
@@ -170,60 +153,7 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
     includeScreenshots,
     includeIcon,
     instance,
-    shareToBamboo,
   ]);
-
-  const createBambooShare = async (exportResult: { filePath?: string; fileName?: string; fileSize?: number }) => {
-    if (!exportResult.filePath) return;
-
-    setIsCreatingShare(true);
-    setShareError(null);
-
-    try {
-      // Read the exported file as base64 via IPC
-      const fileBuffer = await window.electronAPI?.readFileAsBase64?.(exportResult.filePath);
-      if (!fileBuffer) throw new Error(t("Konnte Datei nicht lesen", "Could not read file"));
-
-      const result = await bambooShareService.createShare({
-        title: instance.name,
-        description: instance.desc,
-        minecraftVersion: instance.minecraftVersion,
-        modloader: instance.modloader,
-        modloaderVersion: instance.modloaderVersion,
-        fileBase64: fileBuffer,
-        fileName: exportResult.fileName || `${instance.name}.bamboo`,
-        modCount: (instance.content || []).filter((c) => c.type === "mods").length,
-        resourcepackCount: (instance.content || []).filter((c) => c.type === "resourcepacks").length,
-        shaderCount: (instance.content || []).filter((c) => c.type === "shaderpacks").length,
-        datapackCount: (instance.content || []).filter((c) => c.type === "datapacks").length,
-        worldCount: includeWorlds ? 1 : 0,
-        authorName: "Bamboo User",
-      });
-
-      setShareCode(result.shareCode);
-      addToast({
-        type: "success",
-        message: t("Share erstellt!", "Share created!"),
-      });
-    } catch (err: any) {
-      setShareError(err.message);
-      setStep("complete"); // Still show the local export result
-    } finally {
-      setIsCreatingShare(false);
-    }
-  };
-
-  const handleCopyShareCode = () => {
-    if (shareCode) {
-      navigator.clipboard.writeText(shareCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      addToast({
-        type: "success",
-        message: t("Share-Code kopiert!", "Share code copied!"),
-      });
-    }
-  };
 
   const handleOpenFileLocation = () => {
     if (exportResult?.filePath) {
@@ -435,37 +365,6 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
                   </div>
                 </div>
 
-                {/* Bamboo Share Toggle */}
-                <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400">
-                        <Share2 className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="block text-xs font-bold text-amber-200">
-                          {t("Bamboo Share erstellen", "Create Bamboo Share")}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {t("Teile diesen Export mit einem eindeutigen Code", "Share this export with a unique code")}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShareToBamboo(!shareToBamboo)}
-                      className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-300 cursor-pointer ${
-                        shareToBamboo ? "bg-amber-500" : "bg-slate-800"
-                      }`}
-                    >
-                      <div
-                        className="w-5 h-5 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300"
-                        style={{ transform: shareToBamboo ? "translateX(20px)" : "translateX(0)" }}
-                      />
-                    </button>
-                  </div>
-                </div>
-
                 {/* Action Buttons */}
                 <div className="flex gap-3">
                   <button
@@ -540,7 +439,7 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
                     </p>
                     {exportResult?.fileSize && (
                       <p className="text-xs text-slate-400 mt-1">
-                        {t("Größe:", "Size:")} {bambooShareService.formatShareSize(exportResult.fileSize)}
+                        {t("Größe:", "Size:")} {(exportResult.fileSize >= 1073741824) ? (exportResult.fileSize / 1073741824).toFixed(2) + ' GB' : (exportResult.fileSize >= 1048576) ? (exportResult.fileSize / 1048576).toFixed(1) + ' MB' : (exportResult.fileSize / 1024).toFixed(0) + ' KB'}
                       </p>
                     )}
                   </div>
@@ -574,69 +473,6 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
                     {t("Speichern unter...", "Save as...")}
                   </button>
                 </div>
-              </div>
-            )}
-
-            {/* Step: Bamboo Share */}
-            {step === "share" && (
-              <div className="flex flex-col gap-5">
-                <div className="flex flex-col items-center justify-center py-6 gap-3">
-                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                    {isCreatingShare ? (
-                      <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
-                    ) : (
-                      <Share2 className="w-8 h-8 text-amber-400" />
-                    )}
-                  </div>
-
-                  {shareCode ? (
-                    <div className="text-center">
-                      <p className="text-lg font-black text-amber-300">
-                        {t("Bamboo Share erstellt!", "Bamboo Share created!")}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        {t("Teile diesen Code mit anderen:", "Share this code with others:")}
-                      </p>
-                      <div className="mt-4 flex items-center justify-center gap-2">
-                        <div className="bg-slate-900 border border-amber-500/30 rounded-2xl px-6 py-3">
-                          <span className="text-2xl font-black tracking-[0.3em] text-amber-300">
-                            {shareCode}
-                          </span>
-                        </div>
-                        <button
-                          onClick={handleCopyShareCode}
-                          className="p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white transition-all cursor-pointer"
-                        >
-                          {copied ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-slate-500 mt-3">
-                        {t("Der Share ist 30 Tage gültig.", "The share is valid for 30 days.")}
-                      </p>
-                    </div>
-                  ) : shareError ? (
-                    <div className="text-center">
-                      <AlertTriangle className="w-8 h-8 text-rose-400 mx-auto mb-2" />
-                      <p className="text-sm text-rose-300">{shareError}</p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        {t("Der lokale Export wurde trotzdem erstellt.", "The local export was created anyway.")}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-slate-200">
-                        {t("Erstelle Bamboo Share...", "Creating Bamboo Share...")}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={onClose}
-                  className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer"
-                >
-                  {t("Schließen", "Close")}
-                </button>
               </div>
             )}
           </motion.div>

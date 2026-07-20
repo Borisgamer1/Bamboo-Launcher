@@ -1085,19 +1085,10 @@ app.get('/admin/*', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin-panel.html'));
 });
 
-// ===== Bamboo Share Module =====
-const shareModule = require('./share');
-
 // ===== Start =====
 async function start() {
   await initDatabase();
   
-  // Initialize Bamboo Share with the database pool
-  shareModule.init(pool);
-  
-  // Register Bamboo Share routes
-  app.use('/api/share', shareModule.router);
-
   // Ensure content root directory exists
   if (!fs.existsSync(CONTENT_ROOT)) {
     try {
@@ -1116,7 +1107,7 @@ async function start() {
     console.log(`   Database: PostgreSQL connected`);
     console.log(`   Content Root: ${CONTENT_ROOT}`);
     console.log(`   Content Repo: ${BAMBOO_CONTENT_REPO}`);
-    console.log(`   Endpoints: /api/auth, /api/content/*, /api/share/*, /api/health, /api/assets/*`);
+    console.log(`   Endpoints: /api/auth, /api/content/*, /api/health, /api/assets/*`);
   });
 }
 
