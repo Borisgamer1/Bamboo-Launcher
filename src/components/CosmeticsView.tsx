@@ -132,6 +132,27 @@ export function selectCosmetic(type: string, cosmeticId: string | null) {
 }
 export function getCosmeticSelections() { return [...cosmeticSelections]; }
 
+
+// ===== Module-level cache for Blockbench renderer =====
+var _defaultCosmeticTexture: THREE.Texture | null = null;
+function getDefaultCosmeticTexture(): THREE.Texture {
+  if (!_defaultCosmeticTexture) {
+    var pixelCanvas = document.createElement('canvas');
+    pixelCanvas.width = 1;
+    pixelCanvas.height = 1;
+    var pixelCtx = pixelCanvas.getContext('2d');
+    if (pixelCtx) {
+      pixelCtx.fillStyle = '#888';
+      pixelCtx.fillRect(0, 0, 1, 1);
+    }
+    _defaultCosmeticTexture = new THREE.CanvasTexture(pixelCanvas);
+    _defaultCosmeticTexture.magFilter = THREE.NearestFilter;
+    _defaultCosmeticTexture.minFilter = THREE.NearestFilter;
+  }
+  return _defaultCosmeticTexture;
+}
+
+
 export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
@@ -372,7 +393,6 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
 
   // ===== 3D Cosmetic Preview with Blockbench Model Renderer =====
   const blockbenchCancelledRef = useRef(false);
-  const selectedSlugRef = useRef('');
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -381,7 +401,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     // Find which cosmetic type has a selection
     var selectedTypes = Object.keys(selectedCosmetics);
     if (selectedTypes.length === 0) {
-      clearBlockbenchModel(viewer, blockbenchGroupRef, blockbenchCancelledRef);
+      clearBlockbenchModel(viewer, blockbenchGroupRef);
       viewer.loadCape(null);
       loadedBlockbenchRef.current = null;
       return;
@@ -392,14 +412,13 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     var selectedId = selectedCosmetics[selectedType];
     var cosmetic = cosmetics.find(function(c) { return c.id === selectedId; });
     if (!cosmetic) {
-      clearBlockbenchModel(viewer, blockbenchGroupRef, blockbenchCancelledRef);
+      clearBlockbenchModel(viewer, blockbenchGroupRef);
       viewer.loadCape(null);
       loadedBlockbenchRef.current = null;
       return;
     }
 
     var slug = (cosmetic as any).slug || cosmetic.id;
-    selectedSlugRef.current = slug;
 
     // Always load cape texture (works for cape-type cosmetics and preview)
     var url = cosmetic.previewUrl || cosmetic.imageUrl || API_BASE + '/content/cosmetics/' + cosmetic.id + '/image';
@@ -414,7 +433,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
 
     // Load Blockbench model from disk or server
     blockbenchCancelledRef.current = false;
-    loadBlockbenchModel(slug, viewer, blockbenchGroupRef, blockbenchCancelledRef, loadedBlockbenchRef).catch(function(err) {
+    loadBlockbenchModel(slug, viewer, blockbenchGroupRef, blockbenchCancelledRef, loadedBlockbenchRef, 0).catch(function(err) {
       console.warn('[Cosmetics] Blockbench model load failed:', err);
     });
 
@@ -423,10 +442,8 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
   /** Helper: clear previously loaded Blockbench model from viewer scene */
   function clearBlockbenchModel(
     viewer: SkinViewer,
-    groupRef: React.MutableRefObject<THREE.Group | null>,
-    cancelledRef: React.MutableRefObject<boolean>
+    groupRef: React.MutableRefObject<THREE.Group | null>
   ) {
-    cancelledRef.current = true;
     if (groupRef.current) {
       viewer.scene.remove(groupRef.current);
       groupRef.current.traverse(function(child: any) {
@@ -450,10 +467,11 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     viewer: SkinViewer,
     groupRef: React.MutableRefObject<THREE.Group | null>,
     cancelledRef: React.MutableRefObject<boolean>,
-    loadedRef: React.MutableRefObject<string | null>
+    loadedRef: React.MutableRefObject<string | null>,
+    retryCount: number = 0
   ) {
     // Clear previous model
-    clearBlockbenchModel(viewer, groupRef, cancelledRef);
+    clearBlockbenchModel(viewer, groupRef);
 
     if (cancelledRef.current) return;
 
@@ -525,7 +543,12 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     if (cancelledRef.current) return;
 
     if (!group) {
-      throw new Error('No meshes built from model');
+      if (retryCount < 2) {
+      // Retry once (model might not be fully written to disk yet)
+      await new Promise(function(r) { setTimeout(r, 500); });
+      return loadBlockbenchModel(slug, viewer, groupRef, cancelledRef, loadedRef, retryCount + 1);
+    }
+      throw new Error('No meshes built from model after ' + (retryCount + 1) + ' attempts');
     }
 
     // Position the model in front of the player
@@ -588,18 +611,8 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     var group = new THREE.Group();
     var elements = modelData.elements;
 
-    // Preload default pixel texture for missing textures
-    var pixelCanvas = document.createElement('canvas');
-    pixelCanvas.width = 1;
-    pixelCanvas.height = 1;
-    var pixelCtx = pixelCanvas.getContext('2d');
-    if (pixelCtx) {
-      pixelCtx.fillStyle = '#888';
-      pixelCtx.fillRect(0, 0, 1, 1);
-    }
-    var defaultTexture = new THREE.CanvasTexture(pixelCanvas);
-    defaultTexture.magFilter = THREE.NearestFilter;
-    defaultTexture.minFilter = THREE.NearestFilter;
+    // Use cached default pixel texture
+    var defaultTexture = getDefaultCosmeticTexture();
 
     // Face order mapping: Blockbench face name -> Three.js BoxGeometry face index
     // BoxGeometry faces: +x(0), -x(1), +y(2), -y(3), +z(4), -z(5)
@@ -663,7 +676,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
             var uvWidth = (uv[2] - uv[0]) / texWidth;
             var uvHeight = (uv[3] - uv[1]) / texHeight;
             faceTex.repeat.set(uvWidth, uvHeight);
-            faceTex.offset.set(uv[0] / texWidth, 1 - (uv[1] + uv[3] - uv[1]) / texHeight);
+            faceTex.offset.set(uv[0] / texWidth, 1 - (uv[1] + uvHeight) / texHeight);
             faceTex.needsUpdate = true;
           }
 
