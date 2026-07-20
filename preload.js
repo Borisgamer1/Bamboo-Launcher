@@ -102,6 +102,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   windowMinimize: () => ipcRenderer.send('window-minimize'),
   windowClose: () => ipcRenderer.send('window-close'),
+  // ===== Cosmetics Filesystem Operations =====
+  saveCosmeticFiles: (data) => ipcRenderer.invoke('save-cosmetic-files', data),
+  readCosmeticFile: (filePath) => ipcRenderer.invoke('read-cosmetic-file', filePath),
   // ===== Cosmetics Progress (live from Minecraft client) =====
   onCosmeticProgress: (callback) => {
     const listener = (_event, data) => callback(data);

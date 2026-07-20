@@ -1277,6 +1277,70 @@ ipcMain.handle('read-file-as-base64', async (_event, filePath) => {
   }
 });
 
+
+// ===== Save cosmetic files to disk (BambooLaufwerk/cosmetics/{slug}/) =====
+ipcMain.handle('save-cosmetic-files', async (_event, { slug, files }) => {
+  try {
+    var rootPath = 'C:\\BambooLaufwerk';
+    var cosmeticDir = path.join(rootPath, 'cosmetics', slug);
+    if (!fs.existsSync(cosmeticDir)) fs.mkdirSync(cosmeticDir, { recursive: true });
+    var savedFiles = [];
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      if (!f.fileName || !f.data) continue;
+      var filePath = path.join(cosmeticDir, f.fileName);
+      // Ensure subdirectories exist (e.g. textures/subfolder/)
+      var dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(filePath, Buffer.from(f.data));
+      savedFiles.push(f.fileName);
+      console.log('[cosmetics] Saved:', filePath);
+    }
+    // Write manifest
+    var manifest = {
+      slug: slug,
+      installedAt: Date.now(),
+      fileCount: savedFiles.length,
+      files: savedFiles,
+    };
+    fs.writeFileSync(path.join(cosmeticDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+    console.log('[cosmetics] Manifest written for:', slug);
+    return { success: true, path: cosmeticDir, fileCount: savedFiles.length };
+  } catch (e) {
+    console.error('[cosmetics] Save error:', e.message);
+    return { success: false, error: e.message };
+  }
+});
+// ===== Read cosmetic files from disk (BambooLaufwerk/cosmetics/{slug}/) =====
+ipcMain.handle('read-cosmetic-file', async (_event, filePath) => {
+  var rootPath = 'C:\\\\BambooLaufwerk';
+  try {
+    if (!filePath) return { success: false, error: 'No file path provided' };
+    var fullPath = path.isAbsolute(filePath) ? filePath : path.join(rootPath, filePath);
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: 'File not found: ' + fullPath };
+    }
+    var ext = path.extname(fullPath).toLowerCase();
+    if (ext === '.json') {
+      var content = fs.readFileSync(fullPath, 'utf-8');
+      return { success: true, data: content, type: 'json' };
+    }
+    if (ext === '.png' || ext === '.jpg' || ext === '.jpeg' || ext === '.gif' || ext === '.webp') {
+      var raw = fs.readFileSync(fullPath);
+      var mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
+      var mimeType = mime[ext] || 'image/png';
+      var base64 = raw.toString('base64');
+      return { success: true, data: 'data:' + mimeType + ';base64,' + base64, type: 'image' };
+    }
+    // Default: read as text
+    var content = fs.readFileSync(fullPath, 'utf-8');
+    return { success: true, data: content, type: 'text' };
+  } catch (e) {
+    console.error('[cosmetics] Read error:', e.message);
+    return { success: false, error: e.message };
+  }
+});
+
 ipcMain.handle('save-temp-file', async (_event, { data, fileName }) => {
   try {
     const rootPath = 'C:\\BambooLaufwerk';

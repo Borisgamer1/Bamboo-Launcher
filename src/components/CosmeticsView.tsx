@@ -10,6 +10,7 @@ import { TabType } from "./Sidebar";
 import { LanguageType } from "../lib/translations";
 import { Account } from "./TopBar";
 import { SkinViewer, WalkingAnimation } from "skinview3d";
+import * as THREE from "three";
 import { API_BASE, getLauncherHeaders } from "../services/api";
 import type { CosmeticEntity } from "../services/cosmetics";
 import { parseCosmeticEntity } from "../services/cosmetics";
@@ -134,6 +135,8 @@ export function getCosmeticSelections() { return [...cosmeticSelections]; }
 export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
+  const blockbenchGroupRef = useRef<THREE.Group | null>(null);
+  const loadedBlockbenchRef = useRef<string | null>(null);
   const [showCape, setShowCape] = useState(false);
   const [autoRotate, setAutoRotate] = useState(true);
   const [animEnabled, setAnimEnabled] = useState(true);
@@ -366,34 +369,361 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
   useEffect(() => { fetchCosmetics(); }, [fetchCosmetics]);
 
   // ===== Selection =====
-  // ===== 3D Cosmetic Preview on SkinViewer =====
-  // Load the selected cosmetic texture onto the player model (cape slot)
+
+  // ===== 3D Cosmetic Preview with Blockbench Model Renderer =====
+  const blockbenchCancelledRef = useRef(false);
+  const selectedSlugRef = useRef('');
+
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
+
     // Find which cosmetic type has a selection
-    const selectedTypes = Object.keys(selectedCosmetics);
+    var selectedTypes = Object.keys(selectedCosmetics);
     if (selectedTypes.length === 0) {
-      // Clear cape when nothing selected
-      viewer.loadCape("");
+      clearBlockbenchModel(viewer, blockbenchGroupRef, blockbenchCancelledRef);
+      viewer.loadCape(null);
+      loadedBlockbenchRef.current = null;
       return;
     }
+
     // Get the first selected cosmetic
-    const selectedType = selectedTypes[0];
-    const selectedId = selectedCosmetics[selectedType];
-    const cosmetic = cosmetics.find(c => c.id === selectedId);
+    var selectedType = selectedTypes[0];
+    var selectedId = selectedCosmetics[selectedType];
+    var cosmetic = cosmetics.find(function(c) { return c.id === selectedId; });
     if (!cosmetic) {
-      viewer.loadCape("");
+      clearBlockbenchModel(viewer, blockbenchGroupRef, blockbenchCancelledRef);
+      viewer.loadCape(null);
+      loadedBlockbenchRef.current = null;
       return;
     }
-    // Load the cosmetic preview as a cape texture on the 3D model
-    const url = cosmetic.previewUrl || cosmetic.imageUrl || `${API_BASE}/content/cosmetics/${cosmetic.id}/image`;
+
+    var slug = (cosmetic as any).slug || cosmetic.id;
+    selectedSlugRef.current = slug;
+
+    // Always load cape texture (works for cape-type cosmetics and preview)
+    var url = cosmetic.previewUrl || cosmetic.imageUrl || API_BASE + '/content/cosmetics/' + cosmetic.id + '/image';
     if (url) {
-      viewer.loadCape(url).catch(() => {
-        // Cape load failed silently - cosmetic may not have a cape texture
-      });
+      viewer.loadCape(url).catch(function() {});
+    } else {
+      viewer.loadCape(null);
     }
+
+    // Cancel previous load
+    blockbenchCancelledRef.current = false;
+
+    // Load Blockbench model from disk or server
+    blockbenchCancelledRef.current = false;
+    loadBlockbenchModel(slug, viewer, blockbenchGroupRef, blockbenchCancelledRef, loadedBlockbenchRef).catch(function(err) {
+      console.warn('[Cosmetics] Blockbench model load failed:', err);
+    });
+
   }, [selectedCosmetics, cosmetics]);
+
+  /** Helper: clear previously loaded Blockbench model from viewer scene */
+  function clearBlockbenchModel(
+    viewer: SkinViewer,
+    groupRef: React.MutableRefObject<THREE.Group | null>,
+    cancelledRef: React.MutableRefObject<boolean>
+  ) {
+    cancelledRef.current = true;
+    if (groupRef.current) {
+      viewer.scene.remove(groupRef.current);
+      groupRef.current.traverse(function(child: any) {
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(function(m: any) { if (m.map) m.map.dispose(); m.dispose(); });
+          } else {
+            if (child.material.map) child.material.map.dispose();
+            child.material.dispose();
+          }
+        }
+        if (child.geometry) child.geometry.dispose();
+      });
+      groupRef.current = null;
+    }
+  }
+
+  /** Load a Blockbench model from disk or server and add to viewer scene */
+  async function loadBlockbenchModel(
+    slug: string,
+    viewer: SkinViewer,
+    groupRef: React.MutableRefObject<THREE.Group | null>,
+    cancelledRef: React.MutableRefObject<boolean>,
+    loadedRef: React.MutableRefObject<string | null>
+  ) {
+    // Clear previous model
+    clearBlockbenchModel(viewer, groupRef, cancelledRef);
+
+    if (cancelledRef.current) return;
+
+    // Try to load from local disk first
+    var jsonPath = 'cosmetics/' + slug + '/model.json';
+    var jsonContent = '';
+    var loadedFromDisk = false;
+
+    if (window.electronAPI && window.electronAPI.readCosmeticFile) {
+      try {
+        var result = await window.electronAPI.readCosmeticFile(jsonPath);
+        if (result && result.success && result.data) {
+          jsonContent = result.data;
+          loadedFromDisk = true;
+        }
+      } catch (e) {
+        // Not found on disk
+      }
+    }
+
+    if (cancelledRef.current) return;
+
+    // If not on disk, try fetching from server API
+    if (!jsonContent) {
+      try {
+        var serverUrl = API_BASE + '/content/cosmetics/' + slug + '/model';
+        var resp = await fetch(serverUrl, { headers: getLauncherHeaders() });
+        if (resp.ok) {
+          jsonContent = await resp.text();
+        }
+      } catch (e) {
+        // Server not available
+      }
+    }
+
+    if (cancelledRef.current) return;
+
+    if (!jsonContent) {
+      throw new Error('No model data found for: ' + slug);
+    }
+
+    var modelData = JSON.parse(jsonContent);
+
+    if (cancelledRef.current) return;
+
+    // 1) LOAD TEXTURES FIRST, then build meshes
+    var textures = modelData.textures || [];
+    var loadedTextures: Record<string, THREE.Texture | null> = {};
+
+    for (var ti = 0; ti < textures.length; ti++) {
+      if (cancelledRef.current) return;
+      var texRef = textures[ti];
+      if (texRef && texRef.source) {
+        try {
+          var texPath = 'cosmetics/' + slug + '/' + texRef.source;
+          var texture = await loadSingleTexture(texPath);
+          loadedTextures[String(ti)] = texture;
+        } catch (e) {
+          loadedTextures[String(ti)] = null;
+        }
+      }
+    }
+
+    if (cancelledRef.current) return;
+
+    // 2) BUILD MESHES with loaded textures
+    var group = buildBlockbenchMeshes(modelData, loadedTextures);
+
+    if (cancelledRef.current) return;
+
+    if (!group) {
+      throw new Error('No meshes built from model');
+    }
+
+    // Position the model in front of the player
+    group.position.set(0, -1.2, -1.5);
+    group.scale.set(0.8, 0.8, 0.8);
+
+    viewer.scene.add(group);
+    groupRef.current = group;
+    loadedRef.current = slug;
+  }
+
+  /** Load a single texture file from disk or server */
+  async function loadSingleTexture(texPath: string): Promise<THREE.Texture | null> {
+    var imageSrc: string | null = null;
+
+    if (window.electronAPI && window.electronAPI.readCosmeticFile) {
+      try {
+        var result = await window.electronAPI.readCosmeticFile(texPath);
+        if (result && result.success && result.data && result.type === 'image') {
+          imageSrc = result.data;
+        }
+      } catch (e) {}
+    }
+
+    if (!imageSrc) {
+      return null;
+    }
+
+    return new Promise<THREE.Texture | null>(function(resolve) {
+      var img = new window.Image();
+      img.onload = function() {
+        // Use CanvasTexture instead of Texture constructor (Three.js version compat)
+        var canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        var ctx = canvas.getContext('2d');
+        if (ctx) ctx.drawImage(img, 0, 0);
+        var tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        tex.needsUpdate = true;
+        resolve(tex);
+      };
+      img.onerror = function() { resolve(null); };
+      img.src = imageSrc!;
+    });
+  }
+
+  /** Convert Blockbench elements to Three.js meshes with textures */
+  function buildBlockbenchMeshes(
+    modelData: any,
+    loadedTextures: Record<string, THREE.Texture | null>
+  ): THREE.Group | null {
+    if (!modelData.elements || !Array.isArray(modelData.elements) || modelData.elements.length === 0) {
+      return null;
+    }
+
+    var group = new THREE.Group();
+    var elements = modelData.elements;
+
+    // Preload default pixel texture for missing textures
+    var pixelCanvas = document.createElement('canvas');
+    pixelCanvas.width = 1;
+    pixelCanvas.height = 1;
+    var pixelCtx = pixelCanvas.getContext('2d');
+    if (pixelCtx) {
+      pixelCtx.fillStyle = '#888';
+      pixelCtx.fillRect(0, 0, 1, 1);
+    }
+    var defaultTexture = new THREE.CanvasTexture(pixelCanvas);
+    defaultTexture.magFilter = THREE.NearestFilter;
+    defaultTexture.minFilter = THREE.NearestFilter;
+
+    // Face order mapping: Blockbench face name -> Three.js BoxGeometry face index
+    // BoxGeometry faces: +x(0), -x(1), +y(2), -y(3), +z(4), -z(5)
+    // Blockbench: east(+x), west(-x), up(+y), down(-y), south(+z), north(-z)
+    var faceOrder = ['east', 'west', 'up', 'down', 'south', 'north'];
+    // Blockbench UV to Three.js UV mapping for each face
+    // Blockbench UV is [u1, v1, u2, v2] where (u1,v1) is top-left and (u2,v2) is bottom-right
+    // Three.js BoxGeometry UVs are 0,0 = bottom-left, 1,1 = top-right
+    // Blockbench UV needs V flip: v1 becomes (1 - v1/texHeight), v2 becomes (1 - v2/texHeight)
+    // But we're using NearestFilter so exact UV doesn't matter as much
+
+    var texWidth = modelData.resolution ? modelData.resolution.width || 64 : 64;
+    var texHeight = modelData.resolution ? modelData.resolution.height || 64 : 64;
+
+    for (var i = 0; i < elements.length; i++) {
+      var el = elements[i];
+      if (!el.from || !el.to) continue;
+
+      var from = el.from;
+      var to = el.to;
+      var dx = to[0] - from[0];
+      var dy = to[1] - from[1];
+      var dz = to[2] - from[2];
+      if (dx <= 0 || dy <= 0 || dz <= 0) continue;
+
+      var centerX = (from[0] + to[0]) / 2;
+      var centerY = (from[1] + to[1]) / 2;
+      var centerZ = (from[2] + to[2]) / 2;
+
+      // Scale down Blockbench coords (16px = 1 block in MC)
+      var SCALE = 0.05;
+
+      var geometry = new THREE.BoxGeometry(dx * SCALE, dy * SCALE, dz * SCALE);
+
+      // Build materials for each face
+      var materials: THREE.MeshBasicMaterial[] = [];
+
+      for (var fi = 0; fi < 6; fi++) {
+        var faceName = faceOrder[fi];
+        var faceData = el.faces ? el.faces[faceName] : null;
+
+        var material: THREE.MeshBasicMaterial;
+
+        if (faceData && faceData.texture !== undefined) {
+          var texIdx = faceData.texture;
+          if (typeof texIdx === 'string' && texIdx.startsWith('#')) {
+            texIdx = parseInt(texIdx.substring(1), 10);
+          }
+          var texture = loadedTextures[String(texIdx)] || defaultTexture;
+
+          // Get UV from face data
+          var uv = faceData.uv || [0, 0, 16, 16];
+          // Create a texture with UV offset for this face
+          // For simplicity, use the full texture with UV transform
+          // Three.js doesn't support per-face UV offset on BoxGeometry easily
+          // So we use a cloned texture with offset/repeat
+
+          var faceTex = texture;
+          if (texture && texture !== defaultTexture && faceData.uv) {
+            faceTex = texture.clone();
+            var uvWidth = (uv[2] - uv[0]) / texWidth;
+            var uvHeight = (uv[3] - uv[1]) / texHeight;
+            faceTex.repeat.set(uvWidth, uvHeight);
+            faceTex.offset.set(uv[0] / texWidth, 1 - (uv[1] + uv[3] - uv[1]) / texHeight);
+            faceTex.needsUpdate = true;
+          }
+
+          material = new THREE.MeshBasicMaterial({
+            map: faceTex,
+            transparent: true,
+            alphaTest: 0.1,
+            depthWrite: true,
+            side: THREE.DoubleSide,
+          });
+        } else {
+          // No texture for this face - use light gray
+          material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(0xaaaaaa),
+            transparent: true,
+            side: THREE.DoubleSide,
+          });
+        }
+
+        materials.push(material);
+      }
+
+      var mesh = new THREE.Mesh(geometry, materials);
+      mesh.position.set(centerX * SCALE, centerY * SCALE, centerZ * SCALE);
+
+      // Apply rotation if specified
+      if (el.rotation) {
+        var r = el.rotation;
+        var angleRad = (r.angle || 0) * Math.PI / 180;
+        var axis = r.axis || 'x';
+        var origin = r.origin || [8, 8, 8];
+
+        // Position relative to origin
+        mesh.position.set(
+          (centerX - origin[0]) * SCALE,
+          (centerY - origin[1]) * SCALE,
+          (centerZ - origin[2]) * SCALE
+        );
+
+        // Apply rotation around origin
+        var quat = new THREE.Quaternion();
+        var axisVec = new THREE.Vector3(
+          axis === 'x' ? 1 : 0,
+          axis === 'y' ? 1 : 0,
+          axis === 'z' ? 1 : 0
+        );
+        quat.setFromAxisAngle(axisVec, angleRad);
+        mesh.quaternion.copy(quat);
+
+        // Translate back
+        mesh.position.x += origin[0] * SCALE;
+        mesh.position.y += origin[1] * SCALE;
+        mesh.position.z += origin[2] * SCALE;
+      }
+
+      group.add(mesh);
+    }
+
+    return group.children.length > 0 ? group : null;
+  }
 
   const handleSelectCosmetic = (cosmetic: CosmeticItem) => {
     const currentSelected = selectedCosmetics[cosmetic.type];

@@ -119,7 +119,9 @@ declare global {
       saveFriendBanner?: (filePath: string) => Promise<string | null>
       onDeepLinkInvite?: (callback: (payload: any) => void) => () => void
       getActiveLaunches?: () => Promise<string[]>
-      onCosmeticProgress?: (callback: (data: { playtimeHours?: number; blocksMined?: number; mobsKilled?: number; playerKills?: number; distanceTraveled?: number; achievements?: string[] }) => void) => () => void
+            saveCosmeticFiles?: (data: { slug: string; files: { fileName: string; data: number[] }[] }) => Promise<{ success: boolean; path?: string; fileCount?: number; error?: string }>,
+	readCosmeticFile?: (filePath: string) => Promise<{ success: boolean; data?: string; type?: string; error?: string }>,
+onCosmeticProgress?: (callback: (data: { playtimeHours?: number; blocksMined?: number; mobsKilled?: number; playerKills?: number; distanceTraveled?: number; achievements?: string[] }) => void) => () => void
 
       detectLanServer?: (folderName: string) => Promise<{ port: number; address: string } | null>
       getHostedServers?: () => Promise<Record<string, { port: number; address: string; discoveredAt: number }>>
