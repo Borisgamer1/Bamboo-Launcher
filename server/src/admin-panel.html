@@ -1865,25 +1865,31 @@ function buildTypeFields() {
       </div>
       <div class="help-text">Das Hintergrundbild erscheint im Launcher als Theme-Hintergrund und im Backend als Icon.</div>
 
-      <label style="margin-top:22px">Partikel-Sprite (PNG) <span style="color:var(--text-muted);font-weight:400;font-size:11px">– PNG aus dem Repository auswählen, wird als Partikel-Sprite verwendet</span></label>
-      <div class="help-text" style="margin-top:4px;margin-bottom:8px">Das PNG wird mit transparentem Hintergrund geladen und mit der Theme-Akzentfarbe eingefärbt. Empfohlen: weiße Form auf transparentem Hintergrund.</div>
-      <div class="file-picker" data-file-type="particle-image" onclick="openFilePicker('theme-particle-image','theme','image')">
-        <span class="file-picker-value empty" id="theme-particle-image-display">Kein Partikel-Bild ausgewählt (verwendet Standardformen)</span>
-        <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));event.stopPropagation();}">✕</span>
-        <input type="hidden" class="file-picker-hidden" id="theme-particle-image-hidden">
-        <img class="file-picker-preview" id="theme-particle-image-preview" style="display:none" alt="" onerror="this.style.display='none'">
-      </div>
-
-      <div style="margin-top:20px;border-top:1px solid var(--border-subtle);padding-top:16px">
-        <label>ODER: Formen zeichnen <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Polygone per Klick in den Canvas zeichnen (wenn kein PNG ausgewählt)</span></label>
-        <div class="help-text" style="margin-top:4px;margin-bottom:8px">Klicke in den Canvas, um Eckpunkte zu setzen. Bei ≥3 Ecken: auf den ersten Punkt klicken zum Schließen. Mehrere Polygone möglich.</div>
-        <canvas id="theme-shape-canvas" width="400" height="240" style="width:100%;height:180px;background:var(--bg-secondary);border:1px solid var(--border-default);border-radius:var(--radius-md);cursor:crosshair;touch-action:none"></canvas>
-        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-          <button type="button" class="btn btn-ghost btn-sm" onclick="shapeEditor.undoPoint()">Letzten Punkt rückgängig</button>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="shapeEditor.clearCurrent()">Aktuelles löschen</button>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="shapeEditor.clearAll()">Alle löschen</button>
+            <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:22px;border-top:1px solid var(--border-subtle);padding-top:16px">
+        <!-- Linke Spalte: PNG File Picker -->
+        <div style="flex:1;min-width:260px">
+          <label>Partikel-Sprite (PNG) <span style="color:var(--text-muted);font-weight:400;font-size:11px">– PNG aus dem Repository auswählen, wird als Partikel-Sprite verwendet</span></label>
+          <div class="help-text" style="margin-top:4px;margin-bottom:8px">Das PNG wird mit transparentem Hintergrund geladen und mit der Theme-Akzentfarbe eingefärbt. Empfohlen: weiße Form auf transparentem Hintergrund.</div>
+          <div class="file-picker" data-file-type="particle-image" onclick="openFilePicker('theme-particle-image','theme','image')">
+            <span class="file-picker-value empty" id="theme-particle-image-display">Kein Partikel-Bild ausgewählt (verwendet Standardformen)</span>
+            <span class="file-picker-btn">Auswählen</span><span class="file-picker-clear" onclick="var h=this.parentElement.querySelector('.file-picker-hidden');if(h&&h.value){clearFilePicker(h.id.replace('-hidden',''));event.stopPropagation();}">✕</span>
+            <input type="hidden" class="file-picker-hidden" id="theme-particle-image-hidden">
+            <img class="file-picker-preview" id="theme-particle-image-preview" style="display:none" alt="" onerror="this.style.display='none'">
+          </div>
         </div>
-        <div id="theme-shape-status" style="font-size:11px;color:var(--text-muted);margin-top:6px">Keine Formen definiert. Klicke in den Canvas, um ein Polygon zu zeichnen.</div>
+        <!-- Rechte Spalte: Shape Canvas -->
+        <div style="flex:1;min-width:260px">
+          <label>ODER: Formen zeichnen <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Polygone per Klick in den Canvas zeichnen (wenn kein PNG ausgewählt)</span></label>
+          <div class="help-text" style="margin-top:4px;margin-bottom:8px">Klicke in den Canvas, um Eckpunkte zu setzen. Bei ≥3 Ecken: auf den ersten Punkt klicken zum Schließen. Mehrere Polygone möglich.</div>
+          <canvas id="theme-shape-canvas" width="400" height="240" style="width:100%;min-height:180px;background:var(--bg-secondary);border:1px solid var(--border-default);border-radius:var(--radius-md);cursor:crosshair;touch-action:none;aspect-ratio:400/240"></canvas>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="shapeEditor.undoPoint()">Letzten Punkt rückgängig</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="shapeEditor.clearCurrent()">Aktuelles löschen</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="shapeEditor.clearAll()">Alle löschen</button>
+          </div>
+          <div id="theme-shape-status" style="font-size:11px;color:var(--text-muted);margin-top:6px">Keine Formen definiert. Klicke in den Canvas, um ein Polygon zu zeichnen.</div>
+        </div>
+      </div>
 
       <div style="margin-top:16px;border-top:1px solid var(--border-subtle);padding-top:14px">
         <label>Partikel-Sprite-Größe <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Skalierung der PNG-Partikel (1–30)</span></label>
@@ -1901,7 +1907,6 @@ function buildTypeFields() {
           <span id="theme-particle-frequency-val" style="font-size:13px;font-weight:700;font-family:var(--font-mono);color:var(--text-primary);min-width:28px;text-align:right">40</span>
         </div>
         <div class="help-text">Standard: 40 — Höhere Werte = mehr fliegende Partikel.</div>
-      </div>
       </div>
             <input type="hidden" id="theme-particle-shapes" value="">
     </div>
