@@ -1347,7 +1347,6 @@ const [showSavedToast, setShowSavedToast] = useState(false);
 
                     {/* Row 2: Brightness + Blur sliders side by side */}
                     <div className="grid grid-cols-2 gap-2.5">
-                      {/* Brightness */}
                       <div className="bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5 flex flex-col gap-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400">Helligkeit</span>
