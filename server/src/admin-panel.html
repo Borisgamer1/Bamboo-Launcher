@@ -1908,7 +1908,12 @@ function buildTypeFields() {
             oninput="document.getElementById('theme-particle-frequency-val').textContent=this.value">
           <span id="theme-particle-frequency-val" style="font-size:13px;font-weight:700;font-family:var(--font-mono);color:var(--text-primary);min-width:28px;text-align:right">40</span>
 
-        <label style="margin-top:14px">Partikel-Richtung <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Aus welcher Richtung die Partikel kommen</span></label>
+        
+        </div>
+        <div class="help-text">Standard: 40 — Höhere Werte = mehr fliegende Partikel.</div>
+
+        <div style="margin-top:16px;border-top:1px solid var(--border-subtle);padding-top:14px">
+<label style="margin-top:14px">Partikel-Richtung <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Aus welcher Richtung die Partikel kommen</span></label>
         <select id="theme-particle-direction" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border-subtle);background:var(--bg-card);color:var(--text-primary);font-size:13px;font-family:var(--font);outline:none;cursor:pointer">
           <option value="bottom">Von Unten (Standard)</option>
           <option value="top">Von Oben</option>
@@ -1917,7 +1922,6 @@ function buildTypeFields() {
         </select>
         <div class="help-text">Bestimmt die Flugrichtung der Partikel im Launcher-Hintergrund.</div>
         </div>
-        <div class="help-text">Standard: 40 — Höhere Werte = mehr fliegende Partikel.</div>
       </div>
             <input type="hidden" id="theme-particle-shapes" value="">
     </div>
