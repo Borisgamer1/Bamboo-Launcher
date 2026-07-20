@@ -188,7 +188,8 @@ async function initDatabase() {
       const defaultAssets = [
         ['duck-crown', 'Duck Crown', 'A majestic crown for your duck character', 'cosmetic', 'hats', 'published', 1, '{crown,royal,gold}'],
         ['dragon-wings', 'Dragon Wings', 'Epic dragon wings cosmetic', 'cosmetic', 'wings', 'draft', 1, '{wings,dragon,epic}'],
-        
+        ['welcome-update', 'Willkommen bei Bamboo!', 'Bamboo Launcher v0.1 ist da - neuer Mod-Browser und Discord RPC', 'news', 'update', 'published', 1, '{news,update,welcome}', '{"content":"Bamboo Launcher v0.1 ist da!","author":"Bamboo Team"}'],
+        ['summer-event-2026', 'Sommer-Event 2026', 'Feiere den Sommer mit exklusiven Cosmetics!', 'event', 'seasonal', 'published', 1, '{event,summer,seasonal}', '{"startDate":"2026-06-01T00:00:00Z","endDate":"2026-08-31T23:59:59Z","rewards":"Exklusive Sommer-Cosmetics"}'],
       ];
       for (const [slug, name, desc, type, cat, status, ver, tags, metadata] of defaultAssets) {
         await pool.query(
