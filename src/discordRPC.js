@@ -4,64 +4,33 @@ const clientId = "1520516615354056865";
 const rpc = new RPC.Client({ clientId });
 let startTimestamp = new Date();
 let lastActivityJson = null;
-let _connected = false;
-let _reconnectTimer = null;
 
-// ===== Monkey-patch IPCTransport to add persistent socket error handler =====
-// The @xhayper/discord-rpc library's IPCTransport.connect() calls this.send()
-// after the socket connects. If the write fails with EPIPE (Discord closed the
-// pipe between connect and write), there's NO error handler on the socket
-// because createSocket() only uses .once('error', ...) which is removed by
-// onConnect. This causes an UNCAUGHT EXCEPTION crash.
-try {
-  const IPCTransport = require('@xhayper/discord-rpc/dist/transport/IPC').IPCTransport;
-  const origGetSocket = IPCTransport.prototype.getSocket;
-  IPCTransport.prototype.getSocket = function () {
-    return origGetSocket.call(this).then((socket) => {
-      // Add PERSISTENT error handler to socket (not .once)
-      // This catches EPIPE when socket.write() fails after connection
-      socket.on('error', (_err) => {
-        // Silently swallow all socket-level errors.
-        // The RPC client's own error handling + _connected flag handle recovery.
-      });
-      return socket;
-    });
-  };
-} catch (_e) {
-  // IPCTransport not available (different version/structure) — app continues
-  console.warn('[DiscordRPC] Could not patch IPCTransport, EPIPE may still crash.');
-}
-
-// ===== RPC Client Error Handler =====
-// Catches errors propagated through the RPC client object.
-rpc.on('error', (err) => {
-  if (err.code === 'EPIPE' || err.message?.includes('EPIPE') || err.message?.includes('pipe')) {
-    _connected = false;
-    console.warn('[DiscordRPC] Connection lost (EPIPE) — Discord closed the pipe.');
-    // Attempt reconnection after 30s in case Discord comes back
-    if (!_reconnectTimer) {
-      _reconnectTimer = setTimeout(async () => {
-        _reconnectTimer = null;
-        try {
-          await rpc.login();
-          _connected = true;
-          console.log('[DiscordRPC] Reconnected.');
-          if (lastActivityJson && rpc.user) {
-            rpc.user.setActivity(JSON.parse(lastActivityJson)).catch(() => {});
-          }
-        } catch {
-          console.warn('[DiscordRPC] Reconnect failed — Discord might still be closed.');
-        }
-      }, 30000);
-    }
-  } else {
-    console.warn('[DiscordRPC] Transport error:', err.message);
+// ===== Process-Level EPIPE Shield =====
+// The @xhayper/discord-rpc library's IPCTransport creates a socket and uses
+// .once('error', onError). When the socket connects, onConnect removes the
+// error handler. If socket.write() then fails with EPIPE (Discord closed
+// the pipe), there's NO error handler left → uncaught exception.
+// 
+// We catch it here at the process level before it crashes the main process.
+// This is the most reliable fix — no monkey-patching, no internal module access.
+const _origOException = process.listeners('uncaughtException').pop();
+process.removeAllListeners('uncaughtException');
+process.on('uncaughtException', (err) => {
+  const isEpipe = err.code === 'EPIPE' || err.message?.includes('EPIPE');
+  const isDiscord = err.stack?.includes('discord-rpc') || err.stack?.includes('IPCTransport');
+  if (isEpipe && isDiscord) {
+    console.warn('[DiscordRPC] Suppressed EPIPE (Discord pipe closed)');
+    return;
+  }
+  // Pass through to any existing handler
+  if (_origOException) _origOException(err);
+  else {
+    console.error('Uncaught Exception:', err);
+    process.exit(1);
   }
 });
 
 rpc.on('connected', () => {
-  _connected = true;
-  console.log('[DiscordRPC] Connected.');
   if (lastActivityJson && rpc.user) {
     rpc.user.setActivity(JSON.parse(lastActivityJson)).catch(() => {});
   }
@@ -70,19 +39,16 @@ rpc.on('connected', () => {
 async function startRPC() {
   try {
     await rpc.login();
-    _connected = true;
-    console.log('[DiscordRPC] Connected.');
+    console.log("[DiscordRPC] Connected.");
   } catch (err) {
-    console.warn('[DiscordRPC] Login failed:', err.message);
+    console.warn("[DiscordRPC] Login failed:", err.message);
   }
 }
 
 /**
  * Set Discord Rich Presence activity.
- * ONLY sends to Discord if:
- *   1. The RPC client is connected (Discord running)
- *   2. The activity text actually changed (deduplication)
- * Prevents pointless API calls, flickering, and EPIPE crashes.
+ * ONLY sends to Discord if the activity text actually changed,
+ * preventing pointless API calls and flickering.
  */
 function setActivity(activity) {
   if (!activity || typeof activity !== 'object') return;
@@ -104,18 +70,14 @@ function setActivity(activity) {
 
   lastActivityJson = json;
 
-  // Guard: skip if not connected (avoids EPIPE writes to closed pipe)
-  if (!_connected || !rpc.user) {
+  if (!rpc.user) {
+    // Queue for when RPC connects
     return;
   }
 
-  rpc.user.setActivity(payload).catch((err) => {
-    // EPIPE inside setActivity itself — mark disconnected
-    if (err.code === 'EPIPE' || err.message?.includes('EPIPE')) {
-      _connected = false;
-    }
-    console.warn('[DiscordRPC] setActivity failed:', err.message);
-  });
+  rpc.user.setActivity(payload).catch((err) =>
+    console.warn("[DiscordRPC] setActivity failed:", err.message)
+  );
 }
 
 module.exports = {
