@@ -38,7 +38,28 @@ rpc.on('connected', () => {
 
 async function startRPC() {
   try {
-    await rpc.login();
+    // Race login against timeout + transport-close detection.
+    // The @xhayper/discord-rpc library's transport.connect() succeeds
+    // even when the handshake write fails with EPIPE (the error is emitted
+    // on the socket but NOT propagated to the connection promise).
+    // Client.connect() then waits for 'connected' which never comes,
+    // hanging for the full 10s Client timeout.
+    // We detect the transport closing (EPIPE → socket.close → transport.close)
+    // and reject immediately, plus a 5s fallback timeout.
+    await Promise.race([
+      rpc.login(),
+      new Promise((_, reject) => {
+        const onClose = () => {
+          clearTimeout(timer);
+          reject(new Error('Discord pipe closed before ready'));
+        };
+        rpc.transport.once('close', onClose);
+        const timer = setTimeout(() => {
+          rpc.transport.removeListener('close', onClose);
+          reject(new Error('RPC connection timed out'));
+        }, 5000);
+      }),
+    ]);
     console.log("[DiscordRPC] Connected.");
   } catch (err) {
     console.warn("[DiscordRPC] Login failed:", err.message);
