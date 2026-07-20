@@ -1371,8 +1371,6 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                       </div>
                       <input type="color" value={glowColor} onChange={(e) => setGlowColor(e.target.value)} className="w-full h-8 rounded-lg cursor-pointer border-0 bg-transparent" />
                     </div>
-                      </div>
-                    </div>
                   </div>
                 </details>
 
