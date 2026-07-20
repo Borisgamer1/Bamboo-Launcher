@@ -47,7 +47,7 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
   const [step, setStep] = useState<Step>("options");
 
   // Export options
-  const [format, setFormat] = useState<ExportFormat>("bamboo");
+  const [format, setFormat] = useState<ExportFormat>("zip");
   const [includeMods, setIncludeMods] = useState(
     (instance.content || []).some((c) => c.type === "mods")
   );
@@ -162,13 +162,12 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
   };
 
   const handleSaveFile = async () => {
-    const ext = format === "bamboo" ? "bamboo" : format === "mrpack" ? "mrpack" : "zip";
+    const ext = format === "mrpack" ? "mrpack" : "zip";
     const suggestedName = `${instance.name.replace(/[^a-zA-Z0-9_-]/g, "_")}.${ext}`;
     
     const result = await window.electronAPI?.showSaveDialog?.({
       defaultPath: suggestedName,
       filters: [
-        ...(format === "bamboo" ? [{ name: "Bamboo Package", extensions: ["bamboo"] }] : []),
         ...(format === "mrpack" ? [{ name: "Modrinth Modpack", extensions: ["mrpack"] }] : []),
         ...(format === "zip" ? [{ name: "ZIP Archive", extensions: ["zip"] }] : []),
       ],
@@ -271,9 +270,8 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
                     {t("Exportformat", "Export Format")}
                   </h4>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     {[
-                      { id: "bamboo" as const, label: "Bamboo", desc: t("Bamboo Package (.bamboo)", "Bamboo Package (.bamboo)"), icon: Package },
                       { id: "mrpack" as const, label: "Modrinth", desc: t("Modrinth Modpack (.mrpack)", "Modrinth Modpack (.mrpack)"), icon: FileArchive },
                       { id: "zip" as const, label: "ZIP", desc: t("ZIP Archive (.zip)", "ZIP Archive (.zip)"), icon: FileArchive },
                     ].map((fmt) => (

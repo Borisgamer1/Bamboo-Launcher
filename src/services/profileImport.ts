@@ -1,13 +1,13 @@
 // ============================================================
 // Profile Import Service v0.1.0
-// Supports: .bamboo, .mrpack, .zip
+// Supports: .mrpack, .zip
 // ============================================================
 
 import type { Instance } from "../components/InstancesView";
 
 // ===== Types =====
 
-export type ImportFormat = "bamboo" | "mrpack" | "zip" | "unknown";
+export type ImportFormat = "mrpack" | "zip" | "unknown";
 
 export interface ImportPreview {
   format: ImportFormat;
@@ -97,7 +97,6 @@ class ProfileImportService {
    */
   detectFormat(filePath: string): ImportFormat {
     const lower = filePath.toLowerCase();
-    if (lower.endsWith(".bamboo")) return "bamboo";
     if (lower.endsWith(".mrpack")) return "mrpack";
     if (lower.endsWith(".zip")) return "zip";
     return "unknown";
@@ -112,7 +111,7 @@ class ProfileImportService {
     const format = this.detectFormat(filePath);
 
     if (format === "unknown") {
-      throw new Error("Unbekanntes Dateiformat. Unterstützt werden: .bamboo, .mrpack, .zip");
+      throw new Error("Unbekanntes Dateiformat. Unterstützt werden: .mrpack, .zip");
     }
 
     this.notify({ phase: "preparing", percent: 30, message: "Lese Paketinformationen..." });

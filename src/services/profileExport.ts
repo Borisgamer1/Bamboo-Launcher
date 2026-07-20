@@ -1,13 +1,13 @@
 // ============================================================
 // Profile Export Service v0.1.0
-// Supports: .bamboo, .mrpack, .zip
+// Supports: .mrpack, .zip
 // ============================================================
 
 import type { Instance } from "../components/InstancesView";
 
 // ===== Types =====
 
-export type ExportFormat = "bamboo" | "mrpack" | "zip";
+export type ExportFormat = "mrpack" | "zip";
 
 export interface ExportOptions {
   format: ExportFormat;
@@ -197,9 +197,6 @@ class ProfileExportService {
       let result: ExportResult;
 
       switch (options.format) {
-        case "bamboo":
-          result = await this.exportBamboo(instance, folderName, manifest, options);
-          break;
         case "mrpack":
           result = await this.exportMrpack(instance, folderName, manifest, options);
           break;
@@ -212,45 +209,11 @@ class ProfileExportService {
 
       this.notify({ phase: "complete", percent: 100, message: "Export abgeschlossen!" });
 
-      if (options.format === "bamboo" || options.format === "zip") {
-        return result;
-      }
-
       return result;
     } catch (err: any) {
       this.notify({ phase: "error", percent: 0, message: err.message });
       return { success: false, error: err.message };
     }
-  }
-
-  /**
-   * Export as .bamboo format (ZIP-based with manifest.json)
-   */
-  private async exportBamboo(
-    instance: Instance,
-    folderName: string,
-    manifest: BambooManifest,
-    options: ExportOptions
-  ): Promise<ExportResult> {
-    this.notify({ phase: "collecting", percent: 40, message: "Sammle Dateien für .bamboo..." });
-
-    // Use Electron IPC to create the package
-    const result = await window.electronAPI?.exportProfile?.({
-      format: "bamboo",
-      instanceName: instance.name,
-      folderName,
-      manifest,
-      options,
-      suggestedFileName: `${instance.name.replace(/[^a-zA-Z0-9_-]/g, "_")}.bamboo`,
-    });
-
-    return {
-      success: result?.success || false,
-      filePath: result?.filePath,
-      fileName: result?.fileName,
-      fileSize: result?.fileSize,
-      error: result?.error,
-    };
   }
 
   /**
@@ -339,7 +302,7 @@ class ProfileExportService {
    */
   getDefaultOptions(instance: Instance): ExportOptions {
     return {
-      format: "bamboo",
+      format: "zip",
       includeMods: (instance.content || []).some((c) => c.type === "mods"),
       includeResourcepacks: (instance.content || []).some((c) => c.type === "resourcepacks"),
       includeShaderpacks: (instance.content || []).some((c) => c.type === "shaderpacks"),

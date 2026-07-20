@@ -1252,7 +1252,7 @@ ipcMain.handle('save-temp-file', async (_event, { data, fileName }) => {
     const rootPath = 'C:\\BambooLaufwerk';
     const tempDir = path.join(rootPath, 'temp');
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-    const safeName = (fileName || 'temp.bamboo').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safeName = (fileName || 'temp.zip').replace(/[^a-zA-Z0-9._-]/g, '_');
     const filePath = path.join(tempDir, `${Date.now()}-${safeName}`);
     const buffer = Buffer.from(data);
     fs.writeFileSync(filePath, buffer);
@@ -1302,7 +1302,7 @@ function copyRecursive(src, dest) {
   }
 }
 
-// ===== PROFIL EXPORT (.bamboo) =====
+// ===== PROFIL EXPORT =====
 ipcMain.handle('export-profile', async (_event, payload) => {
   const rootPath = 'C:\\BambooLaufwerk';
   const { format, instanceName, folderName, manifest, options, suggestedFileName, savePath } = payload || {};
@@ -1315,8 +1315,8 @@ ipcMain.handle('export-profile', async (_event, payload) => {
   fs.mkdirSync(tmpDir, { recursive: true });
 
   try {
-    // --- Write manifest.json (for .bamboo and .zip) ---
-    if (format === 'bamboo' || format === 'zip') {
+    // --- Write manifest.json (for .zip) ---
+    if (format === 'zip') {
       fs.writeFileSync(path.join(tmpDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     }
 
@@ -1389,7 +1389,7 @@ ipcMain.handle('export-profile', async (_event, payload) => {
     // --- Build archive based on format ---
     const zip = new AdmZip();
 
-    if (format === 'bamboo' || format === 'zip') {
+    if (format === 'zip') {
       // Add all collected files
       zip.addLocalFolder(tmpDir);
     } else if (format === 'mrpack') {
@@ -1453,7 +1453,7 @@ ipcMain.handle('export-profile', async (_event, payload) => {
     }
 
     const buf = zip.toBuffer();
-    const fileName = suggestedFileName || `${(instanceName || 'export').replace(/[^a-zA-Z0-9_-]/g, '_')}.${format === 'mrpack' ? 'mrpack' : format === 'bamboo' ? 'bamboo' : 'zip'}`;
+    const fileName = suggestedFileName || `${(instanceName || 'export').replace(/[^a-zA-Z0-9_-]/g, '_')}.${format === 'mrpack' ? 'mrpack' : 'zip'}`;
   // Use savePath if provided (user chose a location via save dialog)
   // otherwise save to cache folder
   const exportPath = savePath || path.join(rootPath, 'cache', fileName);
@@ -1559,8 +1559,8 @@ ipcMain.handle('export-profile-legacy', async (_event, { profileId, mode, option
     const buf = zip.toBuffer();
 
     const saveResult = await dialog.showSaveDialog({
-      filters: [{ name: 'Bamboo Profile', extensions: ['bamboo'] }],
-      defaultPath: p.name + '.bamboo',
+      filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
+      defaultPath: p.name + '.zip',
     });
     if (saveResult.canceled || !saveResult.filePath) {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -1657,10 +1657,9 @@ ipcMain.handle('import-preview', async (_event, filePath) => {
       return preview;
     }
 
-    // --- .bamboo oder .zip mit manifest.json ---
+    // --- .zip mit manifest.json ---
     const manifestPath = path.join(tmpDir, 'manifest.json');
-    if (ext === '.bamboo' || (ext === '.zip' && fs.existsSync(manifestPath))) {
-      if (!fs.existsSync(manifestPath)) return { error: 'Ungültiges .bamboo: manifest.json fehlt' };
+    if (ext === '.zip' && fs.existsSync(manifestPath)) {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       if (!manifest.formatVersion) return { error: 'Ungültiges Format (formatVersion fehlt)' };
 
@@ -1692,7 +1691,7 @@ ipcMain.handle('import-preview', async (_event, filePath) => {
 
       const contents = manifest.contents || {};
       const preview = {
-        format: ext === '.bamboo' ? 'bamboo' : 'zip',
+        format: 'zip',
         title: profile.name || manifest.instance?.name || path.basename(filePath, ext),
         minecraftVersion: mcVer,
         modloader: (profile.modLoader || manifest.instance?.modloader || 'Vanilla').replace(/^./, c => c.toUpperCase()),
@@ -1823,7 +1822,7 @@ ipcMain.handle('import-profile', async (_event, payload) => {
       } catch (_) {}
     }
 
-    // Determine instance name and metadata (support .bamboo + .mrpack)
+    // Determine instance name and metadata (support .mrpack)
     const profileInfo = manifest?.profile || manifest?.instance || {};
     const mrpackInfo = mrpackIndex ? {
       name: mrpackIndex.name,

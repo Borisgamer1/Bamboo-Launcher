@@ -139,8 +139,7 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
     const result = await window.electronAPI?.showOpenDialog?.({
       properties: ["openFile"],
       filters: [
-        { name: t("Unterstützte Formate", "Supported Formats"), extensions: ["bamboo", "mrpack", "zip"] },
-        { name: "Bamboo Package", extensions: ["bamboo"] },
+        { name: t("Unterstützte Formate", "Supported Formats"), extensions: ["mrpack", "zip"] },
         { name: "Modrinth Modpack", extensions: ["mrpack"] },
         { name: "ZIP Archive", extensions: ["zip"] },
       ],
@@ -246,7 +245,6 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
 
   const getFormatIcon = (fmt: ImportFormat) => {
     switch (fmt) {
-      case "bamboo": return Package;
       case "mrpack": return FileArchive;
       case "zip": return FileArchive;
       default: return FileArchive;
@@ -255,7 +253,6 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
 
   const getFormatLabel = (fmt: ImportFormat) => {
     switch (fmt) {
-      case "bamboo": return ".bamboo";
       case "mrpack": return ".mrpack";
       case "zip": return ".zip";
       default: return "?";
@@ -323,7 +320,7 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
                       {t("Datei auswählen", "Select File")}
                     </span>
                     <span className="text-xs text-slate-500 mt-1 block">
-                      {t("Unterstützt: .bamboo, .mrpack, .zip", "Supported: .bamboo, .mrpack, .zip")}
+                      {t("Unterstützt: .mrpack, .zip", "Supported: .mrpack, .zip")}
                     </span>
                   </div>
                 </button>
