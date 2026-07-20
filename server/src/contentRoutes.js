@@ -111,15 +111,27 @@ module.exports = function contentRoutes(app, ctx) {
 
     // Type-specific response shaping
     switch (assetType) {
-      case 'cosmetic':
+      case 'cosmetic': {
+        const meta = row.metadata || {};
+        const validUnlockTypes = ['free','playtime','achievement','rank','event','server','code'];
+        const unlockType = validUnlockTypes.includes(meta.unlockType) ? meta.unlockType : 'free';
+        const unlockRequirement = (meta.unlockRequirement && typeof meta.unlockRequirement === 'object') ? { type: String(meta.unlockRequirement.type||''), value: meta.unlockRequirement.value, label: meta.unlockRequirement.label } : null;
+        const modelFormat = (typeof meta.modelFormat === 'string') ? meta.modelFormat : null;
+        const validCategories = ['cape','aura','hat','ear','wings','rank','other'];
+        const category = validCategories.includes(meta.cosmeticType) ? meta.cosmeticType : (validCategories.includes(meta.category) ? meta.category : 'cape');
+        const validRarities = ['common','rare','epic','legendary','mythic'];
+        const rarity = validRarities.includes(meta.rarity) ? meta.rarity : 'common';
         return {
           ...base,
-          type: (row.metadata && row.metadata.cosmeticType) || 'cape',
-          rarity: (row.metadata && row.metadata.rarity) || 'common',
+          type: category,
+          category,
+          rarity,
           imageUrl: row.thumbnail_url || row.preview_url || '',
-          modelUrl: (row.metadata && row.metadata.modelUrl) || '',
-          accentColor: (row.metadata && row.metadata.accentColor) || '',
+          modelUrl: (meta.modelUrl) || '',
+          accentColor: meta.accentColor || '',
+          metadata: { category, rarity, accentColor: meta.accentColor||'', modelFormat, unlock: { type: unlockType, requirements: unlockRequirement ? [{ type: unlockRequirement.type, value: unlockRequirement.value, label: unlockRequirement.label }] : [] } },
         };
+      }
       case 'news':
         return {
           ...base,
