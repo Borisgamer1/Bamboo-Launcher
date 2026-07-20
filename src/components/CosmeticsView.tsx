@@ -366,6 +366,35 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
   useEffect(() => { fetchCosmetics(); }, [fetchCosmetics]);
 
   // ===== Selection =====
+  // ===== 3D Cosmetic Preview on SkinViewer =====
+  // Load the selected cosmetic texture onto the player model (cape slot)
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    // Find which cosmetic type has a selection
+    const selectedTypes = Object.keys(selectedCosmetics);
+    if (selectedTypes.length === 0) {
+      // Clear cape when nothing selected
+      viewer.loadCape("");
+      return;
+    }
+    // Get the first selected cosmetic
+    const selectedType = selectedTypes[0];
+    const selectedId = selectedCosmetics[selectedType];
+    const cosmetic = cosmetics.find(c => c.id === selectedId);
+    if (!cosmetic) {
+      viewer.loadCape("");
+      return;
+    }
+    // Load the cosmetic preview as a cape texture on the 3D model
+    const url = cosmetic.previewUrl || cosmetic.imageUrl || `${API_BASE}/content/cosmetics/${cosmetic.id}/image`;
+    if (url) {
+      viewer.loadCape(url).catch(() => {
+        // Cape load failed silently - cosmetic may not have a cape texture
+      });
+    }
+  }, [selectedCosmetics, cosmetics]);
+
   const handleSelectCosmetic = (cosmetic: CosmeticItem) => {
     const currentSelected = selectedCosmetics[cosmetic.type];
     if (currentSelected === cosmetic.id) {
@@ -373,7 +402,6 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
       const newSel = { ...selectedCosmetics };
       delete newSel[cosmetic.type];
       setSelectedCosmetics(newSel);
-      selectCosmetic(cosmetic.type, null);
       selectCosmetic(cosmetic.type, null);
     } else {
       // Select
