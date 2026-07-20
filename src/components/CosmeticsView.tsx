@@ -223,6 +223,24 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     }
   }, [buildCards]);
 
+    // Subscribe to live cosmetic progress from Minecraft client (via Electron IPC)
+  useEffect(() => {
+    if (!window.electronAPI?.onCosmeticProgress) return;
+    const unsub = window.electronAPI.onCosmeticProgress(function(data) {
+      if (data && typeof data === 'object') {
+        progressProvider.update({
+          playtimeHours: data.playtimeHours,
+          blocksMined: data.blocksMined,
+          mobsKilled: data.mobsKilled,
+          playerKills: data.playerKills,
+          distanceTraveled: data.distanceTraveled,
+          achievements: data.achievements,
+        } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+      }
+    });
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, []);
+
   // Fetch player identity via IPC
   useEffect(() => {
     const loadIdentity = async () => {
