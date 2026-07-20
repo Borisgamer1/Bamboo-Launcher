@@ -82,6 +82,29 @@ class ThemeService {
     return { id: "default", name: "Default", desc: "", accentLabel: "Grün", accent: "#22c55e" };
   }
 
+  /**
+   * Priority-load a specific theme by ID.
+   * Calls loadBackendThemes() immediately (no delay) so the active theme
+   * is available right at startup. Other themes continue loading in the
+   * background via loadAllThemes.
+   */
+  async loadThemeById(id: string): Promise<ThemeDefinition | undefined> {
+    // Quick check: already in memory?
+    const existing = this.getTheme(id);
+    if (existing) return existing;
+
+    // Load all backend themes immediately (this is the working endpoint)
+    await this.loadBackendThemes();
+
+    // Once loaded, check if our theme is now available
+    const theme = this.getTheme(id);
+    if (theme) return theme;
+
+    // Still not found? Try CDN cache
+    if (!this._cdnThemes) await this.loadCdnThemes();
+    return this.getTheme(id);
+  }
+
   /** Force a fresh fetch from the backend */
   async refreshBackendThemes(): Promise<ThemeDefinition[]> {
     this._backendThemes = null;

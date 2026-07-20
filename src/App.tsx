@@ -325,7 +325,18 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
     // Start CDN asset sync + self-healing via AssetManager
     assetManager.startAutoSync();
 
-    // Load CDN + backend themes on startup so the saved theme applies immediately
+    // Load saved theme FIRST — so it's available INSTANTLY at startup
+    const savedThemeId = localStorage.getItem("bamboo-theme") || "bamboo";
+    const priorityLoad = async () => {
+      const theme = await themeService.loadThemeById(savedThemeId);
+      if (theme) {
+        setAvailableThemes([...themeService.getThemes()]);
+        console.log(`[App] Priority-loaded theme '${savedThemeId}'`);
+      }
+    };
+    priorityLoad();
+
+    // Load ALL themes (CDN + backend) in the background for offline availability
     const loadAllThemes = async () => {
       try {
         // Wait a moment for initial sync to complete
@@ -336,7 +347,7 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
         ]);
         const all = themeService.getThemes();
         setAvailableThemes(all);
-        console.log(`[App] Themes loaded: ${cdnThemes.length} CDN + ${all.length - cdnThemes.length} backend`);
+        console.log(`[App] Background themes loaded: ${cdnThemes.length} CDN + ${all.length - cdnThemes.length} backend`);
       } catch {
         console.warn('[App] Failed to load themes on startup');
       }
