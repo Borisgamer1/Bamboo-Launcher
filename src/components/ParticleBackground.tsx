@@ -111,6 +111,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   const directionRef = useRef(particleDirection);
   const showGlowRef = useRef(showGlow);
   const glowColorRef = useRef(glowColor);
+  const showParticlesRef = useRef(showParticles);
 
   useEffect(() => { accentRef.current = accent; }, [accent]);
   useEffect(() => { shapesRef.current = particleShapes; }, [particleShapes]);
@@ -119,6 +120,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   useEffect(() => { directionRef.current = particleDirection; }, [particleDirection]);
   useEffect(() => { showGlowRef.current = showGlow; }, [showGlow]);
   useEffect(() => { glowColorRef.current = glowColor; }, [glowColor]);
+  useEffect(() => { showParticlesRef.current = showParticles; }, [showParticles]);
 
   // Load particle sprite image with cleanup to prevent stale-image race condition
   useEffect(() => {
@@ -261,7 +263,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       const sprite = spriteImgRef.current;
       const useSprite = spriteLoadedRef.current && sprite;
 
-      particles.forEach((p, index) => {
+      if (showParticlesRef.current) {
+        particles.forEach((p, index) => {
         p.y += p.speedY;
         p.x += p.speedX;
         p.angle += p.spin;
@@ -360,7 +363,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
         if (recycle) {
           particles[index] = spawnParticle(directionRef.current, false);
         }
-      });
+        });
+      }
 
       animationFrameId = requestAnimationFrame(drawAndUpdate);
     };
