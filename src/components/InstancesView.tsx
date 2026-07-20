@@ -615,13 +615,6 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
                     <FolderOpen className="w-4 h-4" />
                     {lang === "de" ? "Instanzordner öffnen" : "Open Instance Folder"}
                   </button>
-                  <button
-                    onClick={() => window.electronAPI?.openProfileFolder?.(inst.name.toLowerCase().replace(/\s+/g, "-"))}
-                    className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <FolderOpen className="w-4 h-4" />
-                    {lang === "de" ? "Profilordner öffnen" : "Open Profile Folder"}
-                  </button>
                 </div>
               </div>
 
@@ -2100,7 +2093,7 @@ const ContentListView = ({
                 {lang === 'de' ? translations.de.modpackUpdateAvailable : translations.en.modpackUpdateAvailable}
               </p>
               <p className="text-[10px] text-amber-400/70 mt-0.5">
-                {modpackVersions[0].version_number} ({lang === 'de' ? 'Neueste' : 'Latest'})
+                {modpackVersions[0].version_number} ({lang === 'de' ? translations.de.latestLabel : translations.en.latestLabel})
               </p>
             </div>
           </div>
@@ -2142,7 +2135,7 @@ const ContentListView = ({
             title={lang === "de" ? "Paket neu laden" : "Reload Package"}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdates ? 'animate-spin' : ''}`} />
-            {checkingUpdates ? (lang === 'de' ? 'Lade...' : 'Loading...') : (lang === 'de' ? 'Paket neu laden' : 'Reload Package')}
+            {checkingUpdates ? (lang === 'de' ? translations.de.loading : translations.en.loading) : (lang === 'de' ? translations.de.reloadPackage : translations.en.reloadPackage)}
           </button>
           {hasUpdates && (
             <button
@@ -2254,7 +2247,7 @@ const ContentListView = ({
                       ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400'
                       : 'bg-slate-800/40 hover:bg-slate-700/60 text-slate-500'
                   }`}
-                  title={item.enabled ? (lang === 'de' ? 'Deaktivieren' : 'Disable') : (lang === 'de' ? 'Aktivieren' : 'Enable')}
+                  title={item.enabled ? (lang === 'de' ? translations.de.disable : translations.en.disable) : (lang === 'de' ? translations.de.enable : translations.en.enable)}
                 >
                   {item.enabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                 </button>
@@ -2267,7 +2260,7 @@ const ContentListView = ({
                       ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400'
                       : 'bg-slate-800/40 hover:bg-slate-700/60 text-slate-500'
                   }`}
-                  title={item.locked ? (lang === 'de' ? 'Entsperren' : 'Unlock') : (lang === 'de' ? 'Sperren' : 'Lock')}
+                  title={item.locked ? (lang === 'de' ? translations.de.unlock : translations.en.unlock) : (lang === 'de' ? translations.de.lock : translations.en.lock)}
                 >
                   {item.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
                 </button>
@@ -2370,7 +2363,7 @@ const ContentListView = ({
                 ) : (
                   <>
                     <p className="text-xs text-slate-400 mb-1">
-                      {lang === 'de' ? 'Update-Optionen für' : 'Update options for'} <strong className="text-slate-200">{selectedModpackVersion}</strong>:
+                      {lang === 'de' ? translations.de.updateOptionsFor : translations.en.updateOptionsFor} <strong className="text-slate-200">{selectedModpackVersion}</strong>:
                     </p>
                     <div className="flex flex-col gap-3">
                       {/* Option 1: New Instance */}
@@ -2452,7 +2445,7 @@ const ContentListView = ({
                   }}
                   className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
-                  {showModpackUpdateOptions ? (lang === 'de' ? 'Zurück' : 'Back') : (lang === 'de' ? 'Abbrechen' : 'Cancel')}
+                  {showModpackUpdateOptions ? (lang === 'de' ? translations.de.back : translations.en.back) : (lang === 'de' ? translations.de.cancel : translations.en.cancel)}
                 </button>
               </div>
             </motion.div>

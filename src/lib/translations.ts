@@ -209,6 +209,17 @@ export const translations = {
     deleteAccountTitle: "Remove Account?",
     deleteAccountDesc: "Are you sure you want to remove this account profile from your launcher?",
 
+    // Content list actions
+    enable: "Enable",
+    disable: "Disable",
+    lock: "Lock",
+    unlock: "Unlock",
+    back: "Back",
+    loading: "Loading...",
+    reloadPackage: "Reload Package",
+    latestLabel: "Latest",
+    updateOptionsFor: "Update options for",
+
     // Quit confirmation
     exitTitle: "Exit Bamboo Client?",
     exitDesc: "Are you sure you want to close the launcher? Your active game sessions, mods configurations, and cosmetic wardrobes will be safely saved.",
@@ -541,6 +552,17 @@ export const translations = {
 
 
     
+    // Content list actions
+    enable: "Aktivieren",
+    disable: "Deaktivieren",
+    lock: "Sperren",
+    unlock: "Entsperren",
+    back: "Zurück",
+    loading: "Lade...",
+    reloadPackage: "Paket neu laden",
+    latestLabel: "Neueste",
+    updateOptionsFor: "Update-Optionen für",
+
     // Quit confirmation
     exitTitle: "Bamboo-Client beenden?",
     exitDesc: "Bist du dir sicher, dass du den Launcher schließen möchtest? Deine aktiven Spielsitzungen, Mod-Konfigurationen und Cosmetics werden sicher gespeichert.",
