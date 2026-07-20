@@ -1,11 +1,45 @@
+# =============================================
+# BACKEND-ONLY REPO
+# Alles außer dem server/ Ordner gehört zum
+# Launcher und wird hier NICHT mitcommitted.
+# =============================================
+
+# Launcher (Electron / React / Vite)
+src/
+public/
+main.js
+main.mjs
+preload.js
+index.html
+splash.html
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+vite.config.ts
+tsconfig.*.json
+tsconfig.json
+eslint.config.js
+bamboo-launcher-spec.md
+get_handlers.js
+fix-electron.cjs
+SUMMARY.md
+README.md
+scripts/
+
+# Editor / Temp
+.freebuff/
+desktop.db
+desktop.db-shm
+desktop.db-wal
+
+# Render deploy config (for the backend repo)
+render.yaml
+
 # Dependencies
 node_modules/
 server/node_modules/
 
-# Lockfiles (project uses pnpm)
-package-lock.json
-
-# Environment variables
+# Environment
 .env
 .env.*
 *.local
@@ -26,7 +60,7 @@ release/
 .cache/
 coverage/
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
@@ -34,11 +68,10 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Temporary files
+# Temp
 *.tmp
 *.temp
 
 # Generated server content
 server/content/
 server/cosmetic_models/
-
