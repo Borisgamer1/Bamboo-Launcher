@@ -2425,27 +2425,132 @@ function initTreeInteractivity() {
   }
 }
 
-// Override the existing onUnlockTypeChange to also init the tree
-var origOnUnlockTypeChange = window.onUnlockTypeChange || function(){};
-window.onUnlockTypeChange = function() {
-  if (typeof origOnUnlockTypeChange === 'function') origOnUnlockTypeChange();
-  var val = document.getElementById('editor-unlock-type').value;
-  if (val === 'playtime') {
-    setTimeout(initTreeInteractivity, 50);
-  }
-};
+// ===== FREISCHALTUNG (Unlock) Basis-Funktionen =====
+function toggleFreischaltung() {
+  var body = document.getElementById('freischaltung-body');
+  var chevron = document.getElementById('freischaltung-chevron');
+  if (!body || !chevron) return;
+  var isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+}
 
-// Also call init when the unlock section is opened
-var origToggleFreischaltung = window.toggleFreischaltung || function(){};
-window.toggleFreischaltung = function() {
-  if (typeof origToggleFreischaltung === 'function') origToggleFreischaltung();
-  setTimeout(function() {
+function onUnlockTypeChange() {
+  var val = document.getElementById('editor-unlock-type').value;
+  var treeSection = document.getElementById('unlock-tree-section');
+  var reqSection = document.getElementById('unlock-requirement-section');
+  var reqLabel = document.getElementById('unlock-req-label');
+  var reqHelp = document.getElementById('unlock-req-help');
+  var reqInput = document.getElementById('editor-unlock-requirement');
+  var descInput = document.getElementById('editor-unlock-description');
+  if (!treeSection || !reqSection) return;
+  treeSection.style.display = 'none';
+  reqSection.style.display = 'none';
+  if (val === 'playtime') {
+    treeSection.style.display = 'block';
+    if (descInput) descInput.placeholder = 'Erhaltlich nach 10h Spielzeit';
+  } else if (val === 'achievement') {
+    reqSection.style.display = 'block';
+    if (reqLabel) reqLabel.textContent = '- Achievement-ID (z.B. explorer)';
+    if (reqHelp) reqHelp.textContent = 'Gebe die Achievement-ID ein.';
+    if (reqInput) reqInput.placeholder = 'achievement_id';
+    if (descInput) descInput.placeholder = 'Freischaltbar mit Achievement Explorer';
+  } else if (val === 'event') {
+    reqSection.style.display = 'block';
+    if (reqLabel) reqLabel.textContent = '- Event-ID (z.B. event-2026)';
+    if (reqHelp) reqHelp.textContent = 'Gebe die Event-ID ein.';
+    if (reqInput) reqInput.placeholder = 'event_id';
+    if (descInput) descInput.placeholder = 'Freischaltbar mit Event Sommer-2026';
+  } else if (val === 'rank') {
+    reqSection.style.display = 'block';
+    if (reqLabel) reqLabel.textContent = '- Rang-Slug (z.B. Builder)';
+    if (reqHelp) reqHelp.textContent = 'Gebe den Rang-Slug ein.';
+    if (reqInput) reqInput.placeholder = 'rank_slug';
+    if (descInput) descInput.placeholder = 'Freischaltbar mit Rang Builder';
+  } else if (val === 'server') {
+    reqSection.style.display = 'block';
+    if (reqLabel) reqLabel.textContent = '- Server-ID (z.B. bamboo-main)';
+    if (reqHelp) reqHelp.textContent = 'Gebe die Server-ID ein.';
+    if (reqInput) reqInput.placeholder = 'server_id';
+    if (descInput) descInput.placeholder = 'Freischaltbar auf Server Bamboo-Main';
+  } else if (val === 'invite_code') {
+    reqSection.style.display = 'block';
+    if (reqLabel) reqLabel.textContent = '- Invite-Code';
+    if (reqHelp) reqHelp.textContent = 'Gebe den Invite-Code ein.';
+    if (reqInput) reqInput.placeholder = 'invite_code';
+    if (descInput) descInput.placeholder = 'Freischaltbar mit Code BAMBOO2026';
+  } else {
+    if (descInput) descInput.placeholder = 'Kostenlos verfugbar';
+  }
+}
+
+function gatherUnlockConfig() {
+  var unlockType = document.getElementById('editor-unlock-type').value;
+  var lockVis = document.getElementById('editor-lock-visibility').value;
+  var treeNode = document.getElementById('editor-unlock-tree-node').value;
+  var reqValue = (document.getElementById('editor-unlock-requirement')?.value || '').trim();
+  var description = (document.getElementById('editor-unlock-description')?.value || '').trim();
+  var requirements = [];
+  var treeNodeId = null;
+  if (unlockType === 'playtime') {
+    treeNodeId = treeNode;
+    var thresholdMap = { pt_5h:5, pt_10h:10, pt_25h:25, pt_50h:50, pt_100h:100, pt_250h:250, pt_500h:500, pt_1000h:1000 };
+    var hours = thresholdMap[treeNode] || 5;
+    requirements.push({ type: 'playtime_hours', value: hours, label: hours + ' Stunden Spielzeit', treeNodeId: treeNode });
+  } else if (unlockType !== 'free' && reqValue) {
+    var typeMap = { achievement: 'achievement_id', event: 'event_id', rank: 'rank_id', server: 'server_id', invite_code: 'invite_code' };
+    var reqType = typeMap[unlockType] || unlockType;
+    requirements.push({ type: reqType, value: reqValue, label: description || reqValue });
+  }
+  return {
+    unlock: { type: unlockType, requirements: requirements },
+    treeNodeId: treeNodeId,
+    lockVisibility: lockVis === 'hidden' ? 'hidden' : 'public',
+    unlockDescription: description,
+  };
+}
+
+function loadUnlockConfig(metadata) {
+  if (!metadata) return;
+  var unlock = metadata.unlock || {};
+  var reqs = unlock.requirements || [];
+  document.getElementById('editor-unlock-type').value = unlock.type || 'free';
+  document.getElementById('editor-lock-visibility').value = metadata.lockVisibility === 'hidden' ? 'hidden' : 'public';
+  var treeNodeId = metadata.treeNodeId || (reqs[0] && reqs[0].treeNodeId) || '';
+  if (treeNodeId) document.getElementById('editor-unlock-tree-node').value = treeNodeId;
+  if (reqs[0] && reqs[0].value) document.getElementById('editor-unlock-requirement').value = String(reqs[0].value);
+  if (reqs[0] && reqs[0].label) document.getElementById('editor-unlock-description').value = String(reqs[0].label);
+  onUnlockTypeChange();
+  if (unlock.type && unlock.type !== 'free') {
     var body = document.getElementById('freischaltung-body');
-    if (body && body.style.display === 'block') {
-      initTreeInteractivity();
-    }
-  }, 50);
-};
+    var chevron = document.getElementById('freischaltung-chevron');
+    if (body) body.style.display = 'block';
+    if (chevron) chevron.style.transform = 'rotate(90deg)';
+  }
+}
+
+// Override the existing onUnlockTypeChange to also init the tree
+// Patch: init tree on unlock-type change (wraps existing handler safely)
+if (typeof window.onUnlockTypeChange === 'function') {
+  var _origOnUnlockTypeChange = window.onUnlockTypeChange;
+  window.onUnlockTypeChange = function() {
+    _origOnUnlockTypeChange();
+    var val = document.getElementById('editor-unlock-type')?.value;
+    if (val === 'playtime') setTimeout(initTreeInteractivity, 50);
+  };
+}
+
+// Patch: init tree when unlock section opens (wraps existing handler safely)
+if (typeof window.toggleFreischaltung === 'function') {
+  var _origToggleFreischaltung = window.toggleFreischaltung;
+  window.toggleFreischaltung = function() {
+    _origToggleFreischaltung();
+    setTimeout(function() {
+      var body = document.getElementById('freischaltung-body');
+      if (body && body.style.display === 'block') initTreeInteractivity();
+    }, 50);
+  };
+}
 </script>
 
 </body>
