@@ -239,7 +239,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       if (showGlowRef.current) {
         const glowRgb = hexToRgb(glowColorRef.current);
         const grad = ctx.createRadialGradient(mPos.x, mPos.y, 10, mPos.x, mPos.y, 600);
-        if (glowRgb) grad.addColorStop(0, `rgba(${glowRgb.r}, ${glowRgb.g}, ${glowRgb.b}, 0.12)`);
+        if (glowRgb) grad.addColorStop(0, `rgba(${glowRgb.r}, ${glowRgb.g}, ${glowRgb.b}, 0.35)`);
         else grad.addColorStop(0, "rgba(30, 64, 175, 0.12)");
         grad.addColorStop(0.4, "rgba(15, 23, 42, 0.03)");
         grad.addColorStop(1, "rgba(2, 6, 23, 0.85)");
@@ -393,7 +393,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(2,6,23,0.85)_100%)]" />
       )}
 
-      <canvas ref={canvasRef} className={`absolute inset-0 pointer-events-none ${showParticles ? 'mix-blend-screen' : 'hidden'}`} />
+      <canvas ref={canvasRef} className={`absolute inset-0 pointer-events-none ${(showParticles || showGlow) ? 'mix-blend-screen' : 'hidden'}`} />
 
       {showCursorGlow && (
         <div

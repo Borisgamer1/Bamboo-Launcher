@@ -1340,7 +1340,15 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                         <button type="button" onClick={() => setShowGlow(!showGlow)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showGlow ? "theme-bg" : "bg-slate-800"}`}>
                           <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showGlow ? "translateX(14px)" : "translateX(0)" }} />
                         </button>
-                        <input type="color" value={glowColor} onChange={(e) => setGlowColor(e.target.value)} className="w-6 h-6 rounded-md cursor-pointer border border-slate-700/50 bg-transparent p-0" style={{ accentColor: glowColor }} />
+                        <div className="flex items-center gap-1 mt-0.5">
+        <input type="color" value={glowColor} onChange={(e) => setGlowColor(e.target.value)} className="w-8 h-8 rounded-md cursor-pointer border border-slate-700/50 bg-transparent p-0" style={{ accentColor: glowColor }} />
+        <button
+          type="button"
+          onClick={() => setGlowColor('#1e40af')}
+          className="w-5 h-5 rounded bg-blue-700 border border-slate-600/50 hover:border-blue-400 transition-colors duration-150 shrink-0"
+          title="Standard-Blau"
+        />
+      </div>
                       </div>
                     </div>
 
