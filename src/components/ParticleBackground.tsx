@@ -75,6 +75,8 @@ interface ParticleBackgroundProps {
   showGlow?: boolean;
   /** Custom color for the canvas glow (default blue) */
   glowColor?: string;
+  /** Overlay color for the glow atmosphere effect (default blue #1e40af) */
+  glowOverlayColor?: string;
 }
 
 export const ParticleBackground = React.memo(function ParticleBackground({
@@ -92,6 +94,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   particleDirection = "bottom",
   showGlow = true,
   glowColor = "#1e40af",
+  glowOverlayColor = "#1e40af",
 }: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -387,10 +390,14 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       )}
       {!showBgImage && <div className="absolute inset-0 bg-slate-950" />}
       {showGlow && (
-        <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/95 via-slate-950/40 to-slate-900/60" />
+        <div className="absolute inset-0 pointer-events-none" style={{
+          background: `linear-gradient(to top right, ${glowOverlayColor}dd, ${glowOverlayColor}55, transparent)`,
+        }} />
       )}
       {showGlow && (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(2,6,23,0.85)_100%)]" />
+        <div className="absolute inset-0 pointer-events-none" style={{
+          background: `radial-gradient(circle at center, transparent 20%, ${glowOverlayColor}c0 100%)`,
+        }} />
       )}
 
       <canvas ref={canvasRef} className={`absolute inset-0 pointer-events-none ${(showParticles || showGlow) ? 'mix-blend-screen' : 'hidden'}`} />

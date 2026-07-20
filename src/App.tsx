@@ -371,11 +371,13 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
     <ToastProvider>
     <div className="relative w-screen h-screen bg-slate-950 text-slate-100 flex overflow-hidden font-sans select-none">
       <ParticleBackground
-        accent={mainColor || currentTheme.accent}
+        accent={currentTheme.accent}
         bgImage={currentTheme.bgImage ? `${API_BASE}/content/theme/${themeId}/image` : undefined}
         particleShapes={currentTheme.particleShapes}
         particleImage={currentTheme.particleImage ? `https://raw.githubusercontent.com/Borisgamer1/Bamboo-Launcher---Content/main/${currentTheme.particleImage}` : undefined}
         showGlow={showGlow}
+        glowOverlayColor={mainColor || "#1e40af"}
+        glowColor={mainColor || "#1e40af"}
         showBgImage={showBgImage}
         showParticles={showParticles}
         showCursorGlow={showCursorGlow}
@@ -418,7 +420,7 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
               {activeTab === "cosmetics" && <CosmeticsView setActiveTab={setActiveTab} lang={lang} activeAccount={activeAccount} />}
               {activeTab === "screenshots" && <ScreenshotsView setActiveTab={setActiveTab} lang={lang} />}
               {activeTab === "news" && <NewsEventsView theme={theme} lang={lang} />}
-              {activeTab === "settings" && <SettingsView setActiveTab={setActiveTab} theme={theme} themeId={themeId} setTheme={(t: any) => setThemeId(t)} accounts={accounts} setAccounts={setAccounts} activeAccount={activeAccount} setActiveAccount={setActiveAccount} lang={lang} setLang={setLang} showGlow={showGlow} setShowGlow={setShowGlow} mainColor={mainColor} setMainColor={setMainColor} showBgImage={showBgImage} setShowBgImage={setShowBgImage} showParticles={showParticles} setShowParticles={setShowParticles} showCursorGlow={showCursorGlow} setShowCursorGlow={setShowCursorGlow} bgBrightness={bgBrightness} setBgBrightness={setBgBrightness} bgBlur={bgBlur} setBgBlur={setBgBlur} />}
+              {activeTab === "settings" && <SettingsView setActiveTab={setActiveTab} theme={theme} themeId={themeId} setTheme={(t: any) => setThemeId(t)} accounts={accounts} setAccounts={setAccounts} activeAccount={activeAccount} setActiveAccount={setActiveAccount} lang={lang} setLang={setLang} showGlow={showGlow} setShowGlow={setShowGlow} glowColor={mainColor} setGlowColor={setMainColor}  showBgImage={showBgImage} setShowBgImage={setShowBgImage} showParticles={showParticles} setShowParticles={setShowParticles} showCursorGlow={showCursorGlow} setShowCursorGlow={setShowCursorGlow} bgBrightness={bgBrightness} setBgBrightness={setBgBrightness} bgBlur={bgBlur} setBgBlur={setBgBlur} />}
             </motion.div>
           </AnimatePresence>
           </Suspense>

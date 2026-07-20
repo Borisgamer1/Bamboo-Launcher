@@ -40,8 +40,9 @@ interface SettingsViewProps {
   setLang: (lang: LanguageType) => void;
   showGlow: boolean;
   setShowGlow: (v: boolean) => void;
-  mainColor: string;
-  setMainColor: (v: string) => void;
+  glowColor: string;
+  setGlowColor: (v: string) => void;
+
   showBgImage: boolean;
   setShowBgImage: (v: boolean) => void;
   showParticles: boolean;
@@ -69,8 +70,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLang,
   showGlow,
   setShowGlow,
-  mainColor,
-  setMainColor,
+  glowColor,
+  setGlowColor,
+
   showBgImage,
   setShowBgImage,
   showParticles,
@@ -1334,30 +1336,24 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                           <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showCursorGlow ? "translateX(14px)" : "translateX(0)" }} />
                         </button>
                       </div>
-                      {/* Show/hide canvas glow */}
+                      {/* Glow toggle + color picker */}
                       <div className="flex flex-col items-center gap-1 bg-slate-900/30 border border-slate-800/40 rounded-xl p-2">
                         <span className="text-[10px] font-bold text-slate-400 text-center leading-tight">Glow</span>
                         <button type="button" onClick={() => setShowGlow(!showGlow)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showGlow ? "theme-bg" : "bg-slate-800"}`}>
                           <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showGlow ? "translateX(14px)" : "translateX(0)" }} />
                         </button>
+                        <div className="flex items-center gap-1 mt-1">
+                            <input type="color" value={glowColor} onChange={(e) => setGlowColor(e.target.value)} className="w-7 h-7 rounded-md cursor-pointer border border-slate-700/50 bg-transparent p-0" />
+                            <button
+                              type="button"
+                              onClick={() => setGlowColor("")}
+                              className="w-4 h-4 rounded bg-slate-800 border border-slate-600/50 hover:border-slate-400 transition-colors duration-150 shrink-0 flex items-center justify-center text-[8px] text-slate-500 hover:text-slate-300"
+                              title="Standard-Blau"
+                            >R</button>
+                          </div>
                       </div>
                     </div>
 
-                    {/* Main Launcher Farbe */}
-                    <div className="bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5 flex items-center gap-3">
-                      <span className="text-[11px] font-bold text-slate-400 shrink-0">Main Farbe</span>
-                      <input
-                        type="color"
-                        value={mainColor || "#1e40af"}
-                        onChange={(e) => setMainColor(e.target.value)}
-                        className="w-9 h-9 rounded-lg cursor-pointer border border-slate-700/50 bg-transparent p-0.5" />
-                      <span className="text-[10px] font-mono text-slate-500">{mainColor || "Thema"}</span>
-                      <button
-                        type="button"
-                        onClick={() => setMainColor("")}
-                        className="text-[10px] px-2 py-1 rounded-md bg-slate-800/60 border border-slate-700/40 hover:bg-slate-700/60 text-slate-400 hover:text-slate-200 transition-colors duration-150 ml-auto"
-                      >Standard</button>
-                    </div>
 
                     {/* Row 2: Brightness + Blur sliders side by side */}
                     <div className="grid grid-cols-2 gap-2.5">
@@ -1387,7 +1383,7 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                       <div
                         key={t.id}
                         onClick={() => setTheme(t.id)}
-                        className={`group relative rounded-3xl p-5 border cursor-pointer transition-all duration-300 bg-gradient-to-br flex flex-col justify-between min-h-[140px] ${
+                        className={`group relative rounded-2xl p-3 border cursor-pointer transition-all duration-300 bg-gradient-to-br flex flex-col justify-between min-h-[90px] ${
                           isSelected 
                             ? `${t.bgStyle} shadow-xl scale-[1.01]` 
                             : "border-slate-850 bg-slate-900/20 hover:border-slate-700"
@@ -1404,9 +1400,9 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                           )}
                         </div>
 
-                        <p className="text-[11px] text-slate-400 leading-relaxed mt-3">{t.desc}</p>
+                        <p className="text-[10px] text-slate-400 leading-relaxed mt-1.5">{t.desc}</p>
 
-                        <div className="mt-4 pt-2.5 border-t border-slate-900/60 flex items-center justify-between text-[9px] font-bold text-slate-500">
+                        <div className="mt-2 pt-1.5 border-t border-slate-900/60 flex items-center justify-between text-[8px] font-bold text-slate-500">
                           <span>Accent: <strong className={t.accentText}>{t.accent}</strong></span>
                           <span className="uppercase tracking-widest">Select Theme</span>
                         </div>
