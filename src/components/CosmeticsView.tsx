@@ -527,7 +527,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
       if (texRef && texRef.source) {
         try {
           var texPath = 'cosmetics/' + slug + '/' + texRef.source;
-          var texture = await loadSingleTexture(texPath);
+          var texture = await loadSingleTexture(texPath, cancelledRef);
           loadedTextures[String(ti)] = texture;
         } catch (e) {
           loadedTextures[String(ti)] = null;
@@ -544,8 +544,8 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
 
     if (!group) {
       if (retryCount < 2) {
-      // Retry once (model might not be fully written to disk yet)
       await new Promise(function(r) { setTimeout(r, 500); });
+      if (cancelledRef.current) { throw new Error('Cancelled'); }
       return loadBlockbenchModel(slug, viewer, groupRef, cancelledRef, loadedRef, retryCount + 1);
     }
       throw new Error('No meshes built from model after ' + (retryCount + 1) + ' attempts');
@@ -561,7 +561,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
   }
 
   /** Load a single texture file from disk or server */
-  async function loadSingleTexture(texPath: string): Promise<THREE.Texture | null> {
+  async function loadSingleTexture(texPath: string, cancelledRef?: React.MutableRefObject<boolean>): Promise<THREE.Texture | null> {
     var imageSrc: string | null = null;
 
     if (window.electronAPI && window.electronAPI.readCosmeticFile) {
@@ -580,6 +580,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     return new Promise<THREE.Texture | null>(function(resolve) {
       var img = new window.Image();
       img.onload = function() {
+        if (cancelledRef && cancelledRef.current) { resolve(null); return; }
         // Use CanvasTexture instead of Texture constructor (Three.js version compat)
         var canvas = document.createElement('canvas');
         canvas.width = img.width;
@@ -676,7 +677,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
             var uvWidth = (uv[2] - uv[0]) / texWidth;
             var uvHeight = (uv[3] - uv[1]) / texHeight;
             faceTex.repeat.set(uvWidth, uvHeight);
-            faceTex.offset.set(uv[0] / texWidth, 1 - (uv[1] + uvHeight) / texHeight);
+            faceTex.offset.set(uv[0] / texWidth, 1 - uv[3] / texHeight);
             faceTex.needsUpdate = true;
           }
 
