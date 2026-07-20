@@ -941,8 +941,6 @@ module.exports = function contentRoutes(app, ctx) {
       // Copy cosmetic-specific fields from body into metadata
       if (assetType === 'cosmetic') {
         if (req.body.type) mergedMetadata.cosmeticType = req.body.type;
-      // Copy cosmetic-specific fields from body into metadata
-      if (assetType === 'cosmetic') {
         if (req.body.unlock && typeof req.body.unlock === 'object') {
           mergedMetadata.unlock = req.body.unlock;
           mergedMetadata.unlockType = req.body.unlock.type || 'free';
@@ -991,8 +989,6 @@ module.exports = function contentRoutes(app, ctx) {
       // Copy cosmetic-specific fields from body into metadata
       if (assetType === 'cosmetic') {
         if (req.body.type !== undefined) mergedMeta.cosmeticType = req.body.type;
-      // Copy cosmetic-specific fields from body into metadata
-      if (assetType === 'cosmetic') {
         if (req.body.unlock && typeof req.body.unlock === 'object') {
           mergedMeta.unlock = req.body.unlock;
           mergedMeta.unlockType = req.body.unlock.type || 'free';
