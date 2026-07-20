@@ -101,7 +101,7 @@ function toCosmeticItem(entity: CosmeticEntity): CosmeticItem {
     accentColor: entity.metadata.accentColor || "",
     previewUrl: entity.declaredPreviewUrl || "",
     imageUrl: entity.declaredPreviewUrl || "",
-    modelUrl: "",
+    modelUrl: "", // Populated by 3D renderer from disk IPC or server API
     fileCount: entity.files.length,
     isActive: entity.isActive,
     sortOrder: entity.sortOrder,
@@ -234,7 +234,8 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
       },
     }));
     try {
-      await installCosmetic(ent, { highPriority: true });
+      var result = await installCosmetic(ent, { highPriority: true });
+      console.log("[Cosmetics] handleInstall: installCosmetic returned", result);
     } catch (err) {
       console.warn("[Cosmetics] install failed:", err);
       setInstallJobs((prev) => prev[card.id] ? {
@@ -395,8 +396,9 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
   const blockbenchCancelledRef = useRef(false);
 
   useEffect(() => {
+    try {
     const viewer = viewerRef.current;
-    if (!viewer) return;
+    if (!viewer) { console.log('[Cosmetics] 3D effect: no viewer, skipping'); return; }
 
     // Find which cosmetic type has a selection
     var selectedTypes = Object.keys(selectedCosmetics);
@@ -437,6 +439,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
       console.warn('[Cosmetics] Blockbench model load failed:', err);
     });
 
+  } catch(e) { console.error('[Cosmetics] 3D effect CRASHED:', e && e.message); }
   }, [selectedCosmetics, cosmetics]);
 
   /** Helper: clear previously loaded Blockbench model from viewer scene */
@@ -470,26 +473,34 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     loadedRef: React.MutableRefObject<string | null>,
     retryCount: number = 0
   ) {
+    console.log('[Cosmetics] loadBlockbenchModel START — slug =', slug, ', retry =', retryCount);
     // Clear previous model
     clearBlockbenchModel(viewer, groupRef);
 
-    if (cancelledRef.current) return;
+    if (cancelledRef.current) { console.log('[Cosmetics] loadBlockbenchModel: cancelled'); return; }
 
     // Try to load from local disk first
     var jsonPath = 'cosmetics/' + slug + '/model.json';
+    console.log('[Cosmetics] loadBlockbenchModel: trying disk read — path =', jsonPath);
     var jsonContent = '';
     var loadedFromDisk = false;
 
     if (window.electronAPI && window.electronAPI.readCosmeticFile) {
       try {
         var result = await window.electronAPI.readCosmeticFile(jsonPath);
+        console.log('[Cosmetics] loadBlockbenchModel: IPC read result =', result ? { success: result.success, type: result.type, hasData: !!result.data } : 'null');
         if (result && result.success && result.data) {
           jsonContent = result.data;
           loadedFromDisk = true;
+          console.log('[Cosmetics] loadBlockbenchModel: model.json LOADED FROM DISK ✓');
+        } else {
+          console.log('[Cosmetics] loadBlockbenchModel: model.json NOT on disk —', result && result.error);
         }
       } catch (e) {
-        // Not found on disk
+        console.log('[Cosmetics] loadBlockbenchModel: IPC error —', e && e.message);
       }
+    } else {
+      console.log('[Cosmetics] loadBlockbenchModel: readCosmeticFile not available on window.electronAPI');
     }
 
     if (cancelledRef.current) return;
@@ -498,22 +509,28 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     if (!jsonContent) {
       try {
         var serverUrl = API_BASE + '/content/cosmetics/' + slug + '/model';
+        console.log('[Cosmetics] loadBlockbenchModel: trying server —', serverUrl);
         var resp = await fetch(serverUrl, { headers: getLauncherHeaders() });
+        console.log('[Cosmetics] loadBlockbenchModel: server response —', resp.status, resp.statusText);
         if (resp.ok) {
           jsonContent = await resp.text();
+          console.log('[Cosmetics] loadBlockbenchModel: model.json LOADED FROM SERVER ✓');
         }
       } catch (e) {
-        // Server not available
+        console.log('[Cosmetics] loadBlockbenchModel: server error —', e && e.message);
       }
     }
 
     if (cancelledRef.current) return;
 
     if (!jsonContent) {
+      console.log('[Cosmetics] loadBlockbenchModel: NO model data found for', slug);
       throw new Error('No model data found for: ' + slug);
     }
 
+    console.log('[Cosmetics] loadBlockbenchModel: JSON content length =', jsonContent.length);
     var modelData = JSON.parse(jsonContent);
+    console.log('[Cosmetics] loadBlockbenchModel: JSON PARSED ✓ — elements =', (modelData.elements || []).length, ', textures =', (modelData.textures || []).length);
 
     if (cancelledRef.current) return;
 
@@ -556,8 +573,10 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     group.scale.set(0.8, 0.8, 0.8);
 
     viewer.scene.add(group);
+    console.log('[Cosmetics] loadBlockbenchModel: viewer.scene.add(group) ✓ — group has', group.children.length, 'meshes');
     groupRef.current = group;
     loadedRef.current = slug;
+    console.log('[Cosmetics] loadBlockbenchModel: RENDERING COMPLETE ✓ — slug =', slug);
   }
 
   /** Load a single texture file from disk or server */
@@ -740,6 +759,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
   }
 
   const handleSelectCosmetic = (cosmetic: CosmeticItem) => {
+    if (!cosmetic || !cosmetic.type) { console.log("[Cosmetics] handleSelectCosmetic: invalid cosmetic"); return; }
     const currentSelected = selectedCosmetics[cosmetic.type];
     if (currentSelected === cosmetic.id) {
       // Deselect

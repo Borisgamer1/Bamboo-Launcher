@@ -1283,6 +1283,8 @@ ipcMain.handle('save-cosmetic-files', async (_event, { slug, files }) => {
   try {
     var rootPath = 'C:\\BambooLaufwerk';
     var cosmeticDir = path.join(rootPath, 'cosmetics', slug);
+    console.log('[cosmetics] save-cosmetic-files: target dir =', cosmeticDir);
+    console.log('[cosmetics] save-cosmetic-files: slug =', slug, ', files count =', (files || []).length);
     if (!fs.existsSync(cosmeticDir)) fs.mkdirSync(cosmeticDir, { recursive: true });
     var savedFiles = [];
     for (var i = 0; i < files.length; i++) {
@@ -1305,6 +1307,18 @@ ipcMain.handle('save-cosmetic-files', async (_event, { slug, files }) => {
     };
     fs.writeFileSync(path.join(cosmeticDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     console.log('[cosmetics] Manifest written for:', slug);
+    console.log('[cosmetics] save-cosmetic-files: SUCCESS — saved', savedFiles.length, 'files to', cosmeticDir);
+    // Verify files actually exist on disk
+    if (fs.existsSync(cosmeticDir)) {
+      var diskFiles = fs.readdirSync(cosmeticDir);
+      console.log("[cosmetics] save-cosmetic-files: VERIFY — disk contents:", JSON.stringify(diskFiles));
+      for (var vi = 0; vi < savedFiles.length; vi++) {
+        var vf = path.join(cosmeticDir, savedFiles[vi]);
+        console.log("[cosmetics] save-cosmetic-files: " + (fs.existsSync(vf) ? "✔" : "✖") + " " + savedFiles[vi]);
+      }
+    } else {
+      console.log("[cosmetics] save-cosmetic-files: ✖ VERIFY FAILED — directory does not exist");
+    }
     return { success: true, path: cosmeticDir, fileCount: savedFiles.length };
   } catch (e) {
     console.error('[cosmetics] Save error:', e.message);
@@ -1313,13 +1327,16 @@ ipcMain.handle('save-cosmetic-files', async (_event, { slug, files }) => {
 });
 // ===== Read cosmetic files from disk (BambooLaufwerk/cosmetics/{slug}/) =====
 ipcMain.handle('read-cosmetic-file', async (_event, filePath) => {
-  var rootPath = 'C:\\\\BambooLaufwerk';
+  var rootPath = 'C:\\BambooLaufwerk';
   try {
     if (!filePath) return { success: false, error: 'No file path provided' };
     var fullPath = path.isAbsolute(filePath) ? filePath : path.join(rootPath, filePath);
+    console.log('[cosmetics] read-cosmetic-file: requested =', filePath, ', resolved =', fullPath);
     if (!fs.existsSync(fullPath)) {
+      console.log('[cosmetics] read-cosmetic-file: FILE NOT FOUND —', fullPath);
       return { success: false, error: 'File not found: ' + fullPath };
     }
+    console.log('[cosmetics] read-cosmetic-file: FILE FOUND —', fullPath);
     var ext = path.extname(fullPath).toLowerCase();
     if (ext === '.json') {
       var content = fs.readFileSync(fullPath, 'utf-8');

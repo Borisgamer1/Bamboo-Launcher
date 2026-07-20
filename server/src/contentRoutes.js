@@ -1233,6 +1233,30 @@ module.exports = function contentRoutes(app, ctx) {
   });
 
   // ====================================================================
+  // === GET /api/content/:type/:id/model — Serve 3D model file =======
+  // ====================================================================
+  app.get('/api/content/:type/:id/model', async (req, res) => {
+    try {
+      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
+      const assetType = validateType(req.params.type);
+      if (!assetType) return res.status(400).json({ error: 'Invalid content type' });
+      const r = await pool.query('SELECT * FROM assets WHERE (slug = $1 OR id::text = $1) AND asset_type = $2', [req.params.id, assetType]);
+      if (!r.rows.length) return res.status(404).json({ error: 'Content not found' });
+      // Find first model file (.json, .glb, .gltf, .bbmodel)
+      const files = await pool.query(
+        "SELECT * FROM asset_files WHERE asset_id = $1 AND (file_type = 'model' OR file_name ~ '.(json|glb|gltf|bbmodel)$') ORDER BY sort_order LIMIT 1",
+        [r.rows[0].id]
+      );
+      if (!files.rows.length) return res.status(404).json({ error: 'No model file found' });
+      var diskPath = files.rows[0].disk_path || path.join(CONTENT_ROOT, files.rows[0].file_path);
+      if (!diskPath || !fs.existsSync(diskPath)) return res.status(404).json({ error: 'Model file not found on disk' });
+      console.log('[content] Serving model:', diskPath);
+      return res.sendFile(path.resolve(diskPath));
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // === GET /api/content/:type/:id/image — Serve content image =======
   // ====================================================================
   app.get('/api/content/:type/:id/image', async (req, res) => {
