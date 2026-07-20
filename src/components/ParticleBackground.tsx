@@ -97,7 +97,6 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   const containerRef = useRef<HTMLDivElement>(null);
   const bgRef = useRef<HTMLDivElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
-  const glowColorDivRef = useRef<HTMLDivElement>(null);
 
   const mousePosRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const accentRef = useRef(accent);
@@ -160,10 +159,6 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       if (glowRef.current) {
         glowRef.current.style.left = `${e.clientX}px`;
         glowRef.current.style.top = `${e.clientY}px`;
-      }
-      if (glowColorDivRef.current) {
-        glowColorDivRef.current.style.left = `${e.clientX}px`;
-        glowColorDivRef.current.style.top = `${e.clientY}px`;
       }
     };
     window.addEventListener("mousemove", handleMouseMove);
@@ -392,16 +387,10 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       )}
       {!showBgImage && <div className="absolute inset-0 bg-slate-950" />}
       {showGlow && (
-        <div
-          ref={glowColorDivRef}
-          className="fixed w-[600px] h-[600px] rounded-full pointer-events-none z-[11] -translate-x-1/2 -translate-y-1/2 will-change-transform"
-          style={{
-            left: window.innerWidth / 2,
-            top: window.innerHeight / 2,
-            background: `radial-gradient(circle, ${glowColor}66 0%, ${glowColor}22 50%, transparent 80%)`,
-            filter: "blur(100px)",
-          }}
-        />
+        <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/95 via-slate-950/40 to-slate-900/60" />
+      )}
+      {showGlow && (
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(2,6,23,0.85)_100%)]" />
       )}
 
       <canvas ref={canvasRef} className={`absolute inset-0 pointer-events-none ${(showParticles || showGlow) ? 'mix-blend-screen' : 'hidden'}`} />

@@ -80,7 +80,7 @@ const [showExitModal, setShowExitModal] = useState(false);
   const [showParticles, setShowParticles] = useState(() => localStorage.getItem('bamboo-showParticles') !== 'false');
   const [showCursorGlow, setShowCursorGlow] = useState(() => localStorage.getItem('bamboo-showCursorGlow') !== 'false');
   const [showGlow, setShowGlow] = useState(() => localStorage.getItem('bamboo-showGlow') !== 'false');
-  const [glowColor, setGlowColor] = useState(() => localStorage.getItem('bamboo-glowColor') || '#1e40af');
+  const [mainColor, setMainColor] = useState(() => localStorage.getItem('bamboo-mainColor') || "");
   const [bgBrightness, setBgBrightness] = useState(() => {
     const saved = localStorage.getItem('bamboo-bgBrightness');
     return saved !== null ? parseInt(saved) : 35;
@@ -94,7 +94,7 @@ const [showExitModal, setShowExitModal] = useState(false);
   useEffect(() => { localStorage.setItem('bamboo-showParticles', String(showParticles)); }, [showParticles]);
   useEffect(() => { localStorage.setItem('bamboo-showCursorGlow', String(showCursorGlow)); }, [showCursorGlow]);
   useEffect(() => { localStorage.setItem('bamboo-showGlow', String(showGlow)); }, [showGlow]);
-  useEffect(() => { localStorage.setItem('bamboo-glowColor', glowColor); }, [glowColor]);
+  useEffect(() => { localStorage.setItem('bamboo-mainColor', mainColor); }, [mainColor]);
   useEffect(() => { localStorage.setItem('bamboo-bgBrightness', String(bgBrightness)); }, [bgBrightness]);
   useEffect(() => { localStorage.setItem('bamboo-bgBlur', String(bgBlur)); }, [bgBlur]);
 
@@ -371,12 +371,11 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
     <ToastProvider>
     <div className="relative w-screen h-screen bg-slate-950 text-slate-100 flex overflow-hidden font-sans select-none">
       <ParticleBackground
-        accent={currentTheme.accent}
+        accent={mainColor || currentTheme.accent}
         bgImage={currentTheme.bgImage ? `${API_BASE}/content/theme/${themeId}/image` : undefined}
         particleShapes={currentTheme.particleShapes}
         particleImage={currentTheme.particleImage ? `https://raw.githubusercontent.com/Borisgamer1/Bamboo-Launcher---Content/main/${currentTheme.particleImage}` : undefined}
         showGlow={showGlow}
-        glowColor={glowColor}
         showBgImage={showBgImage}
         showParticles={showParticles}
         showCursorGlow={showCursorGlow}
@@ -419,7 +418,7 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
               {activeTab === "cosmetics" && <CosmeticsView setActiveTab={setActiveTab} lang={lang} activeAccount={activeAccount} />}
               {activeTab === "screenshots" && <ScreenshotsView setActiveTab={setActiveTab} lang={lang} />}
               {activeTab === "news" && <NewsEventsView theme={theme} lang={lang} />}
-              {activeTab === "settings" && <SettingsView setActiveTab={setActiveTab} theme={theme} themeId={themeId} setTheme={(t: any) => setThemeId(t)} accounts={accounts} setAccounts={setAccounts} activeAccount={activeAccount} setActiveAccount={setActiveAccount} lang={lang} setLang={setLang} showGlow={showGlow} setShowGlow={setShowGlow} glowColor={glowColor} setGlowColor={setGlowColor} showBgImage={showBgImage} setShowBgImage={setShowBgImage} showParticles={showParticles} setShowParticles={setShowParticles} showCursorGlow={showCursorGlow} setShowCursorGlow={setShowCursorGlow} bgBrightness={bgBrightness} setBgBrightness={setBgBrightness} bgBlur={bgBlur} setBgBlur={setBgBlur} />}
+              {activeTab === "settings" && <SettingsView setActiveTab={setActiveTab} theme={theme} themeId={themeId} setTheme={(t: any) => setThemeId(t)} accounts={accounts} setAccounts={setAccounts} activeAccount={activeAccount} setActiveAccount={setActiveAccount} lang={lang} setLang={setLang} showGlow={showGlow} setShowGlow={setShowGlow} mainColor={mainColor} setMainColor={setMainColor} showBgImage={showBgImage} setShowBgImage={setShowBgImage} showParticles={showParticles} setShowParticles={setShowParticles} showCursorGlow={showCursorGlow} setShowCursorGlow={setShowCursorGlow} bgBrightness={bgBrightness} setBgBrightness={setBgBrightness} bgBlur={bgBlur} setBgBlur={setBgBlur} />}
             </motion.div>
           </AnimatePresence>
           </Suspense>
