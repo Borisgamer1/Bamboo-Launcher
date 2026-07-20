@@ -1343,7 +1343,6 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                         <input type="color" value={glowColor} onChange={(e) => setGlowColor(e.target.value)} className="w-6 h-6 rounded-md cursor-pointer border border-slate-700/50 bg-transparent p-0" style={{ accentColor: glowColor }} />
                       </div>
                     </div>
-                  </div>
 
                     {/* Row 2: Brightness + Blur sliders side by side */}
                     <div className="grid grid-cols-2 gap-2.5">
