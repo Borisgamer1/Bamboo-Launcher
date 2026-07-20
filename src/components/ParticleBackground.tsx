@@ -71,6 +71,10 @@ interface ParticleBackgroundProps {
   particleFrequency?: number;
   /** Particle flight direction: bottom | top | left | right (default bottom) */
   particleDirection?: string;
+  /** Canvas glow effect toggle */
+  showGlow?: boolean;
+  /** Custom color for the canvas glow (default blue) */
+  glowColor?: string;
 }
 
 export const ParticleBackground = React.memo(function ParticleBackground({
@@ -86,6 +90,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   particleSize = 8,
   particleFrequency = 40,
   particleDirection = "bottom",
+  showGlow = true,
+  glowColor = "#1e40af",
 }: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -100,12 +106,16 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   const spriteSizeRef = useRef(particleSize);
   const particleCountRef = useRef(particleFrequency);
   const directionRef = useRef(particleDirection);
+  const showGlowRef = useRef(showGlow);
+  const glowColorRef = useRef(glowColor);
 
   useEffect(() => { accentRef.current = accent; }, [accent]);
   useEffect(() => { shapesRef.current = particleShapes; }, [particleShapes]);
   useEffect(() => { spriteSizeRef.current = particleSize; }, [particleSize]);
   useEffect(() => { particleCountRef.current = particleFrequency; }, [particleFrequency]);
   useEffect(() => { directionRef.current = particleDirection; }, [particleDirection]);
+  useEffect(() => { showGlowRef.current = showGlow; }, [showGlow]);
+  useEffect(() => { glowColorRef.current = glowColor; }, [glowColor]);
 
   // Load particle sprite image with cleanup to prevent stale-image race condition
   useEffect(() => {
@@ -225,14 +235,24 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       const currentAccent = accentRef.current;
       const rgb = hexToRgb(currentAccent);
 
-      // Mouse glow gradient
-      const grad = ctx.createRadialGradient(mPos.x, mPos.y, 10, mPos.x, mPos.y, 600);
-      if (rgb) grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)`);
-      else grad.addColorStop(0, "rgba(34, 197, 94, 0.08)");
-      grad.addColorStop(0.4, "rgba(15, 23, 42, 0.03)");
-      grad.addColorStop(1, "rgba(2, 6, 23, 0.85)");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Canvas glow — separate from particles, controlled by showGlowRef
+      if (showGlowRef.current) {
+        const glowRgb = hexToRgb(glowColorRef.current);
+        const grad = ctx.createRadialGradient(mPos.x, mPos.y, 10, mPos.x, mPos.y, 600);
+        if (glowRgb) grad.addColorStop(0, `rgba(${glowRgb.r}, ${glowRgb.g}, ${glowRgb.b}, 0.12)`);
+        else grad.addColorStop(0, "rgba(30, 64, 175, 0.12)");
+        grad.addColorStop(0.4, "rgba(15, 23, 42, 0.03)");
+        grad.addColorStop(1, "rgba(2, 6, 23, 0.85)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else {
+        const grad = ctx.createRadialGradient(mPos.x, mPos.y, 10, mPos.x, mPos.y, 600);
+        grad.addColorStop(0, "rgba(15, 23, 42, 0.04)");
+        grad.addColorStop(0.4, "rgba(15, 23, 42, 0.02)");
+        grad.addColorStop(1, "rgba(2, 6, 23, 0.85)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
 
       const shapes = shapesRef.current;
       const sprite = spriteImgRef.current;
@@ -366,8 +386,12 @@ export const ParticleBackground = React.memo(function ParticleBackground({
         />
       )}
       {!showBgImage && <div className="absolute inset-0 bg-slate-950" />}
-      <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/95 via-slate-950/40 to-slate-900/60" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(2,6,23,0.85)_100%)]" />
+      {showGlow && (
+        <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/95 via-slate-950/40 to-slate-900/60" />
+      )}
+      {showGlow && (
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(2,6,23,0.85)_100%)]" />
+      )}
 
       <canvas ref={canvasRef} className={`absolute inset-0 pointer-events-none ${showParticles ? 'mix-blend-screen' : 'hidden'}`} />
 
