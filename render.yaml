@@ -1,0 +1,10 @@
+# Bamboo Backend — Render Deploy Config
+# Nur der server/ Ordner wird deployed.
+buildCommand: cd server && npm install
+startCommand: cd server && node render-entry.js
+
+env:
+  - key: NODE_VERSION
+    value: 20
+  - key: NODE_ENV
+    value: production

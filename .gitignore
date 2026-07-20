@@ -32,9 +32,6 @@ desktop.db
 desktop.db-shm
 desktop.db-wal
 
-# Render deploy config (for the backend repo)
-render.yaml
-
 # Dependencies
 node_modules/
 server/node_modules/
