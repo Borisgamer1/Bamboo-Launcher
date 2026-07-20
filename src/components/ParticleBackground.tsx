@@ -228,7 +228,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
           ctx.shadowBlur = p.size * 1.2;
         };
         if (p.type === "shape" && useSprite) {
-          // === SPRITE PARTICLE: fill with accent color, then clip to sprite shape ===
+          // === SPRITE PARTICLE: draw on temp canvas for clean tinting ===
+          // (no composite ops on main canvas - they would clip ALL particles)
           const baseSize = p.size * 5;
           const sizeFactor = Math.min(spriteSizeRef.current, 32) / 8;
           const s = baseSize * sizeFactor + 4;
@@ -238,18 +239,23 @@ export const ParticleBackground = React.memo(function ParticleBackground({
           const drawW = s * p.stretchX;
           const drawH = s / ratio * p.stretchY;
 
-          // 1. Fill the rect with accent color (this is the tinted result)
-          ctx.fillStyle = `${p.color}${p.opacity * 0.7})`;
-          ctx.fillRect(-drawW / 2, -drawH / 2, drawW, drawH);
-
-          // 2. Clip the fill to the sprite shape using destination-in
-          ctx.globalCompositeOperation = 'destination-in';
-          ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH);
-          ctx.globalCompositeOperation = 'source-over';
-
-          // Glow: no shadow for sprites (clean look)
-          ctx.shadowColor = 'transparent';
-          ctx.shadowBlur = 0;
+          if (drawW > 0 && drawH > 0 && isFinite(drawW) && isFinite(drawH)) {
+            let tCanvas = sprite.__tintCanvas;
+            if (!tCanvas || tCanvas.width < drawW || tCanvas.height < drawH) {
+              tCanvas = document.createElement("canvas");
+              tCanvas.width = Math.ceil(drawW);
+              tCanvas.height = Math.ceil(drawH);
+              sprite.__tintCanvas = tCanvas;
+            }
+            const tc = tCanvas.getContext("2d");
+            tc.clearRect(0, 0, tCanvas.width, tCanvas.height);
+            tc.drawImage(sprite, 0, 0, drawW, drawH);
+            tc.globalCompositeOperation = "source-in";
+            tc.fillStyle = `${p.color}${p.opacity * 0.7})`;
+            tc.fillRect(0, 0, drawW, drawH);
+            tc.globalCompositeOperation = "source-over";
+            ctx.drawImage(tCanvas, -drawW / 2, -drawH / 2);
+          }
         } else if (p.type === "shape" && shapes && shapes.length > 0 && p.shapeIdx >= 0) {
           ctx.beginPath();
           const polygon = shapes[p.shapeIdx % shapes.length];
