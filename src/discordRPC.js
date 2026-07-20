@@ -12,7 +12,6 @@ let lastActivityJson = null;
 // the pipe), there's NO error handler left → uncaught exception.
 // 
 // We catch it here at the process level before it crashes the main process.
-// This is the most reliable fix — no monkey-patching, no internal module access.
 const _origOException = process.listeners('uncaughtException').pop();
 process.removeAllListeners('uncaughtException');
 process.on('uncaughtException', (err) => {
@@ -22,7 +21,6 @@ process.on('uncaughtException', (err) => {
     console.warn('[DiscordRPC] Suppressed EPIPE (Discord pipe closed)');
     return;
   }
-  // Pass through to any existing handler
   if (_origOException) _origOException(err);
   else {
     console.error('Uncaught Exception:', err);
@@ -36,41 +34,55 @@ rpc.on('connected', () => {
   }
 });
 
+/**
+ * Try to connect to Discord RPC with a race-against-timeout+close.
+ * The library doesn't propagate EPIPE to the connection promise,
+ * so we detect transport close and reject immediately.
+ */
+async function tryLogin() {
+  rpc.connectionPromise = undefined;
+
+  return Promise.race([
+    rpc.login(),
+    new Promise((_, reject) => {
+      const onClose = () => {
+        clearTimeout(timer);
+        reject(new Error('Discord pipe closed before ready'));
+      };
+      rpc.transport.once('close', onClose);
+      const timer = setTimeout(() => {
+        rpc.transport.removeListener('close', onClose);
+        reject(new Error('RPC connection timed out'));
+      }, 3000);
+    }),
+  ]);
+}
+
 async function startRPC() {
-  try {
-    // Race login against timeout + transport-close detection.
-    // The @xhayper/discord-rpc library's transport.connect() succeeds
-    // even when the handshake write fails with EPIPE (the error is emitted
-    // on the socket but NOT propagated to the connection promise).
-    // Client.connect() then waits for 'connected' which never comes,
-    // hanging for the full 10s Client timeout.
-    // We detect the transport closing (EPIPE → socket.close → transport.close)
-    // and reject immediately, plus a 5s fallback timeout.
-    await Promise.race([
-      rpc.login(),
-      new Promise((_, reject) => {
-        const onClose = () => {
-          clearTimeout(timer);
-          reject(new Error('Discord pipe closed before ready'));
-        };
-        rpc.transport.once('close', onClose);
-        const timer = setTimeout(() => {
-          rpc.transport.removeListener('close', onClose);
-          reject(new Error('RPC connection timed out'));
-        }, 5000);
-      }),
-    ]);
-    console.log("[DiscordRPC] Connected.");
-  } catch (err) {
-    console.warn("[DiscordRPC] Login failed:", err.message);
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await tryLogin();
+      console.log("[DiscordRPC] Connected.");
+      return;
+    } catch (err) {
+      lastError = err;
+      if (attempt < 2) {
+        console.log(`[DiscordRPC] Retry ${attempt}/2...`);
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+  }
+
+  const msg = (lastError.message || '').toLowerCase();
+  console.warn("[DiscordRPC] Login failed after 2 attempts:", lastError.message);
+  if (msg.includes('pipe') || msg.includes('refused') || msg.includes('epipe')) {
+    console.warn("[DiscordRPC] 💡 Discord prüfen: Einstellungen → Aktivität & Privatsphäre →");
+    console.warn("[DiscordRPC] 💡 'Aktuelle Aktivität anzeigen' EINSCHALTEN");
+    console.warn("[DiscordRPC] 💡 Oder Discord einmal neustarten & Launcher neu starten");
   }
 }
 
-/**
- * Set Discord Rich Presence activity.
- * ONLY sends to Discord if the activity text actually changed,
- * preventing pointless API calls and flickering.
- */
 function setActivity(activity) {
   if (!activity || typeof activity !== 'object') return;
 
@@ -86,15 +98,10 @@ function setActivity(activity) {
 
   const json = JSON.stringify(payload, Object.keys(payload).sort());
 
-  // Deduplicate: skip if activity text hasn't changed
   if (json === lastActivityJson) return;
-
   lastActivityJson = json;
 
-  if (!rpc.user) {
-    // Queue for when RPC connects
-    return;
-  }
+  if (!rpc.user) return;
 
   rpc.user.setActivity(payload).catch((err) =>
     console.warn("[DiscordRPC] setActivity failed:", err.message)

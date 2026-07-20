@@ -13,6 +13,7 @@ preload.js
 index.html
 splash.html
 package.json
+package-lock.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
 vite.config.ts
@@ -25,6 +26,9 @@ fix-electron.cjs
 SUMMARY.md
 README.md
 scripts/
+bamboo-fix-plan.md
+logo.png
+resources/
 
 # Editor / Temp
 .freebuff/
