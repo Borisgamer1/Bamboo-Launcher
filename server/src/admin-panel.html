@@ -1053,6 +1053,7 @@ async function openEditEditor(type, id) {
       document.getElementById('theme-particle-size-val').textContent = pSize;
       document.getElementById('theme-particle-frequency').value = pFreq;
       document.getElementById('theme-particle-frequency-val').textContent = pFreq;
+      document.getElementById('theme-particle-direction').value = meta.particleDirection || 'bottom';
       // Load particle shapes (legacy)
       const shapes = meta.particleShapes || [];
       document.getElementById('theme-particle-shapes').value = JSON.stringify(shapes);
@@ -1126,6 +1127,7 @@ async function saveContent() {
       data.metadata.particleImage = getFilePickerValue('theme-particle-image');
       data.metadata.particleSize = parseInt(document.getElementById('theme-particle-size').value) || 8;
       data.metadata.particleFrequency = parseInt(document.getElementById('theme-particle-frequency').value) || 40;
+      data.metadata.particleDirection = document.getElementById('theme-particle-direction').value;
       // Save particle shapes (legacy)
       const shapesRaw = document.getElementById('theme-particle-shapes').value;
       if (shapesRaw) {
@@ -1905,6 +1907,15 @@ function buildTypeFields() {
           <input type="range" id="theme-particle-frequency" min="5" max="200" value="40" style="flex:1;accent-color:var(--accent);height:4px;border-radius:2px;cursor:pointer"
             oninput="document.getElementById('theme-particle-frequency-val').textContent=this.value">
           <span id="theme-particle-frequency-val" style="font-size:13px;font-weight:700;font-family:var(--font-mono);color:var(--text-primary);min-width:28px;text-align:right">40</span>
+
+        <label style="margin-top:14px">Partikel-Richtung <span style="color:var(--text-muted);font-weight:400;font-size:11px">– Aus welcher Richtung die Partikel kommen</span></label>
+        <select id="theme-particle-direction" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border-subtle);background:var(--bg-card);color:var(--text-primary);font-size:13px;font-family:var(--font);outline:none;cursor:pointer">
+          <option value="bottom">Von Unten (Standard)</option>
+          <option value="top">Von Oben</option>
+          <option value="left">Von Links</option>
+          <option value="right">Von Rechts</option>
+        </select>
+        <div class="help-text">Bestimmt die Flugrichtung der Partikel im Launcher-Hintergrund.</div>
         </div>
         <div class="help-text">Standard: 40 — Höhere Werte = mehr fliegende Partikel.</div>
       </div>

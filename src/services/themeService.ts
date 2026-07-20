@@ -30,6 +30,8 @@ export interface ThemeDefinition {
   particleSize?: number;
   /** Number of particles (default 40) */
   particleFrequency?: number;
+  /** Particle flight direction: bottom | top | left | right (default bottom) */
+  particleDirection?: string;
 }
 
 // ===== Theme Service =====
@@ -189,6 +191,7 @@ class ThemeService {
           particleImage: meta.particleImage || undefined,
           particleSize: meta.particleSize !== undefined ? Number(meta.particleSize) : undefined,
           particleFrequency: meta.particleFrequency !== undefined ? Number(meta.particleFrequency) : undefined,
+          particleDirection: meta.particleDirection || undefined,
         };
         backendThemes.push(theme);
       }
@@ -270,6 +273,7 @@ class ThemeService {
             particleImage: cdnTheme.particleImage || undefined,
             particleSize: cdnTheme.particleSize !== undefined ? Number(cdnTheme.particleSize) : undefined,
             particleFrequency: cdnTheme.particleFrequency !== undefined ? Number(cdnTheme.particleFrequency) : undefined,
+            particleDirection: cdnTheme.particleDirection || undefined,
           };
           cdnThemes.push(theme);
         } catch (err) {

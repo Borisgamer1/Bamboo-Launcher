@@ -69,6 +69,8 @@ interface ParticleBackgroundProps {
   particleSize?: number;
   /** Number of particles from theme metadata (default 40) */
   particleFrequency?: number;
+  /** Particle flight direction: bottom | top | left | right (default bottom) */
+  particleDirection?: string;
 }
 
 export const ParticleBackground = React.memo(function ParticleBackground({
@@ -83,6 +85,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   bgBlur = 0,
   particleSize = 8,
   particleFrequency = 40,
+  particleDirection = "bottom",
 }: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -96,11 +99,13 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   const spriteLoadedRef = useRef(false);
   const spriteSizeRef = useRef(particleSize);
   const particleCountRef = useRef(particleFrequency);
+  const directionRef = useRef(particleDirection);
 
   useEffect(() => { accentRef.current = accent; }, [accent]);
   useEffect(() => { shapesRef.current = particleShapes; }, [particleShapes]);
   useEffect(() => { spriteSizeRef.current = particleSize; }, [particleSize]);
   useEffect(() => { particleCountRef.current = particleFrequency; }, [particleFrequency]);
+  useEffect(() => { directionRef.current = particleDirection; }, [particleDirection]);
 
   // Load particle sprite image with cleanup to prevent stale-image race condition
   useEffect(() => {
@@ -148,7 +153,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
     };
     window.addEventListener("mousemove", handleMouseMove);
 
-    const createParticle = (initY = false): Particle => {
+    const spawnParticle = (dir: string, initInside = false): Particle => {
       const size = Math.random() * 5 + 1.5;
       const colors = getColorsFromAccent(accentRef.current);
       const baseColor = colors[Math.floor(Math.random() * colors.length)];
@@ -161,12 +166,40 @@ export const ParticleBackground = React.memo(function ParticleBackground({
         stretchX = 0.6 + Math.random() * 0.8;
         stretchY = 0.6 + Math.random() * 0.8;
       }
+
+      // Position and speed based on direction
+      let x: number, y: number, speedX: number, speedY: number;
+      const pad = 20;
+      switch (dir) {
+        case "top":
+          x = Math.random() * canvas.width;
+          y = initInside ? Math.random() * canvas.height : -pad;
+          speedX = (Math.random() - 0.5) * 0.4;
+          speedY = Math.random() * 0.5 + 0.2;
+          break;
+        case "left":
+          x = initInside ? Math.random() * canvas.width : -pad;
+          y = Math.random() * canvas.height;
+          speedX = Math.random() * 0.5 + 0.2;
+          speedY = (Math.random() - 0.5) * 0.4;
+          break;
+        case "right":
+          x = initInside ? Math.random() * canvas.width : canvas.width + pad;
+          y = Math.random() * canvas.height;
+          speedX = -(Math.random() * 0.5 + 0.2);
+          speedY = (Math.random() - 0.5) * 0.4;
+          break;
+        default:
+          x = Math.random() * canvas.width;
+          y = initInside ? Math.random() * canvas.height : canvas.height + pad;
+          speedX = (Math.random() - 0.5) * 0.4;
+          speedY = -(Math.random() * 0.5 + 0.2);
+          break;
+      }
+
       return {
-        x: Math.random() * canvas.width,
-        y: initY ? Math.random() * canvas.height : canvas.height + 20,
-        size,
-        speedX: (Math.random() - 0.5) * 0.4,
-        speedY: -(Math.random() * 0.5 + 0.2),
+        x, y, size,
+        speedX, speedY,
         opacity: Math.random() * 0.4 + 0.15,
         color: baseColor,
         angle: Math.random() * Math.PI * 2,
@@ -177,6 +210,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
         stretchY,
       };
     };
+
+    const createParticle = (initY = false): Particle => spawnParticle(directionRef.current, initY);
 
     const initCount = particleCountRef.current;
     for (let i = 0; i < initCount; i++) {
@@ -290,8 +325,17 @@ export const ParticleBackground = React.memo(function ParticleBackground({
 
         ctx.restore();
 
-        if (p.y < -20 || p.x < -20 || p.x > canvas.width + 20) {
-          particles[index] = createParticle(false);
+        const recycle = (() => {
+          const dir = directionRef.current;
+          switch (dir) {
+            case "top": return p.y > canvas.height + 20;
+            case "left": return p.x > canvas.width + 20;
+            case "right": return p.x < -20;
+            default: return p.y < -20 || p.x < -20 || p.x > canvas.width + 20;
+          }
+        })();
+        if (recycle) {
+          particles[index] = spawnParticle(directionRef.current, false);
         }
       });
 
