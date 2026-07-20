@@ -157,7 +157,7 @@ async function initDatabase() {
         ['banners', 'Banners', 'Promotional banner images', 'banners/', '*.png,*.jpg,*.webp'],
         ['events', 'Events', 'Event-related images and assets', 'events/', '*.png,*.jpg,*.webp'],
         ['themes', 'Themes', 'Launcher theme assets', 'themes/', '*.png,*.json'],
-        ['assets', 'Launcher Assets', 'General launcher assets (icons, logos)', 'assets/', '*.png,*.svg,*.ico'],
+
       ];
       for (const [slug, name, desc, pattern] of defaultTypes) {
         await pool.query('INSERT INTO content_types (slug, name, description, file_pattern) VALUES ($1, $2, $3, $4) ON CONFLICT (slug) DO NOTHING', [slug, name, desc, pattern]);
