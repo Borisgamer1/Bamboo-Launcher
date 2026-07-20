@@ -16,41 +16,71 @@ const DISCORD_PRESENCE_DEFAULTS = {
   largeImageText: 'Bamboo Launcher',
 };
 
-function updateDiscordPresence(status, profileName) {
+/** Last activity JSON sent — prevents pointless duplicate RPC calls */
+let _lastRpcStatus = '';
+let _lastRpcDetails = '';
+
+function updateDiscordPresence(status, profileName, extraText) {
   const now = new Date();
-  const presets = {
-    launcher: {
-      details: profileName ? `Bamboo Launcher – ${profileName}` : 'Bamboo Launcher',
-      state: 'Profile & Mods durchstöbern',
-      startTimestamp: now,
-    },
-    starting: {
-      details: profileName ? `Starte ${profileName}` : 'Minecraft startet...',
-      state: 'Laden...',
-      smallImageKey: 'minecraft',
-      smallImageText: profileName ? `Profil: ${profileName}` : 'Minecraft',
-      startTimestamp: now,
-    },
-    inGame: {
-      details: profileName ? `Spielt ${profileName}` : 'Minecraft',
-      state: 'In Game',
-      smallImageKey: 'minecraft',
-      smallImageText: profileName ? `${profileName}` : 'Minecraft',
-      startTimestamp: now,
-    },
-    browsing: {
-      details: 'Durchsucht Mods',
-      state: 'Surft im Mod-Browser',
-      startTimestamp: now,
-    },
-    back: {
-      details: 'Bamboo Launcher',
-      state: 'Im Hauptmenü',
-      startTimestamp: now,
-    },
+
+  // Build the activity text based on status
+  let details = '';
+  let state = '';
+  let smallImageKey;
+  let smallImageText;
+
+  switch (status) {
+    case 'launcher':
+      details = 'In Bamboo Launcher';
+      state = extraText || 'Browsing profiles & mods';
+      break;
+
+    case 'starting':
+      details = `Starting ${profileName || 'Minecraft'}`;
+      state = 'Launching...';
+      smallImageKey = 'minecraft';
+      smallImageText = profileName || '';
+      break;
+
+    case 'inGame':
+      details = `Playing ${profileName || 'Minecraft'}`;
+      state = extraText || '';
+      smallImageKey = 'minecraft';
+      smallImageText = profileName || '';
+      break;
+
+    case 'browsing':
+      details = 'Browsing mods';
+      state = extraText || 'Mod Browser';
+      smallImageKey = 'minecraft';
+      smallImageText = 'Mod Browser';
+      break;
+
+    case 'back':
+      details = 'In Bamboo Launcher';
+      state = 'Main menu';
+      break;
+
+    default:
+      details = 'In Bamboo Launcher';
+      state = '';
+      break;
+  }
+
+  // Deduplicate by checking if either field changed
+  if (details === _lastRpcDetails && state === _lastRpcStatus) return;
+  _lastRpcDetails = details;
+  _lastRpcStatus = state;
+
+  const activity = {
+    details,
+    state,
+    startTimestamp: ['launcher', 'back'].includes(status) ? undefined : now,
   };
 
-  const activity = presets[status] || presets.launcher;
+  if (smallImageKey) activity.smallImageKey = smallImageKey;
+  if (smallImageText) activity.smallImageText = smallImageText;
+
   setDiscordActivity({ ...DISCORD_PRESENCE_DEFAULTS, ...activity });
 }
 
@@ -3133,8 +3163,6 @@ ipcMain.on('launch-game', async (event, args) => {
     console.log("Starte Launcher mit Optionen:", JSON.stringify(opts, null, 2));
     const launcher = new Client();
     let gameReadySent = false;
-    let lastProgressType = '';
-    let lastProgressPercent = -1;
 
     launcher.on('debug', (e) => console.log('DEBUG:', e));
     launcher.on('data', (e) => console.log('DATA:', e));
@@ -3149,21 +3177,11 @@ ipcMain.on('launch-game', async (event, args) => {
     launcher.on('progress', e => {
         const pct = e.total > 0 ? Math.round((e.task / e.total) * 100) : 100;
         event.reply('launch-status', `Download: ${e.type} (${pct}%)`);
-        if (e.type && (e.type !== lastProgressType || pct >= lastProgressPercent + 20)) {
-          lastProgressType = e.type;
-          lastProgressPercent = pct;
-          setDiscordActivity({
-            ...DISCORD_PRESENCE_DEFAULTS,
-            details: `Lädt ${profileName} (${pct}%)`,
-            state: e.type ? `Task: ${e.type}` : 'Minecraft wird geladen',
-            smallImageKey: 'minecraft',
-            smallImageText: `Profil: ${profileName}`,
-          });
-        }
         if (!gameReadySent && e.task >= e.total) {
           gameReadySent = true;
           event.reply('game-ready', profileName);
-          updateDiscordPresence('inGame', profileName);
+          const inGameText = `${version}${normalizedLoader !== 'vanilla' ? ` - ${normalizedLoader}` : ''}`;
+          updateDiscordPresence('inGame', profileName, inGameText);
         }
     });
     launcher.on('close', code => {
