@@ -240,12 +240,12 @@ export const ParticleBackground = React.memo(function ParticleBackground({
           const drawH = s / ratio * p.stretchY;
 
           if (drawW > 0 && drawH > 0 && isFinite(drawW) && isFinite(drawH)) {
-            let tCanvas = sprite.__tintCanvas;
+            let tCanvas = (sprite as any).__tintCanvas;
             if (!tCanvas || tCanvas.width < drawW || tCanvas.height < drawH) {
               tCanvas = document.createElement("canvas");
               tCanvas.width = Math.ceil(drawW);
               tCanvas.height = Math.ceil(drawH);
-              sprite.__tintCanvas = tCanvas;
+              (sprite as any).__tintCanvas = tCanvas;
             }
             const tc = tCanvas.getContext("2d");
             tc.clearRect(0, 0, tCanvas.width, tCanvas.height);
