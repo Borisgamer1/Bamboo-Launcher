@@ -1311,37 +1311,39 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                     <span className="text-[10px] text-slate-500">Helligkeit · Unschärfe · Toggles</span>
                   </summary>
                   <div className="px-3.5 pb-3.5 flex flex-col gap-2.5">
-                    {/* Row 1: 3 toggles inline */}
+                    {/* Row 1: 4 toggles inline */}
                     <div className="grid grid-cols-4 gap-2">
                       {/* Show/hide background image */}
                       <div className="flex flex-col items-center gap-1.5 bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5">
                         <span className="text-[10px] font-bold text-slate-400 text-center leading-tight">Bild</span>
-                        <button type="button" onClick={() => setShowBgImage(!showBgImage)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showBgImage ? 'theme-bg' : 'bg-slate-800'}`}>
-                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showBgImage ? 'translateX(14px)' : 'translateX(0)' }} />
+                        <button type="button" onClick={() => setShowBgImage(!showBgImage)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showBgImage ? "theme-bg" : "bg-slate-800"}`}>
+                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showBgImage ? "translateX(14px)" : "translateX(0)" }} />
                         </button>
                       </div>
                       {/* Show/hide particles */}
                       <div className="flex flex-col items-center gap-1.5 bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5">
                         <span className="text-[10px] font-bold text-slate-400 text-center leading-tight">Partikel</span>
-                        <button type="button" onClick={() => setShowParticles(!showParticles)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showParticles ? 'theme-bg' : 'bg-slate-800'}`}>
-                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showParticles ? 'translateX(14px)' : 'translateX(0)' }} />
+                        <button type="button" onClick={() => setShowParticles(!showParticles)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showParticles ? "theme-bg" : "bg-slate-800"}`}>
+                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showParticles ? "translateX(14px)" : "translateX(0)" }} />
                         </button>
                       </div>
                       {/* Show/hide cursor glow */}
                       <div className="flex flex-col items-center gap-1.5 bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5">
                         <span className="text-[10px] font-bold text-slate-400 text-center leading-tight">Cursor</span>
-                        <button type="button" onClick={() => setShowCursorGlow(!showCursorGlow)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showCursorGlow ? 'theme-bg' : 'bg-slate-800'}`}>
-                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showCursorGlow ? 'translateX(14px)' : 'translateX(0)' }} />
-                        </button>
-                      {/* Show/hide canvas glow */}
-                      <div className="flex flex-col items-center gap-1.5 bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5">
-                        <span className="text-[10px] font-bold text-slate-400 text-center leading-tight">Glow</span>
-                        <button type="button" onClick={() => setShowGlow(!showGlow)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showGlow ? 'theme-bg' : 'bg-slate-800'}`}>
-                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showGlow ? 'translateX(14px)' : 'translateX(0)' }} />
+                        <button type="button" onClick={() => setShowCursorGlow(!showCursorGlow)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showCursorGlow ? "theme-bg" : "bg-slate-800"}`}>
+                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showCursorGlow ? "translateX(14px)" : "translateX(0)" }} />
                         </button>
                       </div>
+                      {/* Show/hide canvas glow + compact color picker */}
+                      <div className="flex flex-col items-center gap-1 bg-slate-900/30 border border-slate-800/40 rounded-xl p-2">
+                        <span className="text-[10px] font-bold text-slate-400 text-center leading-tight">Glow</span>
+                        <button type="button" onClick={() => setShowGlow(!showGlow)} className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 cursor-pointer shrink-0 ${showGlow ? "theme-bg" : "bg-slate-800"}`}>
+                          <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md transform transition-transform duration-300" style={{ transform: showGlow ? "translateX(14px)" : "translateX(0)" }} />
+                        </button>
+                        <input type="color" value={glowColor} onChange={(e) => setGlowColor(e.target.value)} className="w-6 h-6 rounded-md cursor-pointer border border-slate-700/50 bg-transparent p-0" style={{ accentColor: glowColor }} />
                       </div>
                     </div>
+                  </div>
 
                     {/* Row 2: Brightness + Blur sliders side by side */}
                     <div className="grid grid-cols-2 gap-2.5">
@@ -1357,19 +1359,10 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                       <div className="bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5 flex flex-col gap-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400">Unschärfe</span>
-                          <span className="text-[10px] font-mono font-black theme-text">{bgBlur > 0 ? `${bgBlur}px` : 'Aus'}</span>
+                          <span className="text-[10px] font-mono font-black theme-text">{bgBlur > 0 ? `${bgBlur}px` : "Aus"}</span>
                         </div>
                         <input type="range" min={0} max={20} value={bgBlur} onChange={(e) => setBgBlur(parseInt(e.target.value))} className="w-full accent-[var(--theme-accent)] bg-slate-950 h-1 rounded-lg cursor-pointer" />
-                    </div>
-                  </div>
-
-                    {/* Row 3: Glow color picker */}
-                    <div className="bg-slate-900/30 border border-slate-800/40 rounded-xl p-2.5 flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-400">Glow-Farbe</span>
-                        <span className="text-[10px] font-mono font-black theme-text" style={{ color: glowColor }}>{glowColor}</span>
                       </div>
-                      <input type="color" value={glowColor} onChange={(e) => setGlowColor(e.target.value)} className="w-full h-8 rounded-lg cursor-pointer border-0 bg-transparent" />
                     </div>
                   </div>
                 </details>
