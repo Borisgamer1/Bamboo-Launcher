@@ -44,11 +44,6 @@ console.log('[render] Lade Admin API...');
 const admin = require('./src/admin');
 
 // =============================================================
-// Share-Modul laden und auf Admin-App mounten
-// =============================================================
-const shareModule = require('./src/share');
-
-// =============================================================
 // Applikationen kombinieren
 // =============================================================
 // Admin-Routen in die Friends-App einbinden (als Middleware)
@@ -65,19 +60,12 @@ async function startRender() {
     await admin.initDatabase();
     console.log('[render] Admin DB ✅');
     
-    // 2. Share-Modul mit dem Admin-Pool initialisieren
-    if (admin.pool) {
-      shareModule.init(admin.pool);
-      admin.app.use('/api/share', shareModule.router);
-      console.log('[render] Share-Modul ✅');
-    }
-    
-    // 3. Friends DB initialisieren (erstellt Friends-Tabellen)
+    // 2. Friends DB initialisieren (erstellt Friends-Tabellen)
     console.log('[render] Friends-Datenbank wird initialisiert...');
     await friends.initDatabase();
     console.log('[render] Friends DB ✅');
 
-    // 4. Content-Verzeichnis sicherstellen
+    // 3. Content-Verzeichnis sicherstellen
     const CONTENT_ROOT = process.env.BAMBOO_CONTENT_DIR || path.join(__dirname, 'content');
     if (!fs.existsSync(CONTENT_ROOT)) {
       try {
