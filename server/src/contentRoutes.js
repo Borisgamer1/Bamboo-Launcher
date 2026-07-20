@@ -1510,6 +1510,26 @@ module.exports = function contentRoutes(app, ctx) {
         });
       }
 
+      // Also include content_types that have zero entries but are defined
+      // so News, Events etc. always appear in the sidebar even when empty
+      try {
+        const ctResult = await pool.query("SELECT slug, name FROM content_types WHERE is_active = true ORDER BY slug");
+        const ctSlugNormalize = { cosmetics: "cosmetic", events: "event", banners: "banner", themes: "theme" };
+        for (const ct of ctResult.rows) {
+          const typeKey = ctSlugNormalize[ct.slug] || ct.slug;
+          if (!types.find(t => t.type === typeKey)) {
+            types.push({
+              type: typeKey,
+              name: ct.name,
+              icon: typeIcons[typeKey] || "folder",
+              count: 0,
+              draftCount: 0,
+              publishedCount: 0,
+            });
+          }
+        }
+      } catch { /* content_types table might not exist yet */ }
+
       return res.json({ data: types });
     } catch (err) {
       return res.status(500).json({ error: err.message });
