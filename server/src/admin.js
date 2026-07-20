@@ -377,6 +377,63 @@ function authenticateAdmin(req, res, next) {
 }
 
 // ===== Auth =====
+app.post('/api/auth/login', async (req, res) => {// ====================================================================
+// === PUT /api/admin/content/cosmetic/:id/unlock ======================
+// Saves the Phase-5 unlock configuration for a cosmetic.
+// ====================================================================
+app.put('/api/admin/content/cosmetic/:id/unlock', authenticateAdmin, async (req, res) => {
+  try {
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
+    const itemId = req.params.id;
+    const incoming = req.body || {};
+    const unlock = incoming.unlock || { type: 'free', requirements: [] };
+    const treeNodeId = incoming.treeNodeId || unlock.treeNodeId || null;
+
+    const r = await pool.query('SELECT metadata FROM assets WHERE id = $1 AND asset_type = $2', [itemId, 'cosmetic']);
+    if (!r.rows.length) return res.status(404).json({ error: 'Cosmetic not found' });
+    const meta = r.rows[0].metadata || {};
+    meta.unlock = unlock;
+    meta.unlockType = unlock.type || 'free';
+    meta.unlockRequirements = unlock.requirements || [];
+    if (treeNodeId) meta.treeNodeId = treeNodeId;
+    if (incoming.lockVisibility) meta.lockVisibility = incoming.lockVisibility;
+    await pool.query('UPDATE assets SET metadata = $1::jsonb, version = version + 1, updated_at = NOW() WHERE id = $2', [JSON.stringify(meta), itemId]);
+    return res.json({ success: true, unlock, treeNodeId });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+// ====================================================================
+// === PUT /api/admin/content/cosmetic/:id/unlock ======================
+// Saves the Phase-5 unlock configuration for a cosmetic, replacing
+// the legacy flat unlockType/unlockRequirement with the nested shape.
+// ====================================================================
+app.put('/api/admin/content/cosmetic/:id/unlock', authenticateAdmin, async (req, res) => {
+  try {
+    if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
+    const itemId = req.params.id;
+    const incoming = req.body || {};
+    const unlock = incoming.unlock || { type: 'free', requirements: [] };
+    const treeNodeId = incoming.treeNodeId || unlock.treeNodeId || null;
+
+    // Merge into metadata JSONB
+    const r = await pool.query('SELECT metadata FROM assets WHERE id = $1 AND asset_type = $2', [itemId, 'cosmetic']);
+    if (!r.rows.length) return res.status(404).json({ error: 'Cosmetic not found' });
+    const meta = r.rows[0].metadata || {};
+    meta.unlock = unlock;
+    meta.unlockType = unlock.type || 'free';
+    meta.unlockRequirements = unlock.requirements || [];
+    if (treeNodeId) meta.treeNodeId = treeNodeId;
+    await pool.query('UPDATE assets SET metadata = $1::jsonb, version = version + 1, updated_at = NOW() WHERE id = $2', [JSON.stringify(meta), itemId]);
+
+    return res.json({ success: true, unlock: unlock, treeNodeId });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ success: false, error: 'Username and password required' });

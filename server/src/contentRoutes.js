@@ -114,8 +114,29 @@ module.exports = function contentRoutes(app, ctx) {
       case 'cosmetic': {
         const meta = row.metadata || {};
         const validUnlockTypes = ['free','playtime','achievement','rank','event','server','code'];
-        const unlockType = validUnlockTypes.includes(meta.unlockType) ? meta.unlockType : 'free';
-        const unlockRequirement = (meta.unlockRequirement && typeof meta.unlockRequirement === 'object') ? { type: String(meta.unlockRequirement.type||''), value: meta.unlockRequirement.value, label: meta.unlockRequirement.label } : null;
+        // Prefer Phase 5 nested shape: meta.unlock = {type, requirements[]}
+        // Fall back to legacy flat fields ONLY when the new shape is missing.
+        let unlockType = 'free';
+        let unlockRequirements = [];
+        if (meta.unlock && typeof meta.unlock === 'object' && Array.isArray(meta.unlock.requirements)) {
+          unlockType = validUnlockTypes.includes(meta.unlock.type) ? meta.unlock.type : 'free';
+          unlockRequirements = meta.unlock.requirements.map((r) => ({
+            type: String(r && r.type ? r.type : ''),
+            value: (r && r.value !== undefined ? r.value : (r && r.targetValue !== undefined ? r.targetValue : 0)),
+            label: r && r.label ? String(r.label) : undefined,
+            treeNodeId: r && r.treeNodeId ? String(r.treeNodeId) : undefined,
+          }));
+        } else {
+          // Legacy flat-field fallback
+          unlockType = validUnlockTypes.includes(meta.unlockType) ? meta.unlockType : 'free';
+          if (meta.unlockRequirement && typeof meta.unlockRequirement === 'object') {
+            unlockRequirements = [{
+              type: String(meta.unlockRequirement.type || ''),
+              value: meta.unlockRequirement.value,
+              label: meta.unlockRequirement.label ? String(meta.unlockRequirement.label) : undefined,
+            }];
+          }
+        }
         const modelFormat = (typeof meta.modelFormat === 'string') ? meta.modelFormat : null;
         const validCategories = ['cape','aura','hat','ear','wings','rank','other'];
         const category = validCategories.includes(meta.cosmeticType) ? meta.cosmeticType : (validCategories.includes(meta.category) ? meta.category : 'cape');
@@ -129,7 +150,17 @@ module.exports = function contentRoutes(app, ctx) {
           imageUrl: row.thumbnail_url || row.preview_url || '',
           modelUrl: (meta.modelUrl) || '',
           accentColor: meta.accentColor || '',
-          metadata: { category, rarity, accentColor: meta.accentColor||'', modelFormat, unlock: { type: unlockType, requirements: unlockRequirement ? [{ type: unlockRequirement.type, value: unlockRequirement.value, label: unlockRequirement.label }] : [] } },
+          metadata: {
+            category,
+            rarity,
+            accentColor: meta.accentColor || '',
+            modelFormat,
+            unlock: { type: unlockType, requirements: unlockRequirements },
+            unlockType,
+            unlockRequirements,
+            treeNodeId: meta.treeNodeId ? String(meta.treeNodeId) : undefined,
+            lockVisibility: meta.lockVisibility === 'hidden' ? 'hidden' : 'public',
+          },
         };
       }
       case 'news':
@@ -910,6 +941,16 @@ module.exports = function contentRoutes(app, ctx) {
       // Copy cosmetic-specific fields from body into metadata
       if (assetType === 'cosmetic') {
         if (req.body.type) mergedMetadata.cosmeticType = req.body.type;
+      // Copy cosmetic-specific fields from body into metadata
+      if (assetType === 'cosmetic') {
+        if (req.body.unlock && typeof req.body.unlock === 'object') {
+          mergedMetadata.unlock = req.body.unlock;
+          mergedMetadata.unlockType = req.body.unlock.type || 'free';
+          mergedMetadata.unlockRequirements = req.body.unlock.requirements || [];
+        }
+        if (req.body.treeNodeId) {
+          mergedMetadata.treeNodeId = req.body.treeNodeId;
+        }
         if (req.body.rarity) mergedMetadata.rarity = req.body.rarity;
         if (req.body.accentColor) mergedMetadata.accentColor = req.body.accentColor;
         if (req.body.modelUrl) mergedMetadata.modelUrl = req.body.modelUrl;
@@ -950,6 +991,16 @@ module.exports = function contentRoutes(app, ctx) {
       // Copy cosmetic-specific fields from body into metadata
       if (assetType === 'cosmetic') {
         if (req.body.type !== undefined) mergedMeta.cosmeticType = req.body.type;
+      // Copy cosmetic-specific fields from body into metadata
+      if (assetType === 'cosmetic') {
+        if (req.body.unlock && typeof req.body.unlock === 'object') {
+          mergedMeta.unlock = req.body.unlock;
+          mergedMeta.unlockType = req.body.unlock.type || 'free';
+          mergedMeta.unlockRequirements = req.body.unlock.requirements || [];
+        }
+        if (req.body.treeNodeId) {
+          mergedMeta.treeNodeId = req.body.treeNodeId;
+        }
         if (req.body.rarity !== undefined) mergedMeta.rarity = req.body.rarity;
         if (req.body.accentColor !== undefined) mergedMeta.accentColor = req.body.accentColor;
         if (req.body.modelUrl !== undefined) mergedMeta.modelUrl = req.body.modelUrl;
@@ -1548,3 +1599,75 @@ module.exports = function contentRoutes(app, ctx) {
     }
   });
 };
+  // ====================================================================
+  // === GET /api/content/cosmetics/unlock-types =========================
+  // Returns the unlock-type registry the launcher needs.
+  // Phase 5: extend this list to add new types server-side; the launcher
+  // uses DEFAULT_UNLOCK_TYPES as fallback when this endpoint is down.
+  // ====================================================================
+  app.get('/api/content/cosmetics/unlock-types', async (req, res) => {
+    try {
+      const types = [
+        { id: 'playtime_hours',     label: 'Spielzeit (Stunden)',   valueType: 'tree',    unit: 'h',      visualStrategy: 'tree_step',    defaultOp: 'gte', defaultTarget: 5 },
+        { id: 'blocks_mined',       label: 'Blöcke abgebaut',       valueType: 'numeric', unit: 'Blöcke', visualStrategy: 'progress_bar', defaultOp: 'gte', defaultTarget: 500 },
+        { id: 'mobs_killed',        label: 'Mobs getötet',          valueType: 'numeric', unit: 'Kills',  visualStrategy: 'progress_bar', defaultOp: 'gte', defaultTarget: 100 },
+        { id: 'players_killed',     label: 'Spieler getötet',       valueType: 'numeric', unit: 'Kills',  visualStrategy: 'progress_bar', defaultOp: 'gte', defaultTarget: 10 },
+        { id: 'distance_traveled',  label: 'Zurückgelegte Distanz', valueType: 'numeric', unit: 'Blöcke', visualStrategy: 'progress_bar', defaultOp: 'gte', defaultTarget: 50000 },
+        { id: 'login_days',         label: 'Login-Tage',            valueType: 'numeric', unit: 'Tage',   visualStrategy: 'progress_bar', defaultOp: 'gte', defaultTarget: 7 },
+        { id: 'achievement_id',     label: 'Achievement',           valueType: 'string',  visualStrategy: 'checkpoint',   defaultOp: 'eq',  defaultTarget: 'explorer' },
+        { id: 'event_id',           label: 'Event',                 valueType: 'string',  visualStrategy: 'checkpoint',   defaultOp: 'eq',  defaultTarget: 'event-2026' },
+        { id: 'rank_id',            label: 'Rang',                  valueType: 'string',  visualStrategy: 'checkpoint',   defaultOp: 'eq',  defaultTarget: 'Builder' },
+        { id: 'server_id',          label: 'Server-Verbindung',     valueType: 'string',  visualStrategy: 'checkpoint',   defaultOp: 'eq',  defaultTarget: 'bamboo-main' },
+        { id: 'invite_code',        label: 'Invite-Code',           valueType: 'string',  visualStrategy: 'checkpoint',   defaultOp: 'eq',  defaultTarget: '' },
+      ];
+      return res.json({ success: true, data: types });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ====================================================================
+  // === GET /api/content/cosmetics/trees ================================
+  // Returns unlock trees (Minecraft-style milestones). Default + custom.
+  // ====================================================================
+  app.get('/api/content/cosmetics/trees', async (req, res) => {
+    try {
+      const playtimeTree = {
+        treeId: 'playtime_hours',
+        root: {
+          id: 'pt_0h', label: '0 Stunden', thresholdValue: 0, unlocksCosmeticIds: [],
+          children: [
+            { id: 'pt_5h', label: '5 Stunden', thresholdValue: 5, unlocksCosmeticIds: [], children: [
+              { id: 'pt_10h', label: '10 Stunden', thresholdValue: 10, unlocksCosmeticIds: [], children: [
+                { id: 'pt_25h', label: '25 Stunden', thresholdValue: 25, unlocksCosmeticIds: [], children: [
+                  { id: 'pt_50h', label: '50 Stunden', thresholdValue: 50, unlocksCosmeticIds: [], children: [
+                    { id: 'pt_100h', label: '100 Stunden', thresholdValue: 100, unlocksCosmeticIds: [], children: [
+                      { id: 'pt_250h', label: '250 Stunden', thresholdValue: 250, unlocksCosmeticIds: [], children: [
+                        { id: 'pt_500h', label: '500 Stunden', thresholdValue: 500, unlocksCosmeticIds: [], children: [
+                          { id: 'pt_1000h', label: '1000 Stunden', thresholdValue: 1000, unlocksCosmeticIds: [] }
+                        ]}
+                      ]}
+                    ]}
+                  ]}
+                ]}
+              ]}
+            ]}
+          ]
+        }
+      };
+      const customTrees = [];
+      try {
+        if (pool && dbState.connected) {
+          const r = await pool.query("SELECT metadata FROM assets WHERE asset_type = 'unlock_tree' AND status = 'published'");
+          for (const row of r.rows) {
+            const md = row.metadata || {};
+            if (md.tree) customTrees.push(md.tree);
+          }
+        }
+      } catch { /* table may not exist yet */ }
+      return res.json({ success: true, data: [playtimeTree, ...customTrees] });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
