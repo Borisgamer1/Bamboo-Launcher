@@ -479,22 +479,45 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
 
     if (cancelledRef.current) { console.log('[Cosmetics] loadBlockbenchModel: cancelled'); return; }
 
-    // Try to load from local disk first
-    var jsonPath = 'cosmetics/' + slug + '/model.json';
-    console.log('[Cosmetics] loadBlockbenchModel: trying disk read — path =', jsonPath);
+    // Step 1: Read manifest.json to find the REAL model filename
+    console.log('[Cosmetics] loadBlockbenchModel: Step 1 — reading manifest.json for slug =', slug);
     var jsonContent = '';
     var loadedFromDisk = false;
+    var realModelFile = 'model.json'; // fallback
+    var realTextureFiles = [];
+
+    if (window.electronAPI && window.electronAPI.readCosmeticFile) {
+      try {
+        var manifestPath = 'cosmetics/' + slug + '/manifest.json';
+        var manifestResult = await window.electronAPI.readCosmeticFile(manifestPath);
+        console.log('[Cosmetics] loadBlockbenchModel: manifest read result =', manifestResult ? { success: manifestResult.success, hasData: !!manifestResult.data } : 'null');
+        if (manifestResult && manifestResult.success && manifestResult.data) {
+          var manifest = JSON.parse(manifestResult.data);
+          console.log('[Cosmetics] loadBlockbenchModel: manifest parsed — files:', JSON.stringify(manifest.files), ', modelFile:', manifest.modelFile, ', textureFiles:', JSON.stringify(manifest.textureFiles));
+          if (manifest.modelFile) realModelFile = manifest.modelFile;
+          if (manifest.textureFiles && manifest.textureFiles.length > 0) realTextureFiles = manifest.textureFiles;
+        } else {
+          console.log('[Cosmetics] loadBlockbenchModel: manifest.json NOT on disk — cosmetic may not be installed');
+        }
+      } catch (e) {
+        console.log('[Cosmetics] loadBlockbenchModel: manifest parse error —', e && e.message);
+      }
+    }
+
+    // Step 2: Load model JSON using the REAL filename from manifest
+    var jsonPath = 'cosmetics/' + slug + '/' + realModelFile;
+    console.log('[Cosmetics] loadBlockbenchModel: Step 2 — loading model from REAL filename:', jsonPath);
 
     if (window.electronAPI && window.electronAPI.readCosmeticFile) {
       try {
         var result = await window.electronAPI.readCosmeticFile(jsonPath);
-        console.log('[Cosmetics] loadBlockbenchModel: IPC read result =', result ? { success: result.success, type: result.type, hasData: !!result.data } : 'null');
+        console.log('[Cosmetics] loadBlockbenchModel: model read result =', result ? { success: result.success, type: result.type, hasData: !!result.data } : 'null');
         if (result && result.success && result.data) {
           jsonContent = result.data;
           loadedFromDisk = true;
-          console.log('[Cosmetics] loadBlockbenchModel: model.json LOADED FROM DISK ✓');
+          console.log('[Cosmetics] loadBlockbenchModel: ✓ Model LOADED FROM DISK —', realModelFile);
         } else {
-          console.log('[Cosmetics] loadBlockbenchModel: model.json NOT on disk —', result && result.error);
+          console.log('[Cosmetics] loadBlockbenchModel: ✖ Model NOT on disk —', result && result.error);
         }
       } catch (e) {
         console.log('[Cosmetics] loadBlockbenchModel: IPC error —', e && e.message);
@@ -534,19 +557,30 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
 
     if (cancelledRef.current) return;
 
-    // 1) LOAD TEXTURES FIRST, then build meshes
+    // 1) LOAD TEXTURES using REAL filenames from manifest or model data
     var textures = modelData.textures || [];
     var loadedTextures: Record<string, THREE.Texture | null> = {};
+    console.log('[Cosmetics] loadBlockbenchModel: loading', textures.length, 'textures. realTextureFiles from manifest:', JSON.stringify(realTextureFiles));
 
     for (var ti = 0; ti < textures.length; ti++) {
       if (cancelledRef.current) return;
       var texRef = textures[ti];
       if (texRef && texRef.source) {
+        // Match texture source name to a real filename from the manifest
+        var sourceName = texRef.source;
+        // Match: exact filename or subdirectory path
+        var matchedFile = realTextureFiles.find(function(f) {
+          var fn = f.replace(/\\/g, "/");
+          return fn === sourceName || fn.endsWith("/" + sourceName);
+        });
+        var texPath = matchedFile ? ('cosmetics/' + slug + '/' + matchedFile) : ('cosmetics/' + slug + '/' + sourceName);
+        console.log('[Cosmetics] loadBlockbenchModel: texture ' + ti + ' — source:', sourceName, ', matchedFile:', matchedFile || 'NONE', ', path:', texPath);
         try {
-          var texPath = 'cosmetics/' + slug + '/' + texRef.source;
           var texture = await loadSingleTexture(texPath, cancelledRef);
           loadedTextures[String(ti)] = texture;
+          console.log('[Cosmetics] loadBlockbenchModel: texture ' + ti + ' —' + (texture ? '✓ LOADED' : '✖ FAILED'));
         } catch (e) {
+          console.log('[Cosmetics] loadBlockbenchModel: texture ' + ti + ' — error:', e && e.message);
           loadedTextures[String(ti)] = null;
         }
       }

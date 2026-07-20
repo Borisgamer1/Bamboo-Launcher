@@ -1298,15 +1298,39 @@ ipcMain.handle('save-cosmetic-files', async (_event, { slug, files }) => {
       savedFiles.push(f.fileName);
       console.log('[cosmetics] Saved:', filePath);
     }
-    // Write manifest
+    // Write enhanced manifest with model/texture file info
+    var modelFile = null;
+    var textureFiles = [];
+    for (var fi = 0; fi < files.length; fi++) {
+      var ftype = files[fi].fileType || "other";
+      if (ftype === "model" && !modelFile) modelFile = files[fi].fileName;
+      if (ftype === "texture" || ftype === "icon") textureFiles.push(files[fi].fileName);
+    }
+    // Fallback: if no model file detected by type, use first .json that isnt manifest.json
+    if (!modelFile) {
+      for (var sj = 0; sj < savedFiles.length; sj++) {
+        if (savedFiles[sj].toLowerCase().endsWith(".json") && savedFiles[sj] !== "manifest.json") {
+          modelFile = savedFiles[sj]; break;
+        }
+      }
+    }
+    // Fallback for textures: any .png files not already in textureFiles
+    if (textureFiles.length === 0) {
+      for (var sk = 0; sk < savedFiles.length; sk++) {
+        if (savedFiles[sk].toLowerCase().endsWith(".png")) textureFiles.push(savedFiles[sk]);
+      }
+    }
     var manifest = {
       slug: slug,
       installedAt: Date.now(),
       fileCount: savedFiles.length,
       files: savedFiles,
+      modelFile: modelFile,
+      textureFiles: textureFiles,
     };
     fs.writeFileSync(path.join(cosmeticDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     console.log('[cosmetics] Manifest written for:', slug);
+    console.log('[cosmetics] Manifest — modelFile:', modelFile, ', textureFiles:', JSON.stringify(textureFiles));
     console.log('[cosmetics] save-cosmetic-files: SUCCESS — saved', savedFiles.length, 'files to', cosmeticDir);
     // Verify files actually exist on disk
     if (fs.existsSync(cosmeticDir)) {

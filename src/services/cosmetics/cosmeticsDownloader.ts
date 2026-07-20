@@ -154,11 +154,16 @@ export async function installCosmetic(
         var fileRef = entity.files[fi];
         if (fileRef.filePath) {
           var binaryData = await getAssetData(fileRef.filePath);
+          var fname = fileRef.fileName || fileRef.filePath.split("/").pop();
           if (binaryData) {
+            console.log("[Cosmetics] installCosmetic: ✔ " + fname + " — kind:", fileRef.kind);
             CosmeticFiles.push({
-              fileName: fileRef.fileName || fileRef.filePath.split("/").pop(),
+              fileName: fname,
+              fileType: fileRef.kind || "other",
               data: Array.from(new Uint8Array(binaryData)),
             });
+          } else {
+            console.log("[Cosmetics] installCosmetic: ✖ " + fname + " — NOT in assetDatabase (not downloaded?)");
           }
         }
       }
