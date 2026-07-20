@@ -75,7 +75,7 @@ interface ParticleBackgroundProps {
   showGlow?: boolean;
   /** Custom color for the canvas glow (default blue) */
   glowColor?: string;
-  /** Overlay color for the glow atmosphere effect (default blue #1e40af) */
+  /** Overlay color for the glow atmosphere effect (default blue #080415) */
   glowOverlayColor?: string;
 }
 
@@ -93,8 +93,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   particleFrequency = 40,
   particleDirection = "bottom",
   showGlow = true,
-  glowColor = "#1e40af",
-  glowOverlayColor = "#1e40af",
+  glowColor = "#080415",
+  glowOverlayColor = "#080415",
 }: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
