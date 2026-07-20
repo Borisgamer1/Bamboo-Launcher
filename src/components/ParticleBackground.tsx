@@ -102,8 +102,9 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   useEffect(() => { spriteSizeRef.current = particleSize; }, [particleSize]);
   useEffect(() => { particleCountRef.current = particleFrequency; }, [particleFrequency]);
 
-  // Load particle sprite image
+  // Load particle sprite image with cleanup to prevent stale-image race condition
   useEffect(() => {
+    let cancelled = false;
     if (!particleImage) {
       spriteImgRef.current = null;
       spriteLoadedRef.current = false;
@@ -111,9 +112,10 @@ export const ParticleBackground = React.memo(function ParticleBackground({
     }
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = () => { spriteImgRef.current = img; spriteLoadedRef.current = true; };
-    img.onerror = () => { spriteImgRef.current = null; spriteLoadedRef.current = false; };
+    img.onload = () => { if (!cancelled) { spriteImgRef.current = img; spriteLoadedRef.current = true; } };
+    img.onerror = () => { if (!cancelled) { spriteImgRef.current = null; spriteLoadedRef.current = false; } };
     img.src = particleImage;
+    return () => { cancelled = true; };
   }, [particleImage]);
 
   useEffect(() => {
@@ -225,11 +227,10 @@ export const ParticleBackground = React.memo(function ParticleBackground({
           else ctx.shadowColor = "rgba(34, 197, 94, 0.6)";
           ctx.shadowBlur = p.size * 1.2;
         };
-
         if (p.type === "shape" && useSprite) {
-          // === SPRITE PARTICLE: draw PNG, tint with accent via source-in ===
-          const baseSize = p.size * 5; // base = same as shape particles
-          const sizeFactor = Math.min(spriteSizeRef.current, 32) / 8; // normalize (8=1x) capped at 4x
+          // === SPRITE PARTICLE: fill with accent color, then clip to sprite shape ===
+          const baseSize = p.size * 5;
+          const sizeFactor = Math.min(spriteSizeRef.current, 32) / 8;
           const s = baseSize * sizeFactor + 4;
           const w = sprite.naturalWidth;
           const h = sprite.naturalHeight;
@@ -237,16 +238,16 @@ export const ParticleBackground = React.memo(function ParticleBackground({
           const drawW = s * p.stretchX;
           const drawH = s / ratio * p.stretchY;
 
-          // Draw the sprite
-          ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH);
-
-          // Tint: replace all visible pixels with accent color while preserving alpha
-          ctx.globalCompositeOperation = 'source-in';
+          // 1. Fill the rect with accent color (this is the tinted result)
           ctx.fillStyle = `${p.color}${p.opacity * 0.7})`;
           ctx.fillRect(-drawW / 2, -drawH / 2, drawW, drawH);
+
+          // 2. Clip the fill to the sprite shape using destination-in
+          ctx.globalCompositeOperation = 'destination-in';
+          ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH);
           ctx.globalCompositeOperation = 'source-over';
 
-          // Glow effect behind the sprite
+          // Glow: no shadow for sprites (clean look)
           ctx.shadowColor = 'transparent';
           ctx.shadowBlur = 0;
         } else if (p.type === "shape" && shapes && shapes.length > 0 && p.shapeIdx >= 0) {
