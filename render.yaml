@@ -4,8 +4,8 @@ services:
     runtime: node
     buildCommand: cd server && npm install
     startCommand: cd server && node render-entry.js
-envVars:
-  - key: NODE_VERSION
-    value: 20
-  - key: NODE_ENV
-    value: production
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: NODE_ENV
+        value: production
