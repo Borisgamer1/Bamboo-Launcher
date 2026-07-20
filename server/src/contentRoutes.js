@@ -1594,14 +1594,8 @@ module.exports = function contentRoutes(app, ctx) {
       return res.status(500).json({ error: err.message });
     }
   });
-};
-  // ====================================================================
-  // === GET /api/content/cosmetics/unlock-types =========================
-  // Returns the unlock-type registry the launcher needs.
-  // Phase 5: extend this list to add new types server-side; the launcher
-  // uses DEFAULT_UNLOCK_TYPES as fallback when this endpoint is down.
-  // ====================================================================
-  app.get('/api/content/cosmetics/unlock-types', async (req, res) => {
+
+app.get('/api/content/cosmetics/unlock-types', async (req, res) => {
     try {
       const types = [
         { id: 'playtime_hours',     label: 'Spielzeit (Stunden)',   valueType: 'tree',    unit: 'h',      visualStrategy: 'tree_step',    defaultOp: 'gte', defaultTarget: 5 },
@@ -1666,4 +1660,4 @@ module.exports = function contentRoutes(app, ctx) {
       return res.status(500).json({ error: err.message });
     }
   });
-
+};
