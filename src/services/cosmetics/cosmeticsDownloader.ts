@@ -24,6 +24,7 @@ import {
   emitCosmeticEvent,
   getCosmeticBySlug,
 } from "./cosmeticsDataManager";
+import { API_BASE, getLauncherHeaders } from "../api";
 
 // ===== Constants =====
 
@@ -74,8 +75,6 @@ export async function installCosmetic(
   }
   console.log("[Cosmetics] installCosmetic: Downloading", cosmeticManifestFiles.length, "files");
 
-  const { downloadManager } = await import("../downloadManager");
-
   const progress: CosmeticDownloadProgress = {
     cosmeticId: entity.id,
     status: "downloading",
@@ -86,7 +85,6 @@ export async function installCosmetic(
     startedAt: Date.now(),
   };
   activeJobs.set(entity.id, progress);
-
   emitProgress(progress);
   emitCosmeticEvent({
     type: "status_changed",
@@ -94,34 +92,66 @@ export async function installCosmetic(
     status: "downloading",
   });
 
-  const priority = options.highPriority ? "high" : "normal";
-  const taskIds = downloadManager.enqueueBatch(cosmeticManifestFiles, priority);
+  // ===== Download files DIRECTLY from server API (NOT GitHub CDN) =====
+  // Root Cause Fix: Cosmetic files are stored on the server's filesystem
+  // and served via /api/content/files/:fileId/download — NOT on GitHub CDN.
+  console.log("[Cosmetics] installCosmetic: Starting direct server download for", entity.slug);
+  
+  var { storeAssetData } = await import("../assetDatabase");
+  var downloadedCount = 0;
+  var totalBytesDownloaded = 0;
+  
+  for (var fi = 0; fi < entity.files.length; fi++) {
+    var fileRef = entity.files[fi];
+    if (!fileRef.filePath || !fileRef.id) {
+      console.log("[Cosmetics] installCosmetic: ⊘ skip file #" + fi + " — no filePath or id, fileName=" + (fileRef.fileName || "?"));
+      continue;
+    }
+    
+    progress.currentFile = fileRef.fileName || fileRef.filePath;
+    console.log(`[Cosmetics] installCosmetic: Downloading ${fileRef.fileName} (id=${fileRef.id})`);
+    
+    try {
+      var downloadUrl = API_BASE + '/content/files/' + encodeURIComponent(fileRef.id) + '/download';
+      console.log("[Cosmetics] installCosmetic:   URL:", downloadUrl);
+      
+      var response = await fetch(downloadUrl, { headers: getLauncherHeaders() });
+      
+      if (!response.ok) {
+        console.log("[Cosmetics] installCosmetic:   ✖ Server returned HTTP", response.status, response.statusText);
+        progress.lastError = "HTTP " + response.status + " for " + fileRef.fileName;
+        continue;
+      }
+      
+      var arrayBuf = await response.arrayBuffer();
+      console.log("[Cosmetics] installCosmetic:   ✔ Downloaded", fileRef.fileName, "—", arrayBuf.byteLength, "bytes");
+      
+      // Store in assetDatabase so the save-to-disk section can read it
+      await storeAssetData(fileRef.filePath, arrayBuf);
+      console.log("[Cosmetics] installCosmetic:   ✔ Stored in assetDatabase:", fileRef.filePath);
+      
+      downloadedCount++;
+      totalBytesDownloaded += arrayBuf.byteLength;
+      progress.bytesInstalled = totalBytesDownloaded;
+      if (progress.bytesTotal > 0) {
+        progress.percent = Math.round((progress.bytesInstalled / progress.bytesTotal) * 100);
+      }
+      activeJobs.set(entity.id, progress);
+      emitProgress(progress);
+      options.onProgress?.(progress);
+      
+    } catch (fetchErr) {
+      console.log("[Cosmetics] installCosmetic:   ✖ Fetch error:", fetchErr.message || fetchErr);
+      progress.lastError = String(fetchErr.message || fetchErr);
+    }
+  }
+  
+  console.log("[Cosmetics] installCosmetic: Direct download complete —", downloadedCount, "/", entity.files.length, "files downloaded");
 
-  await waitForTasks(taskIds, (currentFile, bytesDone) => {
-    progress.currentFile = currentFile || "";
-    progress.bytesInstalled = bytesDone;
-    progress.percent =
-      progress.bytesTotal > 0
-        ? Math.round((progress.bytesInstalled / progress.bytesTotal) * 100)
-        : 0;
-    activeJobs.set(entity.id, progress);
-    emitProgress(progress);
-    options.onProgress?.(progress);
-  });
-
-  const tasks = taskIds
-    .map((id) => downloadManager.getTask(id))
-    .filter(
-      (t): t is NonNullable<ReturnType<typeof downloadManager.getTask>> => !!t
-    );
-  const allOk = tasks.every((t) => t.state === "complete");
-
-  if (!allOk) {
-    const failed = tasks.filter((t) => t.state === "failed");
+  // If NO files were downloaded at all, report error
+  if (downloadedCount === 0 && entity.files.length > 0) {
     progress.status = "error";
-    progress.lastError = failed
-      .map((t) => t.error || t.errorType || "unknown")
-      .join("; ");
+    progress.lastError = progress.lastError || "No files could be downloaded — server returned errors for all files";
     progress.finishedAt = Date.now();
     activeJobs.set(entity.id, progress);
     emitProgress(progress);
@@ -132,6 +162,7 @@ export async function installCosmetic(
     });
     return false;
   }
+
 
   progress.status = "installed";
   progress.percent = 100;
