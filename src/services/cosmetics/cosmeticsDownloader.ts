@@ -17,7 +17,7 @@
 //    `addCosmeticListener` from the data manager.
 // ============================================================
 
-import type { ManifestFile, DownloadPriority } from "../assetManifest";
+import type { ManifestFile } from "../assetManifest";
 import type { CosmeticDownloadProgress, CosmeticEntity } from "./types";
 import {
   addCosmeticListener,
@@ -27,7 +27,6 @@ import {
 
 // ===== Constants =====
 
-const COSMETICS_CATEGORY = "cosmetics";
 
 // ===== Internal state =====
 
@@ -69,6 +68,7 @@ export async function installCosmetic(
   var allManifestFiles = buildCosmeticManifestFiles(entity);
   console.log("[Cosmetics] installCosmetic: manifest files =", JSON.stringify(allManifestFiles.map(function(f) { return f.path; })));
   if (allManifestFiles.length === 0) {
+    installingSlugs.delete(entity.slug);
     emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "installed" });
     return true;
   }
@@ -86,71 +86,55 @@ export async function installCosmetic(
   emitProgress(progress);
   emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "downloading" });
 
-  // Download files via downloadManager (uses GitHub CDN)
-  const { downloadManager } = await import("../downloadManager");
-  var priority: DownloadPriority = options.highPriority ? "high" : "normal";
-  var taskIds = downloadManager.enqueueBatch(allManifestFiles, priority);
-  console.log("[Cosmetics] installCosmetic: enqueued", taskIds.length, "tasks");
+  // ===== DIREKTER DOWNLOAD VOM SERVER =====
+  // Kein CDN, kein downloadManager, kein IndexedDB/assetDatabase.
+  // Einfach jede Datei per fetch von /api/content/files/{id}/download holen
+  // und direkt per IPC auf die Platte speichern.
+  var { API_BASE: API, getLauncherHeaders: getHeaders } = await import("../api");
+  var downloadedFiles: Array<{ fileName: string; fileType: string; data: number[] }> = [];
+  var allOk = true;
 
-  await waitForTasks(taskIds, function(currentFile, bytesDone) {
-    progress.currentFile = currentFile || "";
-    progress.bytesInstalled = bytesDone;
-    progress.percent = progress.bytesTotal > 0 ? Math.round((bytesDone / progress.bytesTotal) * 100) : 0;
-    activeJobs.set(entity.id, progress);
-    emitProgress(progress);
-    if (options.onProgress) options.onProgress(progress);
-  });
+  for (var fi = 0; fi < entity.files.length; fi++) {
+    var fileRef = entity.files[fi];
+    if (!fileRef.filePath || !fileRef.id) continue;
 
-
-  // Check if GitHub CDN download was successful
-  var tasks = taskIds.map(function(id) { return downloadManager.getTask(id); }).filter(Boolean);
-  var allOk = tasks.every(function(t) { return t && t.state === "complete"; });
-
-  // If GitHub CDN failed, try direct server API as fallback
-  if (!allOk && entity.files && entity.files.length > 0) {
-    console.log("[Cosmetics] installCosmetic: GitHub CDN failed, trying server API fallback...");
     try {
-      var { API_BASE: API, getLauncherHeaders: getHeaders } = await import("../api");
-      var { storeAssetData: storeData } = await import("../assetDatabase");
-      var fallbackOk = true;
+      progress.currentFile = fileRef.fileName || fileRef.filePath;
+      progress.bytesInstalled = 0;
+      activeJobs.set(entity.id, progress);
+      emitProgress(progress);
 
-      for (var fi = 0; fi < entity.files.length; fi++) {
-        var fileRef = entity.files[fi];
-        if (!fileRef.filePath || !fileRef.id) continue;
+      var url = API + "/content/files/" + encodeURIComponent(fileRef.id) + "/download";
+      console.log("[Cosmetics] installCosmetic: downloading", fileRef.fileName, "from server...");
 
-        try {
-          progress.currentFile = fileRef.fileName || fileRef.filePath;
-          emitProgress(progress);
-          var url = API + "/content/files/" + encodeURIComponent(fileRef.id) + "/download";
-          console.log("[Cosmetics] installCosmetic: fallback fetch —", url);
-          var resp = await fetch(url, { headers: getHeaders() });
-          if (resp.ok) {
-            var buf = await resp.arrayBuffer();
-            await storeData(fileRef.filePath, buf);
-            console.log("[Cosmetics] installCosmetic: ✔ fallback downloaded", fileRef.fileName);
-          } else {
-            console.log("[Cosmetics] installCosmetic: ✖ fallback HTTP", resp.status, "for", fileRef.fileName);
-            fallbackOk = false;
-          }
-        } catch (e) {
-          console.log("[Cosmetics] installCosmetic: ✖ fallback error", e.message);
-          fallbackOk = false;
-        }
-      }
+      var resp = await fetch(url, { headers: getHeaders() });
+      if (resp.ok) {
+        var buf = await resp.arrayBuffer();
+        var bytesDone = buf.byteLength;
+        progress.bytesInstalled += bytesDone;
+        progress.percent = progress.bytesTotal > 0 ? Math.round((progress.bytesInstalled / progress.bytesTotal) * 100) : 0;
+        activeJobs.set(entity.id, progress);
+        emitProgress(progress);
 
-      if (fallbackOk) {
-        allOk = true;
-        console.log("[Cosmetics] installCosmetic: ✔ fallback successful — all files from server");
+        var fname = fileRef.fileName || fileRef.filePath.split("/").pop() || "file";
+        downloadedFiles.push({
+          fileName: fname,
+          fileType: fileRef.kind || "other",
+          data: Array.from(new Uint8Array(buf)),
+        });
+        console.log("[Cosmetics] installCosmetic: ✔", fname, "(", bytesDone, "bytes )");
       } else {
-        console.log("[Cosmetics] installCosmetic: ✖ fallback also failed");
+        console.warn("[Cosmetics] installCosmetic: ✖ HTTP", resp.status, "for", fileRef.fileName);
+        allOk = false;
       }
     } catch (e) {
-      console.log("[Cosmetics] installCosmetic: fallback import error", e.message);
+      console.warn("[Cosmetics] installCosmetic: ✖ error", fileRef.fileName, ":", e.message);
+      allOk = false;
     }
   }
 
-  if (!allOk) {
-    console.log("[Cosmetics] installCosmetic: some downloads failed for", entity.slug);
+  if (!allOk || downloadedFiles.length === 0) {
+    console.log("[Cosmetics] installCosmetic: FAILED for", entity.slug);
     progress.status = "error";
     progress.lastError = "Download failed for one or more files";
     progress.finishedAt = Date.now();
@@ -161,35 +145,20 @@ export async function installCosmetic(
     return false;
   }
 
-  // Save to disk via IPC
+  // Save to disk via IPC (direkt, ohne assetDatabase/IndexedDB)
   try {
-    var { getAssetData } = await import("../assetDatabase");
     if (typeof window !== "undefined" && window.electronAPI?.saveCosmeticFiles) {
-      var cosmeticsFiles = [];
-      for (var fi = 0; fi < entity.files.length; fi++) {
-        var fileRef = entity.files[fi];
-        if (fileRef.filePath) {
-          var binaryData = await getAssetData(fileRef.filePath);
-          var fname = fileRef.fileName || fileRef.filePath.split("/").pop();
-          if (binaryData) {
-            console.log("[Cosmetics] installCosmetic: ✔ " + fname + " — kind:", fileRef.kind);
-            cosmeticsFiles.push({
-              fileName: fname,
-              fileType: fileRef.kind || "other",
-              data: Array.from(new Uint8Array(binaryData)),
-            });
-          } else {
-            console.log("[Cosmetics] installCosmetic: ✖ " + fname + " — NOT in assetDatabase");
-          }
-        }
+      var result = await window.electronAPI.saveCosmeticFiles({ slug: entity.slug, files: downloadedFiles });
+      if (result && result.success) {
+        console.log("[Cosmetics] installCosmetic: ✔ saved", downloadedFiles.length, "files to", result.path);
+      } else {
+        console.warn("[Cosmetics] installCosmetic: ✖ save returned:", result);
       }
-      if (cosmeticsFiles.length > 0) {
-        await window.electronAPI.saveCosmeticFiles({ slug: entity.slug, files: cosmeticsFiles });
-        console.log("[Cosmetics] Saved", cosmeticsFiles.length, "files to disk for", entity.slug);
-      }
+    } else {
+      console.warn("[Cosmetics] installCosmetic: ✖ no electronAPI.saveCosmeticFiles available");
     }
   } catch (e) {
-    console.warn("[Cosmetics] Could not save files to disk:", e);
+    console.warn("[Cosmetics] installCosmetic: ✖ save error:", e.message);
   }
 
   progress.status = "installed";
@@ -201,7 +170,7 @@ export async function installCosmetic(
   emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "installed" });
 
   installingSlugs.delete(entity.slug);
-  console.log("[Cosmetics] installCosmetic: done —", entity.slug);
+  console.log("[Cosmetics] installCosmetic: ✔ done —", entity.slug);
   return true;
 }
 
@@ -325,40 +294,3 @@ function emitProgress(progress: CosmeticDownloadProgress): void {
 
 // ===== Helpers =====
 
-function filterToCosmetics(files: ManifestFile[]): ManifestFile[] {
-  return files.filter((f) => f.path.startsWith(COSMETICS_CATEGORY + "/"));
-}
-
-async function waitForTasks(
-  taskIds: string[],
-  onTick: (currentFile: string | undefined, bytesDone: number) => void,
-  timeoutMs: number = 120000
-): Promise<void> {
-  const { downloadManager } = await import("../downloadManager");
-  return new Promise<void>((resolve) => {
-    const timeout = setTimeout(() => {
-      console.log("[Cosmetics] waitForTasks: TIMEOUT after", timeoutMs, "ms — resolving anyway");
-      resolve();
-    }, timeoutMs);
-    const poll = (): void => {
-      const tasks = taskIds
-        .map((id) => downloadManager.getTask(id))
-        .filter(
-          (t): t is NonNullable<ReturnType<typeof downloadManager.getTask>> => !!t
-        );
-      const running = tasks.find((t) => t.state === "downloading");
-      const bytesDone = tasks.reduce((sum, t) => sum + (t.bytesDownloaded ?? 0), 0);
-      const terminal = tasks.every(
-        (t) => t.state === "complete" || t.state === "failed" || t.state === "cancelled"
-      );
-      onTick(running?.file.path, bytesDone);
-      if (!downloadManager.isRunning && terminal) {
-        clearTimeout(timeout);
-        resolve();
-        return;
-      }
-      setTimeout(poll, 250);
-    };
-    poll();
-  });
-}
