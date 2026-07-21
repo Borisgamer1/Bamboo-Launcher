@@ -17,7 +17,7 @@
 //    `addCosmeticListener` from the data manager.
 // ============================================================
 
-import type { ManifestFile } from "../assetManifest";
+import type { ManifestFile, DownloadPriority } from "../assetManifest";
 import type { CosmeticDownloadProgress, CosmeticEntity } from "./types";
 import {
   addCosmeticListener,
@@ -60,6 +60,12 @@ export async function installCosmetic(
   } = {}
 ): Promise<boolean> {
   console.log("[Cosmetics] installCosmetic: starting —", entity.slug);
+  installingSlugs.delete(entity.slug); // Clean up any stale lock from a previous crash
+  if (installingSlugs.has(entity.slug)) {
+    console.log("[Cosmetics] installCosmetic: already installing, skipping —", entity.slug);
+    return false;
+  }
+  installingSlugs.add(entity.slug);
   var allManifestFiles = buildCosmeticManifestFiles(entity);
   console.log("[Cosmetics] installCosmetic: manifest files =", JSON.stringify(allManifestFiles.map(function(f) { return f.path; })));
   if (allManifestFiles.length === 0) {
@@ -82,8 +88,8 @@ export async function installCosmetic(
 
   // Download files via downloadManager (uses GitHub CDN)
   const { downloadManager } = await import("../downloadManager");
-  var priority = options.highPriority ? "high" : "normal";
-  var taskIds = downloadManager.enqueueBatch(allManifestFiles, priority as import("../assetManifest").DownloadPriority);
+  var priority: DownloadPriority = options.highPriority ? "high" : "normal";
+  var taskIds = downloadManager.enqueueBatch(allManifestFiles, priority);
   console.log("[Cosmetics] installCosmetic: enqueued", taskIds.length, "tasks");
 
   await waitForTasks(taskIds, function(currentFile, bytesDone) {
@@ -95,7 +101,52 @@ export async function installCosmetic(
     if (options.onProgress) options.onProgress(progress);
   });
 
-  // Check results
+
+  // If GitHub CDN download failed, try direct server API as fallback
+  if (!allOk && entity.files && entity.files.length > 0) {
+    console.log("[Cosmetics] installCosmetic: GitHub CDN failed, trying server API fallback...");
+    try {
+      var { API_BASE: API, getLauncherHeaders: getHeaders } = await import("../api");
+      var { storeAssetData: storeData } = await import("../assetDatabase");
+      var fallbackOk = true;
+
+      for (var fi = 0; fi < entity.files.length; fi++) {
+        var fileRef = entity.files[fi];
+        if (!fileRef.filePath || !fileRef.id) continue;
+
+        try {
+          progress.currentFile = fileRef.fileName || fileRef.filePath;
+          emitProgress(progress);
+          var url = API + "/content/files/" + encodeURIComponent(fileRef.id) + "/download";
+          console.log("[Cosmetics] installCosmetic: fallback fetch —", url);
+          var resp = await fetch(url, { headers: getHeaders() });
+          if (resp.ok) {
+            var buf = await resp.arrayBuffer();
+            await storeData(fileRef.filePath, buf);
+            console.log("[Cosmetics] installCosmetic: ✔ fallback downloaded", fileRef.fileName);
+          } else {
+            console.log("[Cosmetics] installCosmetic: ✖ fallback HTTP", resp.status, "for", fileRef.fileName);
+            fallbackOk = false;
+          }
+        } catch (e) {
+          console.log("[Cosmetics] installCosmetic: ✖ fallback error", e.message);
+          fallbackOk = false;
+        }
+      }
+
+      if (fallbackOk) {
+        allOk = true;
+        console.log("[Cosmetics] installCosmetic: ✔ fallback successful — all files from server");
+      } else {
+        console.log("[Cosmetics] installCosmetic: ✖ fallback also failed");
+      }
+    } catch (e) {
+      console.log("[Cosmetics] installCosmetic: fallback import error", e.message);
+    }
+  }
+
+
+    // Check results
   var tasks = taskIds.map(function(id) { return downloadManager.getTask(id); }).filter(Boolean);
   var allOk = tasks.every(function(t) { return t && t.state === "complete"; });
 
@@ -106,6 +157,7 @@ export async function installCosmetic(
     progress.finishedAt = Date.now();
     activeJobs.set(entity.id, progress);
     emitProgress(progress);
+    installingSlugs.delete(entity.slug);
     emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "error" });
     return false;
   }
@@ -149,6 +201,7 @@ export async function installCosmetic(
   emitProgress(progress);
   emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "installed" });
 
+  installingSlugs.delete(entity.slug);
   console.log("[Cosmetics] installCosmetic: done —", entity.slug);
   return true;
 }
@@ -158,7 +211,6 @@ export async function installCosmetic(
 
 export async function downloadAllMissingCosmetics(): Promise<{ downloaded: number; failed: number }> {
   console.log("[Cosmetics] downloadAllMissingCosmetics: checking all cosmetics...");
-  installingSlugs.clear();
   var { getAllCosmetics } = await import("./cosmeticsDataManager");
   var all = getAllCosmetics();
   var downloaded = 0;
