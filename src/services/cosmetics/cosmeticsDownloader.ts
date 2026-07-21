@@ -208,10 +208,15 @@ export async function installCosmetic(
 
 
 
-export async function downloadAllMissingCosmetics(): Promise<{ downloaded: number; failed: number }> {
+export async function downloadAllMissingCosmetics(
+  entities?: CosmeticEntity[]
+): Promise<{ downloaded: number; failed: number }> {
   console.log("[Cosmetics] downloadAllMissingCosmetics: checking all cosmetics...");
-  var { getAllCosmetics } = await import("./cosmeticsDataManager");
-  var all = getAllCosmetics();
+  var all = entities;
+  if (!all) {
+    var { getAllCosmetics } = await import("./cosmeticsDataManager");
+    all = getAllCosmetics();
+  }
   var downloaded = 0;
   var failed = 0;
 

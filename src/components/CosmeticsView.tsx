@@ -175,11 +175,14 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
   const [cardVMs, setCardVMs] = useState<CosmeticCardViewModel[]>([]);
   const [installJobs, setInstallJobs] = useState<Record<string, CosmeticDownloadProgress>>({});
 
-  const buildCards = useCallback(async () => {
+  const buildCards = useCallback(async (entities?: CosmeticEntity[]) => {
     try {
       const ctx = progressProvider.toContext();
-      const { getAllCosmetics } = await import("../services/cosmetics");
-      const ents = getAllCosmetics();
+      var ents = entities;
+      if (!ents) {
+        const { getAllCosmetics } = await import("../services/cosmetics");
+        ents = getAllCosmetics();
+      }
       const vms = await buildCosmeticCardViewModels(ents, ctx);
       setCardVMs(vms);
     } catch (err) {
@@ -188,7 +191,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
   }, []);
 
   useEffect(() => {
-    if (!loadingCosmetics && cosmetics.length) buildCards();
+    if (!loadingCosmetics && cosmetics.length) buildCards(cosmetics);
   }, [loadingCosmetics, cosmetics, buildCards]);
 
   useEffect(() => {
@@ -228,17 +231,17 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     (async function() {
       try {
         var { downloadAllMissingCosmetics } = await import("../services/cosmetics/cosmeticsDownloader");
-        var result = await downloadAllMissingCosmetics();
+        var result = await downloadAllMissingCosmetics(cosmetics);
         if (!cancelled) {
           console.log("[Cosmetics] Auto-download complete:", result.downloaded, "downloaded,", result.failed, "failed");
-          if (typeof buildCards === "function") buildCards();
+          if (typeof buildCards === "function") buildCards(cosmetics);
         }
       } catch (e) {
         if (!cancelled) console.warn("[Cosmetics] Auto-download error:", e);
       }
     })();
     return function() { cancelled = true; };
-  }, [buildCards, cardVMs.length]); // depends on buildCards + cardVMs to avoid stale closure + timing gap
+  }, [buildCards, cardVMs.length, cosmetics]);
 
   const handleInstall = useCallback(async (card: CosmeticCardViewModel) => {
     const { getCosmeticById } = await import("../services/cosmetics");
