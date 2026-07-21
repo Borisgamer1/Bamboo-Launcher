@@ -2196,6 +2196,13 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  // DevTools mit F12 oder Strg+Umschalt+I oeffnen (funktioniert IMMER)
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i') || (input.meta && input.alt && input.key.toLowerCase() === 'i')) {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
+
   mainWindow.loadURL('http://localhost:5173').catch(() => {
     mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
   });
