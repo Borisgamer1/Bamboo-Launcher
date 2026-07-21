@@ -32,6 +32,7 @@ const COSMETICS_CATEGORY = "cosmetics";
 // ===== Internal state =====
 
 const activeJobs = new Map<string, CosmeticDownloadProgress>();
+const installingSlugs = new Set<string>();
 
 // ===== Manifest entry builder =====
 
@@ -58,13 +59,147 @@ export async function installCosmetic(
     highPriority?: boolean;
   } = {}
 ): Promise<boolean> {
-  console.log("[Cosmetics] installCosmetic: stub —", entity.slug, "(pipeline removed, cosmetic display works via server API)");
-  emitCosmeticEvent({
-    type: "status_changed",
-    slug: entity.slug,
-    status: "installed",
+  console.log("[Cosmetics] installCosmetic: starting —", entity.slug);
+  var allManifestFiles = buildCosmeticManifestFiles(entity);
+  console.log("[Cosmetics] installCosmetic: manifest files =", JSON.stringify(allManifestFiles.map(function(f) { return f.path; })));
+  if (allManifestFiles.length === 0) {
+    emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "installed" });
+    return true;
+  }
+
+  const progress: CosmeticDownloadProgress = {
+    cosmeticId: entity.id,
+    status: "downloading",
+    bytesInstalled: 0,
+    bytesTotal: computeCosmeticBytes(entity),
+    percent: 0,
+    currentFile: "",
+    startedAt: Date.now(),
+  };
+  activeJobs.set(entity.id, progress);
+  emitProgress(progress);
+  emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "downloading" });
+
+  // Download files via downloadManager (uses GitHub CDN)
+  const { downloadManager } = await import("../downloadManager");
+  var priority = options.highPriority ? "high" : "normal";
+  var taskIds = downloadManager.enqueueBatch(allManifestFiles, priority as import("../assetManifest").DownloadPriority);
+  console.log("[Cosmetics] installCosmetic: enqueued", taskIds.length, "tasks");
+
+  await waitForTasks(taskIds, function(currentFile, bytesDone) {
+    progress.currentFile = currentFile || "";
+    progress.bytesInstalled = bytesDone;
+    progress.percent = progress.bytesTotal > 0 ? Math.round((bytesDone / progress.bytesTotal) * 100) : 0;
+    activeJobs.set(entity.id, progress);
+    emitProgress(progress);
+    if (options.onProgress) options.onProgress(progress);
   });
+
+  // Check results
+  var tasks = taskIds.map(function(id) { return downloadManager.getTask(id); }).filter(Boolean);
+  var allOk = tasks.every(function(t) { return t && t.state === "complete"; });
+
+  if (!allOk) {
+    console.log("[Cosmetics] installCosmetic: some downloads failed for", entity.slug);
+    progress.status = "error";
+    progress.lastError = "Download failed for one or more files";
+    progress.finishedAt = Date.now();
+    activeJobs.set(entity.id, progress);
+    emitProgress(progress);
+    emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "error" });
+    return false;
+  }
+
+  // Save to disk via IPC
+  try {
+    var { getAssetData } = await import("../assetDatabase");
+    if (typeof window !== "undefined" && window.electronAPI?.saveCosmeticFiles) {
+      var cosmeticsFiles = [];
+      for (var fi = 0; fi < entity.files.length; fi++) {
+        var fileRef = entity.files[fi];
+        if (fileRef.filePath) {
+          var binaryData = await getAssetData(fileRef.filePath);
+          var fname = fileRef.fileName || fileRef.filePath.split("/").pop();
+          if (binaryData) {
+            console.log("[Cosmetics] installCosmetic: ✔ " + fname + " — kind:", fileRef.kind);
+            cosmeticsFiles.push({
+              fileName: fname,
+              fileType: fileRef.kind || "other",
+              data: Array.from(new Uint8Array(binaryData)),
+            });
+          } else {
+            console.log("[Cosmetics] installCosmetic: ✖ " + fname + " — NOT in assetDatabase");
+          }
+        }
+      }
+      if (cosmeticsFiles.length > 0) {
+        await window.electronAPI.saveCosmeticFiles({ slug: entity.slug, files: cosmeticsFiles });
+        console.log("[Cosmetics] Saved", cosmeticsFiles.length, "files to disk for", entity.slug);
+      }
+    }
+  } catch (e) {
+    console.warn("[Cosmetics] Could not save files to disk:", e);
+  }
+
+  progress.status = "installed";
+  progress.percent = 100;
+  progress.bytesInstalled = progress.bytesTotal;
+  progress.finishedAt = Date.now();
+  activeJobs.set(entity.id, progress);
+  emitProgress(progress);
+  emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "installed" });
+
+  console.log("[Cosmetics] installCosmetic: done —", entity.slug);
   return true;
+}
+
+
+
+
+export async function downloadAllMissingCosmetics(): Promise<{ downloaded: number; failed: number }> {
+  console.log("[Cosmetics] downloadAllMissingCosmetics: checking all cosmetics...");
+  installingSlugs.clear();
+  var { getAllCosmetics } = await import("./cosmeticsDataManager");
+  var all = getAllCosmetics();
+  var downloaded = 0;
+  var failed = 0;
+
+  for (var i = 0; i < all.length; i++) {
+    var ent = all[i];
+    if (!ent || !ent.slug) continue;
+
+    // Check if already installed on disk
+    var isInstalled = false;
+    try {
+      if (typeof window !== "undefined" && window.electronAPI?.readCosmeticFile) {
+        var result = await window.electronAPI.readCosmeticFile("cosmetics/" + ent.slug + "/manifest.json");
+        if (result && result.success) {
+          var parsed = JSON.parse(result.data);
+          if (parsed && parsed.modelFile) {
+            isInstalled = true;
+            console.log("[Cosmetics] downloadAllMissing: ✔ " + ent.slug + " already installed");
+          }
+        }
+      }
+    } catch (e) {
+      // Not installed, continue to download
+    }
+
+    if (!isInstalled) {
+      console.log("[Cosmetics] downloadAllMissing: downloading " + ent.slug + "...");
+      try {
+        var ok = await installCosmetic(ent);
+        if (ok) { downloaded++; }
+        else { failed++; }
+      } catch (e) {
+        console.warn("[Cosmetics] downloadAllMissing: error for", ent.slug, e);
+        failed++;
+      }
+    }
+  }
+
+  console.log("[Cosmetics] downloadAllMissing: done —", downloaded, "downloaded,", failed, "failed");
+  return { downloaded, failed };
 }
 
 export async function uninstallCosmetic(

@@ -221,6 +221,25 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     return () => { unsub(); };
   }, [buildCards]);
 
+  
+  // Auto-download all missing cosmetics when tab is opened
+  useEffect(() => {
+    var cancelled = false;
+    (async function() {
+      try {
+        var { downloadAllMissingCosmetics } = await import("../services/cosmetics/cosmeticsDownloader");
+        var result = await downloadAllMissingCosmetics();
+        if (!cancelled) {
+          console.log("[Cosmetics] Auto-download complete:", result.downloaded, "downloaded,", result.failed, "failed");
+          if (typeof buildCards === "function") buildCards();
+        }
+      } catch (e) {
+        if (!cancelled) console.warn("[Cosmetics] Auto-download error:", e);
+      }
+    })();
+    return function() { cancelled = true; };
+  }, [buildCards, cardVMs.length]); // depends on buildCards + cardVMs to avoid stale closure + timing gap
+
   const handleInstall = useCallback(async (card: CosmeticCardViewModel) => {
     const { getCosmeticById } = await import("../services/cosmetics");
     const ent = getCosmeticById(card.id);
