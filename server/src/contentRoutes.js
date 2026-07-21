@@ -1243,7 +1243,7 @@ module.exports = function contentRoutes(app, ctx) {
     try {
       if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
       const fileId = req.params.fileId;
-      if (isNaN(fileId)) return res.status(400).json({ error: 'Invalid file ID' });
+      if (!fileId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fileId)) return res.status(400).json({ error: 'Invalid file ID: expected UUID' });
       const files = await pool.query('SELECT * FROM asset_files WHERE id = $1', [fileId]);
       if (!files.rows.length) return res.status(404).json({ error: 'File not found in database' });
       var frow = files.rows[0];
