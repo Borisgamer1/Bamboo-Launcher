@@ -1242,7 +1242,7 @@ module.exports = function contentRoutes(app, ctx) {
   app.get('/api/content/files/:fileId/download', async (req, res) => {
     try {
       if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-      const fileId = parseInt(req.params.fileId, 10);
+      const fileId = req.params.fileId;
       if (isNaN(fileId)) return res.status(400).json({ error: 'Invalid file ID' });
       const files = await pool.query('SELECT * FROM asset_files WHERE id = $1', [fileId]);
       if (!files.rows.length) return res.status(404).json({ error: 'File not found in database' });
