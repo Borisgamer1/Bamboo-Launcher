@@ -60,7 +60,7 @@ export async function installCosmetic(
   } = {}
 ): Promise<boolean> {
   console.log("[Cosmetics] installCosmetic: starting —", entity.slug);
-  installingSlugs.delete(entity.slug); // Clean up any stale lock from a previous crash
+  // Prevent parallel downloads of the same cosmetic
   if (installingSlugs.has(entity.slug)) {
     console.log("[Cosmetics] installCosmetic: already installing, skipping —", entity.slug);
     return false;
@@ -331,10 +331,15 @@ function filterToCosmetics(files: ManifestFile[]): ManifestFile[] {
 
 async function waitForTasks(
   taskIds: string[],
-  onTick: (currentFile: string | undefined, bytesDone: number) => void
+  onTick: (currentFile: string | undefined, bytesDone: number) => void,
+  timeoutMs: number = 120000
 ): Promise<void> {
   const { downloadManager } = await import("../downloadManager");
   return new Promise<void>((resolve) => {
+    const timeout = setTimeout(() => {
+      console.log("[Cosmetics] waitForTasks: TIMEOUT after", timeoutMs, "ms — resolving anyway");
+      resolve();
+    }, timeoutMs);
     const poll = (): void => {
       const tasks = taskIds
         .map((id) => downloadManager.getTask(id))
@@ -348,6 +353,7 @@ async function waitForTasks(
       );
       onTick(running?.file.path, bytesDone);
       if (!downloadManager.isRunning && terminal) {
+        clearTimeout(timeout);
         resolve();
         return;
       }
