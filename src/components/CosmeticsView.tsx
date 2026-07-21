@@ -433,11 +433,18 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     // Cancel previous load
     blockbenchCancelledRef.current = false;
 
-    // Load Blockbench model from disk or server
-    blockbenchCancelledRef.current = false;
-    loadBlockbenchModel(slug, viewer, blockbenchGroupRef, blockbenchCancelledRef, loadedBlockbenchRef, 0).catch(function(err) {
-      console.warn('[Cosmetics] Blockbench model load failed:', err);
-    });
+    // Load Blockbench model from disk or server (only for types that have 3D models)
+    // Types that DON'T need 3D models: rank (badge/title only)
+    var NON_MODEL_TYPES = ["rank"];
+    if (cosmetic.type && NON_MODEL_TYPES.indexOf(cosmetic.type) === -1) {
+      blockbenchCancelledRef.current = false;
+      loadBlockbenchModel(slug, viewer, blockbenchGroupRef, blockbenchCancelledRef, loadedBlockbenchRef, 0).catch(function(err) {
+        console.warn('[Cosmetics] Blockbench model load failed:', err);
+      });
+    } else {
+      console.log('[Cosmetics] Skipping 3D model load — type "' + cosmetic.type + '" has no 3D model');
+      clearBlockbenchModel(viewer, blockbenchGroupRef);
+    }
 
   } catch(e) { console.error('[Cosmetics] 3D effect CRASHED:', e && e.message); }
   }, [selectedCosmetics, cosmetics]);
@@ -483,7 +490,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     console.log('[Cosmetics] loadBlockbenchModel: Step 1 — reading manifest.json for slug =', slug);
     var jsonContent = '';
     var loadedFromDisk = false;
-    var realModelFile = 'model.json'; // fallback
+    var realModelFile = null; // will be determined from manifest OR server — NEVER hardcode model.json
     var realTextureFiles = [];
 
     if (window.electronAPI && window.electronAPI.readCosmeticFile) {
@@ -504,27 +511,29 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
       }
     }
 
-    // Step 2: Load model JSON using the REAL filename from manifest
-    var jsonPath = 'cosmetics/' + slug + '/' + realModelFile;
-    console.log('[Cosmetics] loadBlockbenchModel: Step 2 — loading model from REAL filename:', jsonPath);
+    // Step 2: Load model JSON — use REAL filename from manifest if available, else skip disk attempt
+    if (realModelFile) {
+      var jsonPath = 'cosmetics/' + slug + '/' + realModelFile;
+      console.log('[Cosmetics] loadBlockbenchModel: Step 2 — loading model from REAL filename:', jsonPath);
 
-    if (window.electronAPI && window.electronAPI.readCosmeticFile) {
-      try {
-        var result = await window.electronAPI.readCosmeticFile(jsonPath);
-        console.log('[Cosmetics] loadBlockbenchModel: model read result =', result ? { success: result.success, type: result.type, hasData: !!result.data } : 'null');
-        if (result && result.success && result.data) {
-          jsonContent = result.data;
-          loadedFromDisk = true;
-          console.log('[Cosmetics] loadBlockbenchModel: ✓ Model LOADED FROM DISK —', realModelFile);
-        } else {
-          console.log('[Cosmetics] loadBlockbenchModel: ✖ Model NOT on disk —', result && result.error);
-        }
-      } catch (e) {
+      if (window.electronAPI && window.electronAPI.readCosmeticFile) {
+        try {
+          var result = await window.electronAPI.readCosmeticFile(jsonPath);
+          console.log('[Cosmetics] loadBlockbenchModel: model read result =', result ? { success: result.success, type: result.type, hasData: !!result.data } : 'null');
+          if (result && result.success && result.data) {
+            jsonContent = result.data;
+            loadedFromDisk = true;
+            console.log('[Cosmetics] loadBlockbenchModel: ✓ Model LOADED FROM DISK —', realModelFile);
+          } else {
+            console.log('[Cosmetics] loadBlockbenchModel: ✖ Model NOT on disk —', result && result.error);
+          }
+        } catch (e) {
         console.log('[Cosmetics] loadBlockbenchModel: IPC error —', e && e.message);
       }
     } else {
       console.log('[Cosmetics] loadBlockbenchModel: readCosmeticFile not available on window.electronAPI');
     }
+    }  // closes if (realModelFile)
 
     if (cancelledRef.current) return;
 

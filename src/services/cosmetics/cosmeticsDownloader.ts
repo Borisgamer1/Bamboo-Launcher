@@ -73,6 +73,33 @@ export async function installCosmetic(
     });
     return true;
   }
+
+  // CHECK: Is this cosmetic already installed on disk?
+  try {
+    if (typeof window !== "undefined" && window.electronAPI?.readCosmeticFile) {
+      var existingManifest = await window.electronAPI.readCosmeticFile('cosmetics/' + entity.slug + '/manifest.json');
+      console.log("[Cosmetics] installCosmetic: checking if already installed —", existingManifest?.success ? "MANIFEST FOUND" : "NOT FOUND");
+      if (existingManifest && existingManifest.success) {
+        try {
+          var parsed = JSON.parse(existingManifest.data);
+          if (parsed.modelFile || (parsed.files && parsed.files.length > 0)) {
+            console.log("[Cosmetics] installCosmetic: ✔ ALREADY INSTALLED — modelFile:", parsed.modelFile, ", fileCount:", parsed.fileCount);
+            emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "installed" });
+            return true;
+          }
+        } catch(parseErr) {
+          console.log("[Cosmetics] installCosmetic: manifest parse failed, will re-download —", parseErr && parseErr.message);
+        }
+      } else {
+        console.log("[Cosmetics] installCosmetic: NOT installed on disk — will download", entity.slug);
+      }
+    } else {
+      console.log("[Cosmetics] installCosmetic: no electronAPI access, cannot check disk");
+    }
+  } catch(checkErr) {
+    console.log("[Cosmetics] installCosmetic: Could not check disk — will download:", checkErr && checkErr.message);
+  }
+
   console.log("[Cosmetics] installCosmetic: Downloading", cosmeticManifestFiles.length, "files");
 
   const progress: CosmeticDownloadProgress = {
