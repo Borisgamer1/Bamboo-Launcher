@@ -102,7 +102,11 @@ export async function installCosmetic(
   });
 
 
-  // If GitHub CDN download failed, try direct server API as fallback
+  // Check if GitHub CDN download was successful
+  var tasks = taskIds.map(function(id) { return downloadManager.getTask(id); }).filter(Boolean);
+  var allOk = tasks.every(function(t) { return t && t.state === "complete"; });
+
+  // If GitHub CDN failed, try direct server API as fallback
   if (!allOk && entity.files && entity.files.length > 0) {
     console.log("[Cosmetics] installCosmetic: GitHub CDN failed, trying server API fallback...");
     try {
@@ -144,11 +148,6 @@ export async function installCosmetic(
       console.log("[Cosmetics] installCosmetic: fallback import error", e.message);
     }
   }
-
-
-    // Check results
-  var tasks = taskIds.map(function(id) { return downloadManager.getTask(id); }).filter(Boolean);
-  var allOk = tasks.every(function(t) { return t && t.state === "complete"; });
 
   if (!allOk) {
     console.log("[Cosmetics] installCosmetic: some downloads failed for", entity.slug);
