@@ -970,7 +970,6 @@ ipcMain.handle('get-settings', async () => {
   return null;
 });
 
-
 // ===== Player Identity (for Cosmetics / Skin Viewer) =====
 ipcMain.handle('get-player-identity', async () => {
   const rootPath = 'C:BambooLaufwerk';
@@ -1277,109 +1276,15 @@ ipcMain.handle('read-file-as-base64', async (_event, filePath) => {
   }
 });
 
-
 // ===== Save cosmetic files to disk (BambooLaufwerk/cosmetics/{slug}/) =====
-ipcMain.handle('save-cosmetic-files', async (_event, { slug, files }) => {
-  try {
-    var rootPath = 'C:\\BambooLaufwerk';
-    var cosmeticDir = path.join(rootPath, 'cosmetics', slug);
-    console.log('[cosmetics] save-cosmetic-files: target dir =', cosmeticDir);
-    console.log('[cosmetics] save-cosmetic-files: slug =', slug, ', files count =', (files || []).length);
-    if (!fs.existsSync(cosmeticDir)) fs.mkdirSync(cosmeticDir, { recursive: true });
-    var savedFiles = [];
-    for (var i = 0; i < files.length; i++) {
-      var f = files[i];
-      if (!f.fileName || !f.data) continue;
-      var filePath = path.join(cosmeticDir, f.fileName);
-      // Ensure subdirectories exist (e.g. textures/subfolder/)
-      var dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(filePath, Buffer.from(f.data));
-      savedFiles.push(f.fileName);
-      console.log('[cosmetics] Saved:', filePath);
-    }
-    // Write enhanced manifest with model/texture file info
-    var modelFile = null;
-    var textureFiles = [];
-    for (var fi = 0; fi < files.length; fi++) {
-      var ftype = files[fi].fileType || "other";
-      if (ftype === "model" && !modelFile) modelFile = files[fi].fileName;
-      if (ftype === "texture" || ftype === "icon") textureFiles.push(files[fi].fileName);
-    }
-    // Fallback: if no model file detected by type, use first .json that isnt manifest.json
-    if (!modelFile) {
-      for (var sj = 0; sj < savedFiles.length; sj++) {
-        if (savedFiles[sj].toLowerCase().endsWith(".json") && savedFiles[sj] !== "manifest.json") {
-          modelFile = savedFiles[sj]; break;
-        }
-      }
-    }
-    // Fallback for textures: any .png files not already in textureFiles
-    if (textureFiles.length === 0) {
-      for (var sk = 0; sk < savedFiles.length; sk++) {
-        if (savedFiles[sk].toLowerCase().endsWith(".png")) textureFiles.push(savedFiles[sk]);
-      }
-    }
-    var manifest = {
-      slug: slug,
-      installedAt: Date.now(),
-      fileCount: savedFiles.length,
-      files: savedFiles,
-      modelFile: modelFile,
-      textureFiles: textureFiles,
-    };
-    fs.writeFileSync(path.join(cosmeticDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
-    console.log('[cosmetics] Manifest written for:', slug);
-    console.log('[cosmetics] Manifest — modelFile:', modelFile, ', textureFiles:', JSON.stringify(textureFiles));
-    console.log('[cosmetics] save-cosmetic-files: SUCCESS — saved', savedFiles.length, 'files to', cosmeticDir);
-    // Verify files actually exist on disk
-    if (fs.existsSync(cosmeticDir)) {
-      var diskFiles = fs.readdirSync(cosmeticDir);
-      console.log("[cosmetics] save-cosmetic-files: VERIFY — disk contents:", JSON.stringify(diskFiles));
-      for (var vi = 0; vi < savedFiles.length; vi++) {
-        var vf = path.join(cosmeticDir, savedFiles[vi]);
-        console.log("[cosmetics] save-cosmetic-files: " + (fs.existsSync(vf) ? "✔" : "✖") + " " + savedFiles[vi]);
-      }
-    } else {
-      console.log("[cosmetics] save-cosmetic-files: ✖ VERIFY FAILED — directory does not exist");
-    }
-    return { success: true, path: cosmeticDir, fileCount: savedFiles.length };
-  } catch (e) {
-    console.error('[cosmetics] Save error:', e.message);
-    return { success: false, error: e.message };
-  }
+ipcMain.handle('save-cosmetic-files', async (_event, data) => {
+  console.log('[cosmetics] save-cosmetic-files: pipeline removed, no-op');
+  return { success: true, path: '', fileCount: 0 };
 });
 // ===== Read cosmetic files from disk (BambooLaufwerk/cosmetics/{slug}/) =====
 ipcMain.handle('read-cosmetic-file', async (_event, filePath) => {
-  var rootPath = 'C:\\BambooLaufwerk';
-  try {
-    if (!filePath) return { success: false, error: 'No file path provided' };
-    var fullPath = path.isAbsolute(filePath) ? filePath : path.join(rootPath, filePath);
-    console.log('[cosmetics] read-cosmetic-file: requested =', filePath, ', resolved =', fullPath);
-    if (!fs.existsSync(fullPath)) {
-      console.log('[cosmetics] read-cosmetic-file: FILE NOT FOUND —', fullPath);
-      return { success: false, error: 'File not found: ' + fullPath };
-    }
-    console.log('[cosmetics] read-cosmetic-file: FILE FOUND —', fullPath);
-    var ext = path.extname(fullPath).toLowerCase();
-    if (ext === '.json') {
-      var content = fs.readFileSync(fullPath, 'utf-8');
-      return { success: true, data: content, type: 'json' };
-    }
-    if (ext === '.png' || ext === '.jpg' || ext === '.jpeg' || ext === '.gif' || ext === '.webp') {
-      var raw = fs.readFileSync(fullPath);
-      var mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
-      var mimeType = mime[ext] || 'image/png';
-      var base64 = raw.toString('base64');
-      return { success: true, data: 'data:' + mimeType + ';base64,' + base64, type: 'image' };
-    }
-    // Default: read as text
-    var content = fs.readFileSync(fullPath, 'utf-8');
-    return { success: true, data: content, type: 'text' };
-  } catch (e) {
-    console.error('[cosmetics] Read error:', e.message);
-    return { success: false, error: e.message };
-  }
+  console.log('[cosmetics] read-cosmetic-file: pipeline removed, no-op');
+  return { success: false, error: 'Pipeline removed' };
 });
 
 ipcMain.handle('save-temp-file', async (_event, { data, fileName }) => {

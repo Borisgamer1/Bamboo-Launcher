@@ -433,18 +433,11 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     // Cancel previous load
     blockbenchCancelledRef.current = false;
 
-    // Load Blockbench model from disk or server (only for types that have 3D models)
-    // Types that DON'T need 3D models: rank (badge/title only)
-    var NON_MODEL_TYPES = ["rank"];
-    if (cosmetic.type && NON_MODEL_TYPES.indexOf(cosmetic.type) === -1) {
-      blockbenchCancelledRef.current = false;
-      loadBlockbenchModel(slug, viewer, blockbenchGroupRef, blockbenchCancelledRef, loadedBlockbenchRef, 0).catch(function(err) {
-        console.warn('[Cosmetics] Blockbench model load failed:', err);
-      });
-    } else {
-      console.log('[Cosmetics] Skipping 3D model load — type "' + cosmetic.type + '" has no 3D model');
-      clearBlockbenchModel(viewer, blockbenchGroupRef);
-    }
+        // Try loading Blockbench 3D model from server
+    blockbenchCancelledRef.current = false;
+    loadBlockbenchModel(slug, viewer, blockbenchGroupRef, blockbenchCancelledRef, loadedBlockbenchRef, 0).catch(function(err) {
+      console.warn('[Cosmetics] Blockbench model load failed:', err);
+    });
 
   } catch(e) { console.error('[Cosmetics] 3D effect CRASHED:', e && e.message); }
   }, [selectedCosmetics, cosmetics]);
@@ -486,58 +479,9 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
 
     if (cancelledRef.current) { console.log('[Cosmetics] loadBlockbenchModel: cancelled'); return; }
 
-    // Step 1: Read manifest.json to find the REAL model filename
-    console.log('[Cosmetics] loadBlockbenchModel: Step 1 — reading manifest.json for slug =', slug);
-    var jsonContent = '';
-    var loadedFromDisk = false;
-    var realModelFile = null; // will be determined from manifest OR server — NEVER hardcode model.json
-    var realTextureFiles = [];
-
-    if (window.electronAPI && window.electronAPI.readCosmeticFile) {
-      try {
-        var manifestPath = 'cosmetics/' + slug + '/manifest.json';
-        var manifestResult = await window.electronAPI.readCosmeticFile(manifestPath);
-        console.log('[Cosmetics] loadBlockbenchModel: manifest read result =', manifestResult ? { success: manifestResult.success, hasData: !!manifestResult.data } : 'null');
-        if (manifestResult && manifestResult.success && manifestResult.data) {
-          var manifest = JSON.parse(manifestResult.data);
-          console.log('[Cosmetics] loadBlockbenchModel: manifest parsed — files:', JSON.stringify(manifest.files), ', modelFile:', manifest.modelFile, ', textureFiles:', JSON.stringify(manifest.textureFiles));
-          if (manifest.modelFile) realModelFile = manifest.modelFile;
-          if (manifest.textureFiles && manifest.textureFiles.length > 0) realTextureFiles = manifest.textureFiles;
-        } else {
-          console.log('[Cosmetics] loadBlockbenchModel: manifest.json NOT on disk — cosmetic may not be installed');
-        }
-      } catch (e) {
-        console.log('[Cosmetics] loadBlockbenchModel: manifest parse error —', e && e.message);
-      }
-    }
-
-    // Step 2: Load model JSON — use REAL filename from manifest if available, else skip disk attempt
-    if (realModelFile) {
-      var jsonPath = 'cosmetics/' + slug + '/' + realModelFile;
-      console.log('[Cosmetics] loadBlockbenchModel: Step 2 — loading model from REAL filename:', jsonPath);
-
-      if (window.electronAPI && window.electronAPI.readCosmeticFile) {
-        try {
-          var result = await window.electronAPI.readCosmeticFile(jsonPath);
-          console.log('[Cosmetics] loadBlockbenchModel: model read result =', result ? { success: result.success, type: result.type, hasData: !!result.data } : 'null');
-          if (result && result.success && result.data) {
-            jsonContent = result.data;
-            loadedFromDisk = true;
-            console.log('[Cosmetics] loadBlockbenchModel: ✓ Model LOADED FROM DISK —', realModelFile);
-          } else {
-            console.log('[Cosmetics] loadBlockbenchModel: ✖ Model NOT on disk —', result && result.error);
-          }
-        } catch (e) {
-        console.log('[Cosmetics] loadBlockbenchModel: IPC error —', e && e.message);
-      }
-    } else {
-      console.log('[Cosmetics] loadBlockbenchModel: readCosmeticFile not available on window.electronAPI');
-    }
-    }  // closes if (realModelFile)
-
-    if (cancelledRef.current) return;
-
-    // If not on disk, try fetching from server API
+    // Step 1: Load model JSON directly from server API
+    console.log('[Cosmetics] loadBlockbenchModel: Step 1 — fetching model from server for slug =', slug);
+    var jsonContent = '';// Fetch model JSON from server API
     if (!jsonContent) {
       try {
         var serverUrl = API_BASE + '/content/cosmetics/' + slug + '/model';
@@ -569,7 +513,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     // 1) LOAD TEXTURES using REAL filenames from manifest or model data
     var textures = modelData.textures || [];
     var loadedTextures: Record<string, THREE.Texture | null> = {};
-    console.log('[Cosmetics] loadBlockbenchModel: loading', textures.length, 'textures. realTextureFiles from manifest:', JSON.stringify(realTextureFiles));
+    console.log('[Cosmetics] loadBlockbenchModel: loading', textures.length, 'textures');
 
     for (var ti = 0; ti < textures.length; ti++) {
       if (cancelledRef.current) return;
@@ -577,12 +521,8 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
       if (texRef && texRef.source) {
         // Match texture source name to a real filename from the manifest
         var sourceName = texRef.source;
-        // Match: exact filename or subdirectory path
-        var matchedFile = realTextureFiles.find(function(f) {
-          var fn = f.replace(/\\/g, "/");
-          return fn === sourceName || fn.endsWith("/" + sourceName);
-        });
-        var texPath = matchedFile ? ('cosmetics/' + slug + '/' + matchedFile) : ('cosmetics/' + slug + '/' + sourceName);
+        var matchedFile = null;
+        var texPath = 'cosmetics/' + slug + '/' + sourceName;
         console.log('[Cosmetics] loadBlockbenchModel: texture ' + ti + ' — source:', sourceName, ', matchedFile:', matchedFile || 'NONE', ', path:', texPath);
         try {
           var texture = await loadSingleTexture(texPath, cancelledRef);

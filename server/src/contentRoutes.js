@@ -1233,45 +1233,6 @@ module.exports = function contentRoutes(app, ctx) {
   });
 
   // ====================================================================
-  // === GET /api/content/files/:fileId/download — Generic file download =
-  // ====================================================================
-  // Serves ANY content file directly from disk by its asset_files ID.
-  // Used by the launcher to download cosmetic model/texture files.
-  app.get('/api/content/files/:fileId/download', async (req, res) => {
-    try {
-      if (!dbState.connected) return res.status(503).json({ error: 'Database not available' });
-      const fileId = parseInt(req.params.fileId, 10);
-      if (isNaN(fileId)) return res.status(400).json({ error: 'Invalid file ID' });
-      const files = await pool.query('SELECT * FROM asset_files WHERE id = $1', [fileId]);
-      if (!files.rows.length) return res.status(404).json({ error: 'File not found in database' });
-      var frow = files.rows[0];
-      var diskPath = frow.disk_path || path.join(CONTENT_ROOT, frow.file_path);
-      if (!diskPath || !fs.existsSync(diskPath)) return res.status(404).json({ error: 'File not found on disk: ' + diskPath });
-      console.log('[content] Serving file download:', diskPath, '(' + (frow.file_name || 'unknown') + ')');
-      var ext = path.extname(frow.file_name || '').toLowerCase();
-      var mimeTypes = {
-        '.json': 'application/json',
-        '.glb': 'model/gltf-binary',
-        '.gltf': 'model/gltf+json',
-        '.bbmodel': 'application/json',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.webp': 'image/webp',
-        '.gif': 'image/gif',
-        '.svg': 'image/svg+xml',
-        '.mp3': 'audio/mpeg',
-        '.ogg': 'audio/ogg',
-        '.wav': 'audio/wav',
-      };
-      var contentType = mimeTypes[ext] || 'application/octet-stream';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', 'inline; filename="' + (frow.file_name || 'file') + '"');
-      return res.sendFile(path.resolve(diskPath));
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
-    }
-  });
 
   // ====================================================================
   // === GET /api/content/:type/:id/model — Serve 3D model file =======
