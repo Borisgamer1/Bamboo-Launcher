@@ -4,15 +4,14 @@
 //
 // Responsibilities (DOWNLOAD layer only):
 //  - Translate a CosmeticEntity → ManifestFile entries
-//  - Use the existing DownloadManager to fetch bytes
-//  - Reuse the cache (downloadManager already stores bytes + marks "ok")
+//  - Download cosmetic files directly from GitHub raw
 //  - Publish progress through the SHARED event bus from the data manager
-//  - Trigger cleanup of stale local files when a new version arrives
+//  - Save files to disk via IPC
 //
 // Notes:
-//  - per-file "downloading" status is already maintained by the underlying
-//    `downloadManager.processTask()` (it calls `markDownloading(path)`);
-//    we do NOT double-mark from here.
+//  - Files are downloaded directly from GitHub raw content URLs because
+//    the Render server only stores metadata (asset_files table), not
+//    the actual file content on disk.
 //  - This module does not own the listener set. Consumers connect via
 //    `addCosmeticListener` from the data manager.
 // ============================================================
@@ -24,6 +23,7 @@ import {
   emitCosmeticEvent,
   getCosmeticBySlug,
 } from "./cosmeticsDataManager";
+import { getRawFileUrl } from "../githubCdn";
 
 // ===== Constants =====
 
@@ -86,17 +86,19 @@ export async function installCosmetic(
   emitProgress(progress);
   emitCosmeticEvent({ type: "status_changed", slug: entity.slug, status: "downloading" });
 
-  // ===== DIREKTER DOWNLOAD VOM SERVER =====
-  // Kein CDN, kein downloadManager, kein IndexedDB/assetDatabase.
-  // Einfach jede Datei per fetch von /api/content/files/{id}/download holen
-  // und direkt per IPC auf die Platte speichern.
-  var { API_BASE: API, getLauncherHeaders: getHeaders } = await import("../api");
+  // ===== DOWNLOAD VON GITHUB RAW =====
+  // Der Server speichert nur Metadaten (asset_files-Tabelle),
+  // aber die Dateien liegen NICHT auf Render's Platte.
+  // Stattdessen laden wir direkt von GitHub Raw Content:
+  //   getRawFileUrl(filePath) baut:
+  //   https://raw.githubusercontent.com/Borisgamer1/Bamboo-Launcher---Content/main/{filePath}
+  // filePath = z.B. "Cosmetics/Vogel Cape/Vogel Cape.json" (relativ zum Repo-Root)
   var downloadedFiles: Array<{ fileName: string; fileType: string; data: number[] }> = [];
   var allOk = true;
 
   for (var fi = 0; fi < entity.files.length; fi++) {
     var fileRef = entity.files[fi];
-    if (!fileRef.filePath || !fileRef.id) continue;
+    if (!fileRef.filePath) continue;
 
     try {
       progress.currentFile = fileRef.fileName || fileRef.filePath;
@@ -104,10 +106,10 @@ export async function installCosmetic(
       activeJobs.set(entity.id, progress);
       emitProgress(progress);
 
-      var url = API + "/content/files/" + encodeURIComponent(fileRef.id) + "/download";
-      console.log("[Cosmetics] installCosmetic: downloading", fileRef.fileName, "from server...");
+      var url = getRawFileUrl(fileRef.filePath);
+      console.log("[Cosmetics] installCosmetic: downloading", fileRef.fileName, "from GitHub...");
 
-      var resp = await fetch(url, { headers: getHeaders() });
+      var resp = await fetch(url);
       if (resp.ok) {
         var buf = await resp.arrayBuffer();
         var bytesDone = buf.byteLength;
@@ -173,7 +175,6 @@ export async function installCosmetic(
   console.log("[Cosmetics] installCosmetic: ✔ done —", entity.slug);
   return true;
 }
-
 
 
 
@@ -293,4 +294,3 @@ function emitProgress(progress: CosmeticDownloadProgress): void {
 }
 
 // ===== Helpers =====
-
