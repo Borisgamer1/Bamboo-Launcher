@@ -116,27 +116,6 @@ module.exports = function contentRoutes(app, ctx) {
         const validUnlockTypes = ['free','playtime','achievement','rank','event','server','code'];
         // Prefer Phase 5 nested shape: meta.unlock = {type, requirements[]}
         // Fall back to legacy flat fields ONLY when the new shape is missing.
-        let unlockType = 'free';
-        let unlockRequirements = [];
-        if (meta.unlock && typeof meta.unlock === 'object' && Array.isArray(meta.unlock.requirements)) {
-          unlockType = validUnlockTypes.includes(meta.unlock.type) ? meta.unlock.type : 'free';
-          unlockRequirements = meta.unlock.requirements.map((r) => ({
-            type: String(r && r.type ? r.type : ''),
-            value: (r && r.value !== undefined ? r.value : (r && r.targetValue !== undefined ? r.targetValue : 0)),
-            label: r && r.label ? String(r.label) : undefined,
-            treeNodeId: r && r.treeNodeId ? String(r.treeNodeId) : undefined,
-          }));
-        } else {
-          // Legacy flat-field fallback
-          unlockType = validUnlockTypes.includes(meta.unlockType) ? meta.unlockType : 'free';
-          if (meta.unlockRequirement && typeof meta.unlockRequirement === 'object') {
-            unlockRequirements = [{
-              type: String(meta.unlockRequirement.type || ''),
-              value: meta.unlockRequirement.value,
-              label: meta.unlockRequirement.label ? String(meta.unlockRequirement.label) : undefined,
-            }];
-          }
-        }
         const modelFormat = (typeof meta.modelFormat === 'string') ? meta.modelFormat : null;
         const validCategories = ['cape','aura','hat','ear','wings','rank','other'];
         const category = validCategories.includes(meta.cosmeticType) ? meta.cosmeticType : (validCategories.includes(meta.category) ? meta.category : 'cape');
@@ -153,13 +132,7 @@ module.exports = function contentRoutes(app, ctx) {
           metadata: {
             category,
             rarity,
-
             modelFormat,
-            unlock: { type: unlockType, requirements: unlockRequirements },
-            unlockType,
-            unlockRequirements,
-            treeNodeId: meta.treeNodeId ? String(meta.treeNodeId) : undefined,
-            lockVisibility: meta.lockVisibility === 'hidden' ? 'hidden' : 'public',
           },
         };
       }

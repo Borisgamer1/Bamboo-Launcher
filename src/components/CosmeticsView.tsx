@@ -964,7 +964,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
                 cardVMs.find((c) => c.id === cosmetic.id);
                 const phase5vm = cardVM;
                 const installProgress = installJobs[cosmetic.id];
-                const isLocked = !!cardVM && !cardVM.unlock.unlocked;
+                const isLocked = false;
                 const phase5ModuleOk = !!cardVM;
                     const rarityCfg = RARITY_CONFIG[cosmetic.rarity] || RARITY_CONFIG.common;
                     const RarityIcon = rarityCfg.icon;
@@ -1089,33 +1089,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
                                 '✕ FEHLER'}
                             </span>
                           )}
-                          {/* Numeric unlock progress bar */}
-                          {phase5ModuleOk && isLocked && cardVM && cardVM.unlock.missingRequirements[0]?.progressPct != null && (
-                            <div style={{ width: '100%', marginTop: '2px' }}>
-                              <div style={{ width: '100%', height: '4px', background: 'rgba(148,163,184,0.15)', borderRadius: '2px', overflow: 'hidden' }}>
-                                <div style={{
-                                  width: cardVM.unlock.missingRequirements[0].progressPct + '%',
-                                  height: '100%',
-                                  background: 'linear-gradient(90deg, #f59e0b, #f97316)',
-                                  borderRadius: '2px',
-                                  transition: 'width 0.5s ease',
-                                }} />
-                              </div>
-                            </div>
-                          )}
-                                                   {/* Phase 5 lock badge */}
-                          {phase5ModuleOk && isLocked && (
-                            <span title={cardVM?.unlock.shortMessage}
-                              style={{
-                                fontSize: '9px', fontWeight: 700,
-                                padding: '2px 6px', borderRadius: '999px',
-                                color: cardVM?.unlock.missingRequirements[0]?.progressPct != null ? '#fbbf24' : '#f97316',
-                                background: 'rgba(251,191,36,0.10)',
-                                border: '1px solid rgba(251,191,36,0.30)',
-                              }}>
-                              🔒 {cardVM?.unlock.missingRequirements[0]?.detail || 'GESPERRT'}
-                            </span>
-                          )}
+                         
                           {phase5ModuleOk && !isLocked && cardVM && cardVM.unlock.reasonKey !== 'always_available' && (
                             <span style={{
                               fontSize: '9px', fontWeight: 700,

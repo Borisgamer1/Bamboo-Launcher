@@ -1047,32 +1047,6 @@ async function openEditEditor(type, id) {
     // Fill type-specific fields
     if (type === 'cosmetic') {
       document.getElementById('editor-cosmetic-type').value = item.type || 'cape';
-      // Phase 5 unlock fields
-      const meta = item.metadata || {};
-      const unlock = meta.unlock || { type: meta.unlockType || 'free', requirements: meta.unlockRequirements || [] };
-      const unlockTypeEl = document.getElementById('editor-cosmetic-unlock-type');
-      if (unlockTypeEl) unlockTypeEl.value = unlock.type || 'free';
-      const descEl = document.getElementById('editor-cosmetic-unlock-description-value');
-      if (descEl) descEl.value = unlock.description || '';
-      const reqEl = document.getElementById('editor-cosmetic-unlock-requirement-value');
-      if (reqEl) reqEl.value = (unlock.requirements && unlock.requirements[0] && unlock.requirements[0].targetValue) || '';
-      const treeEl = document.getElementById('editor-cosmetic-tree-node');
-      if (treeEl) treeEl.value = ((unlock.requirements && unlock.requirements[0] && unlock.requirements[0].treeNodeId) || meta.treeNodeId) || 'pt_5h';
-      const visEl = document.getElementById('editor-cosmetic-unlock-visibility');
-      if (visEl) visEl.value = meta.lockVisibility || 'public';
-      const tEl = document.getElementById('editor-cosmetic-unlock-tree');
-      const rEl = document.getElementById('editor-cosmetic-unlock-requirement');
-      const updateUnlockUI = () => {
-        const u = unlockTypeEl ? unlockTypeEl.value : 'free';
-        if (tEl) tEl.style.display = u === 'playtime' ? 'block' : 'none';
-        if (rEl) rEl.style.display = (u === 'achievement' || u === 'rank' || u === 'event' || u === 'server' || u === 'code') ? 'block' : 'none';
-      };
-      updateUnlockUI();
-      if (unlockTypeEl && !unlockTypeEl.dataset.bound) {
-        unlockTypeEl.addEventListener('change', updateUnlockUI);
-        unlockTypeEl.dataset.bound = '1';
-      }
-
       document.getElementById('editor-rarity').value = item.rarity || 'common';
 
       // Load texture list and select already-assigned textures
@@ -1150,30 +1124,6 @@ async function saveContent() {
     data.rarity = document.getElementById('editor-rarity').value;
 
     data.metadata.cosmeticType = data.type;
-    // Phase 5 unlock config — collected from the form
-    const uType  = document.getElementById('editor-cosmetic-unlock-type').value;
-    const uDesc  = document.getElementById('editor-cosmetic-unlock-description-value').value || undefined;
-    const uReqVal= document.getElementById('editor-cosmetic-unlock-requirement-value').value;
-    const uTree  = document.getElementById('editor-cosmetic-tree-node').value;
-    const uVis   = document.getElementById('editor-cosmetic-unlock-visibility').value;
-    const reqByType = {
-      free:        [],
-      playtime:    [{ type: 'playtime_hours', treeNodeId: uTree, targetValue: 1 }],
-      achievement: [{ type: 'achievement_id', targetValue: uReqVal }],
-      rank:        [{ type: 'rank_id',        targetValue: uReqVal }],
-      event:       [{ type: 'event_id',       targetValue: uReqVal }],
-      server:      [{ type: 'server_id',      targetValue: uReqVal }],
-      code:        [{ type: 'invite_code',    targetValue: uReqVal }]
-    };
-    data.unlock = { type: uType, requirements: reqByType[uType] || [] };
-    if (uDesc) data.unlock.description = uDesc;
-    if (uTree && uType === 'playtime') data.treeNodeId = uTree;
-    data.metadata.unlock = data.unlock;
-    data.metadata.unlockType = uType;
-    data.metadata.unlockRequirements = data.unlock.requirements;
-    if (uTree) data.metadata.treeNodeId = uTree;
-    data.metadata.lockVisibility = uVis;
-
     data.metadata.rarity = data.rarity;
 
     // Add file assignments
@@ -1843,61 +1793,7 @@ function buildTypeFields() {
     <!-- COSMETIC FIELDS -->
     <div id="fields-cosmetic" class="type-specific-fields" style="display:none">
             <!-- Phase 5: Freischaltung -->
-            <div class="form-group" id="fields-cosmetics-unlock" style="margin-top:18px;border-top:1px solid var(--border-soft);padding-top:18px;">
-              <label class="form-label" style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;">
-                <span aria-hidden="true">🔓</span>
-                Freischaltung
-                <span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:auto;">Phase 5</span>
-              </label>
-
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-                <div>
-                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Unlock-Typ</label>
-                  <select id="editor-cosmetic-unlock-type" class="form-input" style="height:32px;font-size:12px;">
-                    <option value="free">Frei verfügbar</option>
-                    <option value="playtime">Spielzeit (Baum)</option>
-                    <option value="achievement">Achievement</option>
-                    <option value="rank">Rang</option>
-                    <option value="event">Event</option>
-                    <option value="server">Server</option>
-                    <option value="code">Code</option>
-                  </select>
-                </div>
-                <div>
-                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Sichtbarkeit</label>
-                  <select id="editor-cosmetic-unlock-visibility" class="form-input" style="height:32px;font-size:12px;">
-                    <option value="public">Öffentlich</option>
-                    <option value="hidden">Verborgen (Locked-State)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div id="editor-cosmetic-unlock-tree" style="display:none;margin-bottom:8px;">
-                <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Spielzeit-Baum</label>
-                <select id="editor-cosmetic-tree-node" class="form-input" style="height:32px;font-size:12px;">
-                  <option value="pt_5h">5 Stunden</option>
-                  <option value="pt_10h">10 Stunden</option>
-                  <option value="pt_25h">25 Stunden</option>
-                  <option value="pt_50h">50 Stunden</option>
-                  <option value="pt_100h">100 Stunden</option>
-                  <option value="pt_250h">250 Stunden</option>
-                  <option value="pt_500h">500 Stunden</option>
-                  <option value="pt_1000h">1000 Stunden</option>
-                </select>
-              </div>
-
-              <div id="editor-cosmetic-unlock-requirement" style="display:none;margin-bottom:8px;">
-                <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Anforderung</label>
-                <input type="text" id="editor-cosmetic-unlock-requirement-value" class="form-input"
-                  placeholder="z.B. 'explorer' oder 'bamboo-main'" style="height:32px;font-size:12px;" />
-              </div>
-
-              <div id="editor-cosmetic-unlock-description" style="margin-bottom:8px;">
-                <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Beschreibung (optional)</label>
-                <input type="text" id="editor-cosmetic-unlock-description-value" class="form-input"
-                  placeholder="z.B. 'Erhältlich nach 10h Spielzeit'" style="height:32px;font-size:12px;" />
-              </div>
-            </div>
+            
 
       <div class="form-row">
         <div>
