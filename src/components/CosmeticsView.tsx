@@ -12,6 +12,7 @@ import { Account } from "./TopBar";
 import { SkinViewer, WalkingAnimation } from "skinview3d";
 import * as THREE from "three";
 import { API_BASE, getLauncherHeaders } from "../services/api";
+import { getRawFileUrl } from "../services/githubCdn";
 import type { CosmeticEntity } from "../services/cosmetics";
 import { parseCosmeticEntity } from "../services/cosmetics";
 import {
@@ -108,6 +109,15 @@ function toCosmeticItem(entity: CosmeticEntity): CosmeticItem {
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt,
   };
+}
+
+// ===== Resolve preview image URL: local disk -> GitHub raw -> Server API =====
+function resolveCosmeticPreviewUrl(cosmetic: { previewUrl?: string; imageUrl?: string; id: string }): string {
+  var url = (cosmetic.previewUrl || cosmetic.imageUrl || "").trim();
+  if (!url) return API_BASE + "/content/cosmetics/" + cosmetic.id + "/image";
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;
+  // Relative path -> GitHub raw URL
+  return getRawFileUrl(url);
 }
 
 // In-game cape toggle reference (prepared for future rendering)
@@ -242,6 +252,26 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     })();
     return function() { cancelled = true; };
   }, [buildCards, cardVMs.length, cosmetics]);
+  // Load preview images from local disk if available (BambooLaufwerk)
+  useEffect(() => {
+    if (!window.electronAPI?.readCosmeticFile) return;
+    cosmetics.forEach(function(c) {
+      var slug = c.slug || c.id;
+      var fname = c.previewUrl ? c.previewUrl.split('/').pop() : null;
+      if (!fname) return;
+      window.electronAPI.readCosmeticFile('cosmetics/' + slug + '/' + fname).then(function(result) {
+        if (result && result.success) {
+          var imgs = document.querySelectorAll<HTMLImageElement>('img[data-cid="' + c.id + '"]');
+          imgs.forEach(function(img: HTMLImageElement) {
+            if (!img.dataset.localLoaded) {
+              img.dataset.localLoaded = '1';
+              img.src = result.data;
+            }
+          });
+        }
+      }).catch(function() {});
+    });
+  }, [cosmetics]);
 
   const handleInstall = useCallback(async (card: CosmeticCardViewModel) => {
     const { getCosmeticById } = await import("../services/cosmetics");
@@ -445,7 +475,7 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
     var slug = (cosmetic as any).slug || cosmetic.id;
 
     // Always load cape texture (works for cape-type cosmetics and preview)
-    var url = cosmetic.previewUrl || cosmetic.imageUrl || API_BASE + '/content/cosmetics/' + cosmetic.id + '/image';
+    var url = resolveCosmeticPreviewUrl(cosmetic);
     if (url) {
       viewer.loadCape(url).catch(function() {});
     } else {
@@ -959,10 +989,10 @@ export const CosmeticsView: React.FC<CosmeticsViewProps> = ({ activeAccount }) =
                             <div className="w-14 h-14 rounded-xl bg-slate-900 border border-slate-800 overflow-hidden shrink-0 flex items-center justify-center relative">
                               {(cosmetic.fileCount > 0 && (cosmetic.previewUrl || cosmetic.id)) ? (
                                 <img 
-                                  src={cosmetic.previewUrl || `${API_BASE}/content/cosmetics/${cosmetic.id}/image`} 
+                                  data-cid={cosmetic.id} src={resolveCosmeticPreviewUrl(cosmetic)} 
                                   alt={cosmetic.name} 
                                   className="w-full h-full object-cover"
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                                  onError={(e) => { var el = (e.target as HTMLImageElement); if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = API_BASE + "/content/cosmetics/" + cosmetic.id + "/image"; } else { el.style.display = "none"; } }} />
                               ) : (
                                 <TypeIcon className="w-6 h-6 text-slate-500" />
                               )}
