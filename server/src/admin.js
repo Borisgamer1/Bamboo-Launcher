@@ -1127,6 +1127,21 @@ app.get('/api/proxy/forge/promotions', async (_req, res) => {
   }
 });
 
+
+app.get('/api/proxy/forge/maven-metadata', async (_req, res) => {
+  try {
+    const url = 'https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml';
+    const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error('Forge Maven responded with HTTP ' + response.status);
+    const xml = await response.text();
+    res.set('Content-Type', 'application/xml');
+    res.send(xml);
+  } catch (err) {
+    console.warn('[proxy] Forge Maven metadata fetch failed:', err.message);
+    res.status(502).json({ error: 'Failed to fetch Forge Maven metadata', message: err.message });
+  }
+});
+
 // ===== Serve Admin Panel UI =====
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin-panel.html'));
