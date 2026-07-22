@@ -404,13 +404,11 @@ const [showSavedToast, setShowSavedToast] = useState(false);
 
   // Helper: build display-ready theme list from ThemeDefinitions
   function buildThemeList(themes: ThemeDefinition[], _currentLang: LanguageType) {
-    // Derive a semi-transparent bg style from the accent color for Tailwind
-    // Since we can't use dynamic Tailwind classes, use a neutral fallback
+    // Enhance theme cards with inline styles (accent gradients, glass blur, box shadows)
     return themes.map((t) => ({
       ...t,
       accent: t.accentLabel || t.name,
       accentColor: t.accent,
-      bgStyle: "border-transparent",
       badge: "theme-bg-md theme-text theme-border-md",
     }));
   }
@@ -1382,29 +1380,58 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                       <div
                         key={t.id}
                         onClick={() => setTheme(t.id)}
-                        className={`group relative rounded-2xl p-3 border cursor-pointer transition-all duration-300 flex flex-col justify-between min-h-[90px] ${
+                        className={`group relative rounded-2xl p-3 border cursor-pointer transition-all duration-500 flex flex-col justify-between min-h-[90px] overflow-hidden ${
                           isSelected 
-                            ? `${t.bgStyle} shadow-xl scale-[1.01]` 
-                            : "border-slate-850 bg-slate-900/20 hover:border-slate-700"
+                            ? "scale-[1.02]" 
+                            : "hover:scale-[1.005]"
                         }`}
-                      style={isSelected ? { background: `linear-gradient(135deg, ${t.accentColor}22, ${t.accentColor}11)`, borderColor: t.accentColor + '44' } : {}}
+                      style={{
+                        background: `linear-gradient(135deg, ${t.accentColor}${isSelected ? "18" : "06"}, ${t.accentColor}${isSelected ? "0c" : "03"})`,
+                        borderColor: isSelected ? t.accentColor + '66' : t.accentColor + '18',
+                        backdropFilter: 'blur(16px)',
+                        WebkitBackdropFilter: 'blur(16px)',
+                        boxShadow: isSelected ? `0 20px 60px rgba(0,0,0,0.3), 0 6px 24px ${t.accentColor}33` : `0 4px 20px rgba(0,0,0,0.15)`,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = t.accentColor + '44';
+                          e.currentTarget.style.background = `linear-gradient(135deg, ${t.accentColor}10, ${t.accentColor}06)`;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = t.accentColor + '18';
+                          e.currentTarget.style.background = `linear-gradient(135deg, ${t.accentColor}06, ${t.accentColor}03)`;
+                        }
+                      }}
                       >
-                        <div className="flex items-start justify-between">
-                          <h4 className="text-sm font-black text-slate-100 tracking-wide">{t.name}</h4>
+                        {/* Glass reflection overlay */}
+                        <div className="absolute inset-0 rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                          style={{
+                            background: `linear-gradient(135deg, ${t.accentColor}10, transparent 60%)`,
+                          }}
+                        />
+
+                        <div className="relative z-10 flex items-start justify-between">
+                          <h4 className="text-sm font-black tracking-wide" style={{ color: isSelected ? t.accentColor : t.accentColor + 'bb' }}>{t.name}</h4>
                           {isSelected ? (
-                            <div className="w-5 h-5 rounded-full theme-bg text-slate-950 flex items-center justify-center shadow-lg">
+                            <div className="w-5 h-5 rounded-full theme-bg text-slate-950 flex items-center justify-center shadow-lg shrink-0">
                               <Check className="w-3.5 h-3.5 stroke-[3]" />
                             </div>
                           ) : (
-                            <div className="w-5 h-5 rounded-full bg-slate-950 border flex items-center justify-center text-slate-500 group-hover:text-slate-300 transition-colors" />
+                            <div className="w-5 h-5 rounded-full bg-slate-950/60 border flex items-center justify-center text-slate-500 group-hover:text-slate-300 transition-colors shrink-0"
+                              style={{ borderColor: t.accentColor + '44' }}
+                            />
                           )}
                         </div>
 
-                        <p className="text-[10px] text-slate-400 leading-relaxed mt-1.5">{t.desc}</p>
+                        <p className="relative z-10 text-[10px] text-slate-400 leading-relaxed mt-1.5">{t.desc}</p>
 
-                        <div className="mt-2 pt-1.5 border-t border-slate-900/60 flex items-center justify-between text-[8px] font-bold text-slate-500">
+                        <div className="relative z-10 mt-2 pt-1.5 flex items-center justify-between text-[8px] font-bold"
+                          style={{ borderTop: `1px solid ${t.accentColor}18`, color: t.accentColor + '99' }}
+                        >
                           <span style={{ color: t.accentColor }}>Accent: <strong>{t.accent}</strong></span>
-                          <span className="uppercase tracking-widest">Select Theme</span>
+                          <span className="uppercase tracking-widest" style={{ color: isSelected ? t.accentColor + 'cc' : t.accentColor + '55' }}>Select Theme</span>
                         </div>
                       </div>
                     );
