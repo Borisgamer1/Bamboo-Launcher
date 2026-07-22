@@ -892,7 +892,6 @@ function getCategories(type) {
   return cats[type] || ['general', 'custom'];
 }
 
-
 // Build GitHub Raw URL for content file previews (fix: nicht auf Server-Endpoint angewiesen)
 function getContentImageUrl(item) {
   var p = item.thumbnailUrl || item.previewUrl || '';
@@ -903,7 +902,6 @@ function getContentImageUrl(item) {
   var ver = item.updatedAt ? '?v=' + String(item.updatedAt).replace(/[^0-9]/g, '') : '?t=' + Date.now();
   return base + ver;
 }
-
 
 function renderContentCard(type, item) {
   const isDraft = item.status === 'draft';
@@ -1051,7 +1049,7 @@ async function openEditEditor(type, id) {
     if (type === 'cosmetic') {
       document.getElementById('editor-cosmetic-type').value = item.type || 'cape';
       document.getElementById('editor-rarity').value = item.rarity || 'common';
-      const accent = item.accentColor || (item.metadata && item.metadata.accentColor) || '';
+
       document.getElementById('editor-accent').value = accent;
       document.getElementById('editor-accent-hex').value = accent || '#10b981';
       // Load texture list and select already-assigned textures
@@ -1130,10 +1128,10 @@ async function saveContent() {
   if (type === 'cosmetic') {
     data.type = document.getElementById('editor-cosmetic-type').value;
     data.rarity = document.getElementById('editor-rarity').value;
-    data.accentColor = document.getElementById('editor-accent').value;
+
     data.metadata.cosmeticType = data.type;
     data.metadata.rarity = data.rarity;
-    data.metadata.accentColor = data.accentColor;
+
     // Add file assignments
     try {
       const files = gatherFileAssignments('cosmetic');
@@ -1290,7 +1288,6 @@ function fillFilePicker(fieldId, value) {
     if (isImage) preview.src = '/api/content/files/serve?path=' + encodeURIComponent(value);
   }
 }
-
 
   function clearFilePicker(fieldId) {
     const display = document.getElementById(fieldId + '-display');
@@ -1835,7 +1832,7 @@ function buildTypeFields() {
       </div>
       <div class="form-row">
         <div>
-          <label>Akzentfarbe</label>
+
           <div class="color-input-row">
             <input type="color" id="editor-accent-hex" value="#10b981" onchange="document.getElementById('editor-accent').value=this.value">
             <input type="text" id="editor-accent" placeholder="#10b981" oninput="document.getElementById('editor-accent-hex').value=this.value||'#10b981'">

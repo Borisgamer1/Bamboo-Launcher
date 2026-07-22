@@ -149,11 +149,11 @@ module.exports = function contentRoutes(app, ctx) {
           rarity,
           imageUrl: row.thumbnail_url || row.preview_url || '',
           modelUrl: (meta.modelUrl) || '',
-          accentColor: meta.accentColor || '',
+    
           metadata: {
             category,
             rarity,
-            accentColor: meta.accentColor || '',
+
             modelFormat,
             unlock: { type: unlockType, requirements: unlockRequirements },
             unlockType,
@@ -208,7 +208,7 @@ module.exports = function contentRoutes(app, ctx) {
         return {
           ...base,
           title: row.name,
-          accentColor: (row.metadata && row.metadata.accentColor) || '',
+
           backgroundColor: (row.metadata && row.metadata.backgroundColor) || '',
           backgroundImage: (row.metadata && row.metadata.backgroundImage) || '',
           fontFamily: (row.metadata && row.metadata.fontFamily) || '',
@@ -950,7 +950,7 @@ module.exports = function contentRoutes(app, ctx) {
           mergedMetadata.treeNodeId = req.body.treeNodeId;
         }
         if (req.body.rarity) mergedMetadata.rarity = req.body.rarity;
-        if (req.body.accentColor) mergedMetadata.accentColor = req.body.accentColor;
+
         if (req.body.modelUrl) mergedMetadata.modelUrl = req.body.modelUrl;
       }
 
@@ -998,7 +998,7 @@ module.exports = function contentRoutes(app, ctx) {
           mergedMeta.treeNodeId = req.body.treeNodeId;
         }
         if (req.body.rarity !== undefined) mergedMeta.rarity = req.body.rarity;
-        if (req.body.accentColor !== undefined) mergedMeta.accentColor = req.body.accentColor;
+
         if (req.body.modelUrl !== undefined) mergedMeta.modelUrl = req.body.modelUrl;
       }
 
@@ -1433,7 +1433,7 @@ module.exports = function contentRoutes(app, ctx) {
       // Migrate cosmetics
       await migrateTable('cosmetics', 'cosmetic', {
         slug: item => item.slug,
-        metadata: item => ({ cosmeticType: item.type || 'cape', rarity: item.rarity || 'common', accentColor: item.accent_color || '', modelUrl: item.model_url || '' }),
+        metadata: item => ({ cosmeticType: item.type || 'cape', rarity: item.rarity || 'common', modelUrl: item.model_url || '' }),
         category: item => item.slug?.split('-')[0] || 'general',
         tags: () => ['cosmetic'],
         sortOrder: item => item.sort_order,
