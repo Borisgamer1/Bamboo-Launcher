@@ -896,13 +896,29 @@ function renderContentCard(type, item) {
   const isDraft = item.status === 'draft';
   const isPublished = item.status === 'published' || item.isActive;
 
+  // Build GitHub Raw URL for content file previews (fix: nicht auf Server-Endpoint angewiesen)
+  var getContentImageUrl = function(item) {
+    var meta = item.metadata || {};
+    var p = item.thumbnailUrl || item.previewUrl || meta.bgImage || '';
+    if (!p) return '';
+    if (p.startsWith('http://') || p.startsWith('https://')) return p;
+    // Relativer Pfad -> GitHub Raw URL + Cache-Busting via updatedAt
+    var base = 'https://raw.githubusercontent.com/Borisgamer1/Bamboo-Launcher---Content/main/' + p.replace(/\\/g, '/');
+    var ver = item.updatedAt ? '?v=' + String(item.updatedAt).replace(/[^0-9]/g, '') : '?t=' + Date.now();
+    return base + ver;
+  };
   let previewHtml = '';
-  if (item.thumbnailUrl) {
-    previewHtml = `<img src="/api/content/${type}/${item.id}/image" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><svg class="ico placeholder-icon" style="display:none"><use href="#ico-${getIconForType(type)}"/></svg>`;
+  if (item.thumbnailUrl || item.previewUrl || (item.metadata && item.metadata.bgImage)) {
+    var ghUrl = getContentImageUrl(item);
+    var serverUrl = '/api/content/' + type + '/' + item.id + '/image';
+    if (ghUrl) {
+      previewHtml = '<img src=\u0022' + ghUrl + '\u0022 alt=\u0022\u0022 onerror=\u0022var p=this;if(!p.dataset.fb){p.dataset.fb=\u00271\u0027;p.src=\u0027' + serverUrl + '\u0027}else{p.style.display=\u0027none\u0027;p.nextElementSibling.style.display=\u0027flex\u0027}\u0022 /><svg class=\u0022ico placeholder-icon\u0022 style=\u0022display:none\u0022><use href=\u0022#ico-' + getIconForType(type) + '\u0022/></svg>';
+    } else {
+      previewHtml = '<img src=\u0022' + serverUrl + '\u0022 alt=\u0022\u0022 onerror=\u0022this.style.display=\u0027none\u0027;this.nextElementSibling.style.display=\u0027flex\u0027\u0022 /><svg class=\u0022ico placeholder-icon\u0022 style=\u0022display:none\u0022><use href=\u0022#ico-' + getIconForType(type) + '\u0022/></svg>';
+    }
   } else {
-    previewHtml = `<svg class="ico placeholder-icon"><use href="#ico-${getIconForType(type)}"/></svg>`;
+    previewHtml = '<svg class=\u0022ico placeholder-icon\u0022><use href=\u0022#ico-' + getIconForType(type) + '\u0022/></svg>';
   }
-
   let extraTags = '';
   if (type === 'cosmetic') {
     extraTags = `<span class="tag tag-${item.type || 'cape'}">${item.type || 'cape'}</span><span class="tag tag-${item.rarity || 'common'}">${item.rarity || 'common'}</span>`;

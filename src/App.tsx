@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, Component, ReactNode, Suspense } from "react";
+﻿import React, { useState, useEffect, useMemo, Component, ReactNode, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { RunningInstanceBadge } from "./components/RunningInstanceBadge";
@@ -363,6 +363,9 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
     };
   }, []);
 
+  // Stable cache buster for bgImage — only changes when theme changes
+  const bgTs = useMemo(() => Date.now(), [currentTheme.id, currentTheme.bgImage]);
+
   // ===== THEME STYLES =====
   // Theme styles – automatisch via CSS-Variablen
 
@@ -372,7 +375,7 @@ const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
     <div className="relative w-screen h-screen bg-slate-950 text-slate-100 flex overflow-hidden font-sans select-none">
       <ParticleBackground
         accent={currentTheme.accent}
-        bgImage={currentTheme.bgImage ? `${API_BASE}/content/theme/${themeId}/image` : undefined}
+        bgImage={currentTheme.bgImage ? `https://raw.githubusercontent.com/Borisgamer1/Bamboo-Launcher---Content/main/${currentTheme.bgImage.replace(/\\/g, '/')}?t=${bgTs}` : undefined}
         particleShapes={currentTheme.particleShapes}
         particleImage={currentTheme.particleImage ? `https://raw.githubusercontent.com/Borisgamer1/Bamboo-Launcher---Content/main/${currentTheme.particleImage}` : undefined}
         showGlow={showGlow}

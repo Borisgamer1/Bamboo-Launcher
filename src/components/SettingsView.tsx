@@ -410,7 +410,6 @@ const [showSavedToast, setShowSavedToast] = useState(false);
       ...t,
       accent: t.accentLabel || t.name,
       accentColor: t.accent,
-      accentText: "theme-text",
       bgStyle: "border-transparent",
       badge: "theme-bg-md theme-text theme-border-md",
     }));
@@ -1397,14 +1396,14 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                               <Check className="w-3.5 h-3.5 stroke-[3]" />
                             </div>
                           ) : (
-                            <div className="w-5 h-5 rounded-full bg-slate-950 border flex items-center justify-center text-slate-500 group-hover:text-slate-300 transition-colors" style={{borderColor: t.accentColor + '44'}} />
+                            <div className="w-5 h-5 rounded-full bg-slate-950 border flex items-center justify-center text-slate-500 group-hover:text-slate-300 transition-colors" />
                           )}
                         </div>
 
                         <p className="text-[10px] text-slate-400 leading-relaxed mt-1.5">{t.desc}</p>
 
                         <div className="mt-2 pt-1.5 border-t border-slate-900/60 flex items-center justify-between text-[8px] font-bold text-slate-500">
-                          <span>Accent: <strong className={t.accentText}>{t.accent}</strong> <span className="inline-block w-3 h-3 rounded-full align-middle" style={{ backgroundColor: t.accentColor }}></span></span>
+                          <span style={{ color: t.accentColor }}>Accent: <strong>{t.accent}</strong></span>
                           <span className="uppercase tracking-widest">Select Theme</span>
                         </div>
                       </div>
