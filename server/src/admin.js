@@ -1097,6 +1097,36 @@ assetRoutes(app, { pool, dbState, authenticateAdmin, uuidv4 });
 const contentRoutes = require('./contentRoutes');
 contentRoutes(app, { pool, dbState, authenticateAdmin, uuidv4, multer });
 
+// ===== Proxy Routes for Minecraft Forge / NeoForge Versions =====
+// These bypass CORS restrictions by proxying through the backend.
+
+app.get('/api/proxy/neoforge/maven-metadata', async (_req, res) => {
+  try {
+    const url = 'https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml';
+    const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error('NeoForge responded with HTTP ' + response.status);
+    const xml = await response.text();
+    res.set('Content-Type', 'application/xml');
+    res.send(xml);
+  } catch (err) {
+    console.warn('[proxy] NeoForge metadata fetch failed:', err.message);
+    res.status(502).json({ error: 'Failed to fetch NeoForge metadata', message: err.message });
+  }
+});
+
+app.get('/api/proxy/forge/promotions', async (_req, res) => {
+  try {
+    const url = 'https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json';
+    const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error('Forge responded with HTTP ' + response.status);
+    const json = await response.json();
+    res.json(json);
+  } catch (err) {
+    console.warn('[proxy] Forge promotions fetch failed:', err.message);
+    res.status(502).json({ error: 'Failed to fetch Forge promotions', message: err.message });
+  }
+});
+
 // ===== Serve Admin Panel UI =====
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin-panel.html'));
