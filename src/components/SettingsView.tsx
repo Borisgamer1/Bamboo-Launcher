@@ -411,7 +411,7 @@ const [showSavedToast, setShowSavedToast] = useState(false);
       accent: t.accentLabel || t.name,
       accentColor: t.accent,
       accentText: "theme-text",
-      bgStyle: "from-slate-500/10 to-slate-400/5 border-slate-500/20",
+      bgStyle: "border-transparent",
       badge: "theme-bg-md theme-text theme-border-md",
     }));
   }
@@ -1383,11 +1383,12 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                       <div
                         key={t.id}
                         onClick={() => setTheme(t.id)}
-                        className={`group relative rounded-2xl p-3 border cursor-pointer transition-all duration-300 bg-gradient-to-br flex flex-col justify-between min-h-[90px] ${
+                        className={`group relative rounded-2xl p-3 border cursor-pointer transition-all duration-300 flex flex-col justify-between min-h-[90px] ${
                           isSelected 
                             ? `${t.bgStyle} shadow-xl scale-[1.01]` 
                             : "border-slate-850 bg-slate-900/20 hover:border-slate-700"
                         }`}
+                      style={isSelected ? { background: `linear-gradient(135deg, ${t.accentColor}22, ${t.accentColor}11)`, borderColor: t.accentColor + '44' } : {}}
                       >
                         <div className="flex items-start justify-between">
                           <h4 className="text-sm font-black text-slate-100 tracking-wide">{t.name}</h4>
@@ -1396,14 +1397,14 @@ const [showSavedToast, setShowSavedToast] = useState(false);
                               <Check className="w-3.5 h-3.5 stroke-[3]" />
                             </div>
                           ) : (
-                            <div className="w-5 h-5 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-500 group-hover:text-slate-300 transition-colors" />
+                            <div className="w-5 h-5 rounded-full bg-slate-950 border flex items-center justify-center text-slate-500 group-hover:text-slate-300 transition-colors" style={{borderColor: t.accentColor + '44'}} />
                           )}
                         </div>
 
                         <p className="text-[10px] text-slate-400 leading-relaxed mt-1.5">{t.desc}</p>
 
                         <div className="mt-2 pt-1.5 border-t border-slate-900/60 flex items-center justify-between text-[8px] font-bold text-slate-500">
-                          <span>Accent: <strong className={t.accentText}>{t.accent}</strong></span>
+                          <span>Accent: <strong className={t.accentText}>{t.accent}</strong> <span className="inline-block w-3 h-3 rounded-full align-middle" style={{ backgroundColor: t.accentColor }}></span></span>
                           <span className="uppercase tracking-widest">Select Theme</span>
                         </div>
                       </div>
