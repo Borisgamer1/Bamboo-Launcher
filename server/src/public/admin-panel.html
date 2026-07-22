@@ -1075,8 +1075,6 @@ async function openEditEditor(type, id) {
 
       document.getElementById('editor-rarity').value = item.rarity || 'common';
 
-      document.getElementById('editor-accent').value = accent;
-      document.getElementById('editor-accent-hex').value = accent || '#10b981';
       // Load texture list and select already-assigned textures
       await loadAvailableTextures();
       if (item.files) fillFilePickers(type, item);
@@ -1926,11 +1924,7 @@ function buildTypeFields() {
       </div>
       <div class="form-row">
         <div>
-          <label>Akzentfarbe</label>
-          <div class="color-input-row">
-            <input type="color" id="editor-accent-hex" value="#10b981" onchange="document.getElementById('editor-accent').value=this.value">
-            <input type="text" id="editor-accent" placeholder="#10b981" oninput="document.getElementById('editor-accent-hex').value=this.value||'#10b981'">
-          </div>
+          
         </div>
         <div>
           <label>Tags</label>
