@@ -28,7 +28,10 @@ README.md
 scripts/
 bamboo-fix-plan.md
 logo.png
-resources/
+# The bundled CurseForge key must ship in every build, so it is tracked.
+# Everything else under resources/ (icons) stays untracked.
+resources/*
+!resources/curseforge-key.txt
 
 # Editor / Temp
 .freebuff/
