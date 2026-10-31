@@ -1,27 +1,772 @@
 export {}
 
-interface FriendProfile {
-  id: string; username: string; displayName: string; avatar: string; banner: string;
-  bio: string; accentColor: string; createdAt: number;
-  status: 'online' | 'busy' | 'away' | 'dnd' | 'invisible' | 'offline';
-  activity: { type: string; detail?: string; minecraftVersion?: string; loader?: string; profileName?: string; sessionStart?: number; progress?: { current: number; total: number } };
-  friendCount: number; lastOnline: number; launcherVersion: string; customStatus?: string;
-  launcherLevel?: number;
-  badges?: string[];
+export type Unsubscribe = () => void
+
+type CurseForgeFailureCode =
+  | 'missing-key'
+  | 'invalid-key'
+  | 'rate-limited'
+  | 'http'
+  | 'network'
+
+interface CurseForgeFailureReply {
+  error: string
+  code: CurseForgeFailureCode
+  status?: number
+  detail?: string
 }
 
-interface FriendStore {
-  friends: Record<string, FriendProfile>;
-  relations: Record<string, { userId: string; since: number; direction: string }>;
-  friendRequests: { from: string; to: string; timestamp: number; message?: string }[];
-  blockedUsers: string[];
-  activities: any[];
-  notifications: any[];
-  privacySettings: any;
-  myProfile: Partial<FriendProfile> & { id: string };
+interface CurseForgeSearchHit {
+  id: number
+  classId?: number
+  name: string
+  slug?: string
+  summary?: string
+  downloadCount?: number
+  rating?: number
+  dateCreated?: string
+  dateModified?: string
+  logo?: { url?: string } | null
+  authors?: Array<{ name?: string }>
+  categories?: Array<string | { slug?: string; name?: string }>
+  latestFiles?: Array<{ gameVersions?: string[] }>
+}
+
+type CurseForgeSearchReply =
+  | { data: CurseForgeSearchHit[]; pagination: { totalCount: number } }
+  | CurseForgeFailureReply
+
+interface CurseForgeProjectReply {
+  id?: number
+  name?: string
+  slug?: string
+  summary?: string
+  downloadCount?: number
+  logo?: { url?: string } | null
+  authors?: Array<{ name?: string }>
+  fullDescription?: string
+  description?: string
+}
+
+type CurseForgeProjectResult = CurseForgeProjectReply | CurseForgeFailureReply
+
+interface CurseForgeFileEntry {
+  id: number
+  displayName?: string
+  fileName?: string
+  fileDate?: string
+  gameVersions?: string[]
+  modLoader?: number
+  downloadUrl?: string | null
+}
+
+type CurseForgeFilesResult = CurseForgeFileEntry[] | CurseForgeFailureReply
+
+export type LogCrashRuleId =
+  | 'java-too-old'
+  | 'legacy-on-modern-jvm'
+  | 'missing-dependency-forge'
+  | 'missing-dependency-fabric'
+  | 'duplicate-mod'
+  | 'mod-resolution-failed'
+  | 'mixin-apply-failed'
+  | 'out-of-memory'
+  | 'graphics-driver'
+  | 'corrupt-jar'
+  | 'no-class-def'
+
+export type LogReasonCode =
+  | `crash.rule-${LogCrashRuleId}`
+  | 'crash.no-signal'
+  | 'crash.report-stale'
+  | 'crash.report-only'
+  | 'crash.confidence-low'
+
+export type LogFixAction =
+  | { id: string; kind: 'switch-java'; major: number; reason: LogReasonCode }
+  | { id: string; kind: 'raise-heap'; toMb: number }
+  | { id: string; kind: 'disable-mod'; jar: string; targetDir: string }
+  | { id: string; kind: 'install-dependency'; modId: string; versionRange?: string; projectHint?: string }
+  | { id: string; kind: 'open-path'; path: string }
+  | { id: string; kind: 'open-url'; url: string }
+
+export interface LogAnalysisFinding {
+  ruleId: LogCrashRuleId
+  confidence: 'certain' | 'likely' | 'possible'
+  title: string
+  detail: string
+  evidence: string[]
+  actions: LogFixAction[]
+}
+
+export interface LogAnalysisResult {
+  id: string
+  instanceId: string
+  launchId?: string
+  truncated: boolean
+  findings: LogAnalysisFinding[]
+  reasons: LogReasonCode[]
+  anchorHits?: number
+}
+
+export type LogFixResult =
+  | { ok: true; changed: string[]; undoToken?: string; requiresRestart: boolean }
+  | { ok: false; code: 'EACCES' | 'ENOENT' | 'LOCKED' | 'INVALID'; message: string }
+
+export interface JoinPayload {
+  v: 1
+  host: string
+  port: number
+  profile?: string
+  pack?: string
+  sha1?: string
+  name?: string
+}
+
+export interface JoinInstanceSummary {
+  id: string
+  name: string
+  folderName: string
+  version: string
+  loader: string
+  loaderVersion: string
+  javaMode: 'auto' | 'pinned'
+  javaPath: string
+  minMemory: number
+  maxMemory: number
+  memoryMode: 'auto' | 'explicit'
+}
+
+export interface JoinPackSummary {
+  url: string
+  sha1: string
+  size: number
+}
+
+export interface JoinOffer {
+  id: string
+  payload: JoinPayload
+  kind: 'launch' | 'create-pack' | 'create-vanilla'
+  reason: 'join.profile-exact' | 'join.profile-create-offer'
+  instance?: JoinInstanceSummary
+  pack?: JoinPackSummary
+}
+
+export type JoinPrepareResult =
+  | { ok: true; offer: JoinOffer }
+  | { ok: false; code: string; message: string }
+
+export type JoinConfirmResult =
+  | { ok: true; offer: JoinOffer; launchId?: string; pid?: number }
+  | { ok: false; code: string; message: string }
+
+export interface CoreInstanceRecord {
+  id: string
+  name: string
+  folderName: string
+  path: string
+  version: string
+  loader: string
+  loaderVersion: string
+  javaPath: string
+  minMemory: number
+  maxMemory: number
+  managed?: boolean
+  createdAt: number
+  updatedAt: number
+  [key: string]: unknown
+}
+
+export interface InstanceLaunchSettingsPatch {
+  javaPath?: string
+  javaMode?: 'auto' | 'pinned'
+  maxMemory?: number
+  memoryMode?: 'auto' | 'explicit'
+  extraJvmArgs?: string[]
+  resolution?: { width: number; height: number } | null
+}
+
+export interface InstanceFileRecord {
+  id: string
+  name: string
+  version: string
+  loader: string
+  loaderVersion: string
+  javaPath: string
+  javaMode?: 'auto' | 'pinned'
+  minMemory: number
+  maxMemory: number
+  memoryMode?: 'auto' | 'explicit'
+  extraJvmArgs?: string[]
+  resolution?: { width: number; height: number }
+  [key: string]: unknown
+}
+
+export interface InstanceProfileRecord {
+  [key: string]: unknown
+}
+
+export interface SettingsSnapshot {
+  currentTheme?: string
+  lang?: string
+  preferences?: unknown
+  [key: string]: unknown
+}
+
+export interface LaunchGamePayload {
+  folderName?: string
+  profileName: string
+  version: string
+  ram: number
+  modLoader: string
+  loaderVersion?: string
+  javaPath?: string
+  authData?: { type: string; name: string; uuid?: string }
+  gameOptions?: Record<string, unknown>
+  extraJvmArgs?: string[]
+  resolution?: { width: number; height: number }
+}
+
+export interface GameClosedPayload {
+  code: number
+  profileName: string
+  folderName: string
+}
+
+export interface LaunchFailedPayload {
+  folderName: string
+  profileName: string
+  message: string
+}
+
+export interface LaunchStopPayload {
+  folderName: string
+  profileName: string
+}
+
+export interface CreateInstancePayload {
+  folderName: string
+  options: Record<string, unknown> & {
+    keyBindings?: Record<string, string>
+    _mcVersion?: string
+    lang?: string
+    fullscreen?: boolean
+  }
+}
+
+export interface CreateInstanceResult {
+  success: boolean
+  folderName?: string
+  path?: string
+  created?: boolean
+  reason?: string
+  keybindCount?: number
+  error?: string
+}
+
+export interface RenameInstanceResult {
+  success: boolean
+  newFolderName?: string
+  profiles?: unknown
+  error?: string
+}
+
+export interface RepairProfilePayload {
+  loader: string
+  loaderVersion: string
+  mcVersion: string
+  folderName?: string
+}
+
+export interface JavaVersion {
+  path: string
+  version: number
+  verStr: string
+  majorVersion?: number
+  arch?: string
+  vendor?: string
+  source?: string
+}
+
+export interface SupportBundleResult {
+  file: string
+  entries: string[]
+  bytes: number
+  sanitizedLogFiles: number
+}
+
+export interface DialogFilter {
+  name: string
+  extensions: string[]
+}
+
+export interface DialogOpenOptions {
+  defaultPath?: string
+  properties?: string[]
+  filters?: DialogFilter[]
+  [key: string]: unknown
+}
+
+export interface DialogOpenResult {
+  canceled: boolean
+  filePaths?: string[]
+}
+
+export interface DialogSaveOptions {
+  defaultPath?: string
+  filters?: DialogFilter[]
+  [key: string]: unknown
+}
+
+export interface DialogSaveResult {
+  canceled: boolean
+  filePath?: string
+}
+
+export interface InstalledWorldInfo {
+  /** Folder created inside the instance's `saves` directory. */
+  folderName: string
+  path: string
+  /** True when an existing world forced a `(2)`-style name instead of overwriting. */
+  renamed: boolean
+  files?: number
+}
+
+export interface DownloadModPayload {
+  folderName: string
+  profileName: string
+  versionId: string
+  downloadUrl?: string
+  filename: string
+  itemType: string
+  /** Correlates world-install progress with the footer task bar. */
+  taskId?: string
+  /** CurseForge file id: the core resolves and verifies it against the API. */
+  curseforgeFileId?: number
+  /** Project title, used as the world name when the archive has no folder of its own. */
+  title?: string
+}
+
+export interface DownloadModResult {
+  success: boolean
+  path?: string
+  error?: string
+  /** Set for world installs: the folders created inside `saves`. */
+  worlds?: InstalledWorldInfo[]
+}
+
+export interface InstallModpackPayload {
+  folderName: string
+  mcVersion: string
+  loader: string
+  mrpackUrl: string
+  /** `install` reserves a free folder; `update` keeps the existing one. */
+  mode?: 'install' | 'update'
+}
+
+export interface ModpackIndexEntry {
+  path?: string
+  filename?: string
+  downloads?: string[]
+  [key: string]: unknown
+}
+
+export interface ModpackIndex {
+  name?: string
+  files?: ModpackIndexEntry[]
+  [key: string]: unknown
+}
+
+export interface InstallModpackResult {
+  success: boolean
+  modCount?: number
+  index?: ModpackIndex
+  error?: string
+  loaderInstalled?: boolean
+  /** Loader kind and versions the .mrpack actually requires, not the UI label. */
+  loader?: string
+  mcVersion?: string
+  /** Loader version the installer actually selected, for the instance profile. */
+  loaderVersion?: string
+  versionId?: string
+  /** Actual folder on disk, unique when the requested one was already taken. */
+  folderName?: string
+  /** Relative paths of every override file the pack installed. */
+  overrideFiles?: string[]
+}
+
+export interface ModpackInstallProgress {
+  folderName: string
+  percent: number
+  label: string
+}
+
+export interface LaunchProgress {
+  folderName: string
+  profileName: string
+  percent: number
+  label: string
+}
+
+export interface ContentFilePayload {
+  folderName: string
+  type: string
+}
+
+export interface HashContentFilesPayload {
+  folderName: string
+  files: Array<{ fileName: string; type: string }>
+}
+
+export type HashContentFilesResult = Record<string, string>
+
+export interface UploadLocalModPayload {
+  folderName: string
+  filePath: string
+  itemType: string
+  /** Correlates installer progress with the footer task bar. */
+  taskId?: string
+}
+
+export interface UploadLocalModResult {
+  success: boolean
+  error?: string
+  fileName?: string
+  destPath?: string
+  itemType?: string
+  /** Set for world uploads: the folders created inside `saves`. */
+  worlds?: InstalledWorldInfo[]
+}
+
+export interface UploadProgress {
+  percent: number
+}
+
+export interface ExportProfilePayload {
+  format: 'mrpack' | 'zip'
+  instanceName: string
+  folderName: string
+  manifest: unknown
+  options: unknown
+  savePath?: string
+  suggestedFileName: string
+  mrpackIndex?: unknown
+}
+
+export interface ExportProfileResult {
+  success: boolean
+  filePath?: string
+  fileName?: string
+  fileSize?: number
+  error?: string
+}
+
+export interface ImportPreviewPayload {
+  error?: string
+  format?: "mrpack" | "zip"
+  title?: string
+  minecraftVersion?: string
+  modloader?: string
+  modloaderVersion?: string
+  description?: string
+  author?: string
+  fileSize?: number
+  totalFiles?: number
+  modCount?: number
+  resourcepackCount?: number
+  shaderCount?: number
+  datapackCount?: number
+  worldCount?: number
+  hasIcon?: boolean
+  hasBanner?: boolean
+  hasConfig?: boolean
+  hasScreenshots?: boolean
+  worlds?: string[]
+  isModpack?: boolean
+}
+
+export interface ImportProfilePayload {
+  filePath: string
+  taskId?: string
+  targetInstanceName: string
+  installMods: boolean
+  installResourcepacks: boolean
+  installShaderpacks: boolean
+  installDatapacks: boolean
+  installWorlds: boolean
+  installConfig: boolean
+  installScreenshots: boolean
+}
+
+export interface ImportProfileResult {
+  success: boolean
+  instanceId?: string
+  instanceName?: string
+  profile?: Record<string, unknown>
+  error?: string
+  modsInstalled?: number
+  resourcepacksInstalled?: number
+  shaderpacksInstalled?: number
+  datapacksInstalled?: number
+  worldsImported?: number
+}
+
+export interface ScreenshotDeletePayload {
+  absolutePath: string
+  sourceAbsolutePath?: string
+}
+
+export interface ServerPingResult {
+  online: boolean
+  playersOnline: number
+  playersMax: number
+  motd: string
+  ping: number
+  version: string
+  icon: string | null
+  error?: string
+}
+
+export interface LaunchApi {
+  start(payload: LaunchGamePayload): void
+  stop(payload: LaunchStopPayload): Promise<boolean>
+  onStatus(callback: (status: string) => void): Unsubscribe
+  onClosed(callback: (data: GameClosedPayload) => void): Unsubscribe
+  onReady(callback: (profileName: string) => void): Unsubscribe
+  onFailed(callback: (data: LaunchFailedPayload) => void): Unsubscribe
+  onProgress(callback: (data: LaunchProgress) => void): Unsubscribe
+}
+
+export interface LogsApi {
+  onAnalysis(callback: (result: LogAnalysisResult) => void): Unsubscribe
+  analyze(instanceId: string, launchId?: string): Promise<LogAnalysisResult>
+  applyFix(analysisId: string, actionId: string): Promise<LogFixResult>
+  undoFix(undoToken: string): Promise<LogFixResult>
+  readLatest(folderName: string): Promise<string>
+  createSupportBundle(destination: string): Promise<SupportBundleResult>
+}
+
+export interface SettingsApi {
+  get(): Promise<SettingsSnapshot | null>
+  save(settings: SettingsSnapshot): Promise<boolean>
+  onFlushBeforeClose(callback: () => void): Unsubscribe
+  flushBeforeCloseComplete(): void
+}
+
+export type WorldGamemode = 'survival' | 'creative' | 'adventure' | 'spectator'
+
+/** Mirrors `electron/instances/worlds.ts`; worlds are detected from `saves` on disk. */
+export interface WorldSummary {
+  folderName: string
+  name: string
+  gamemode: WorldGamemode | null
+  hardcore: boolean
+  version: string | null
+  lastPlayed: number | null
+  playtimeMs: number | null
+  playtimeSource: 'stats' | 'world-age' | 'none'
+  playtimeApproximate: boolean
+  playerCount: number
+  iconDataUrl: string | null
+  error?: string
+}
+
+export interface CloneInstanceResult {
+  success: boolean
+  profile?: InstanceProfileRecord
+  error?: string
+}
+
+export interface CreateShortcutResult {
+  success: boolean
+  path?: string
+  error?: string
+}
+
+export interface BackgroundTaskProgress {
+  id: string
+  percent: number | null
+  label: string
+}
+
+export interface InstancesApi {
+  list(): Promise<CoreInstanceRecord[]>
+  create(data: CreateInstancePayload): Promise<CreateInstanceResult>
+  rename(data: { oldFolderName: string; newName: string }): Promise<RenameInstanceResult>
+  clone(data: { folderName: string; newName?: string }): Promise<CloneInstanceResult>
+  createShortcut(data: { folderName: string; instanceName: string }): Promise<CreateShortcutResult>
+  deleteFiles(folderName: string): Promise<void>
+  openFolder(folderName: string): Promise<void>
+  openProfileFolder(name: string): Promise<void>
+  listWorlds(folderName: string): Promise<WorldSummary[]>
+  repair(data: RepairProfilePayload): Promise<boolean>
+  updateLaunchSettings(
+    folderName: string,
+    patch: InstanceLaunchSettingsPatch,
+  ): Promise<InstanceFileRecord>
+  getProfiles(): Promise<InstanceProfileRecord[] | null>
+  saveProfiles(profiles: InstanceProfileRecord[]): Promise<boolean>
+  onLaunchRequest(callback: (folderName: string) => void): Unsubscribe
+}
+
+export interface ModsApi {
+  curseforgeSearch(data: {
+    query: string
+    sortBy: string
+    modFilter?: string
+    gameVersion?: string
+    modLoaderType?: number
+    index?: number
+    pageSize?: number
+  }): Promise<CurseForgeSearchReply | undefined>
+  curseforgeProject(modId: string | number): Promise<CurseForgeProjectResult | undefined>
+  curseforgeFiles(
+    modId: string | number,
+    gameVersion?: string,
+    modLoaderType?: number,
+  ): Promise<CurseForgeFilesResult | undefined>
+  download(data: DownloadModPayload): Promise<DownloadModResult>
+  installModpack(data: InstallModpackPayload): Promise<InstallModpackResult>
+  uploadLocal(data: UploadLocalModPayload): Promise<UploadLocalModResult>
+  listContentFiles(data: ContentFilePayload): Promise<string[]>
+  hashContentFiles(data: HashContentFilesPayload): Promise<HashContentFilesResult>
+  deleteContentFile(data: ContentFilePayload & { fileName: string }): Promise<void>
+  onUploadProgress(callback: (data: UploadProgress) => void): Unsubscribe
+  onModpackProgress(callback: (data: ModpackInstallProgress) => void): Unsubscribe
+}
+
+export interface DialogsApi {
+  open(options?: DialogOpenOptions): Promise<DialogOpenResult>
+  save(options?: DialogSaveOptions): Promise<DialogSaveResult>
+  showItem(filePath: string): Promise<void>
+  readImage(filePath: string): Promise<string | null>
+}
+
+export interface ProfilesApi {
+  export(data: ExportProfilePayload): Promise<ExportProfileResult>
+  importPreview(filePath: string): Promise<ImportPreviewPayload | null>
+  import(data: ImportProfilePayload): Promise<ImportProfileResult>
+}
+
+export interface AuthApi {
+  status(): Promise<MicrosoftAuthStatus | undefined>
+  login(): Promise<MicrosoftAuthStatus | undefined>
+  cancel(): Promise<boolean | undefined>
+  refresh(accountId?: string): Promise<MicrosoftAuthStatus | undefined>
+  signOut(accountId?: string): Promise<MicrosoftAuthStatus | undefined>
+  identity(): Promise<{ uuid: string | null; username: string | null; type: string } | null>
+  onStatus(callback: (status: MicrosoftAuthStatus) => void): Unsubscribe
+}
+
+export interface JoinApi {
+  buildLink(payload: JoinPayload): Promise<string>
+  prepare(payload: unknown): Promise<JoinPrepareResult>
+  confirm(offerId: string): Promise<JoinConfirmResult>
+  onInvite(callback: (payload: JoinPayload) => void): Unsubscribe
+}
+
+export interface WindowApi {
+  minimize(): void
+  focus(): void
+  close(): void
+}
+
+export interface JavaApi {
+  versions(forceRescan?: boolean): Promise<JavaVersion[] | null>
+}
+
+export interface LoadersApi {
+  forgeVersions(): Promise<string[] | null>
+  neoforgeVersions(): Promise<string[] | null>
+}
+
+export interface ServersApi {
+  ping(serverIp: string): Promise<ServerPingResult>
+}
+
+export interface ScreenshotsApi {
+  collect(): Promise<ScreenshotItem[]>
+  delete(payload: ScreenshotDeletePayload): Promise<boolean>
+  openFolder(): Promise<void>
+}
+
+export interface SystemApi {
+  copy(text: string): void
+  openExternal(url: string): void
+}
+
+export interface TasksApi {
+  onProgress(callback: (data: BackgroundTaskProgress) => void): Unsubscribe
+}
+
+export type UpdateState =
+  | 'disabled'
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'not-available'
+  | 'error'
+
+export interface UpdateStatus {
+  state: UpdateState
+  currentVersion: string
+  version?: string
+  percent?: number
+  message?: string
+  checkedAt?: number
+}
+
+export interface UpdatesApi {
+  state(): Promise<UpdateStatus | undefined>
+  check(): Promise<UpdateStatus | undefined>
+  install(): Promise<boolean | undefined>
+  onStatus(callback: (status: UpdateStatus) => void): Unsubscribe
+}
+
+export interface BambooApi {
+  icons: Record<string, string>
+  launch: LaunchApi
+  logs: LogsApi
+  settings: SettingsApi
+  instances: InstancesApi
+  mods: ModsApi
+  dialogs: DialogsApi
+  profiles: ProfilesApi
+  tasks: TasksApi
+  auth: AuthApi
+  join: JoinApi
+  window: WindowApi
+  java: JavaApi
+  loaders: LoadersApi
+  servers: ServersApi
+  screenshots: ScreenshotsApi
+  updates: UpdatesApi
+  system: SystemApi
 }
 
 declare global {
+  // The renderer only ever sees metadata; tokens stay in the OS secret store.
+  interface MicrosoftAccountStatus {
+    id: string
+    name: string
+    uuid: string
+    type: string
+    active: boolean
+    avatar: string
+    expiresAt?: number
+    expired: boolean
+    hasRefreshToken: boolean
+  }
+
+  interface MicrosoftAuthStatus {
+    signedIn: boolean
+    pending: boolean
+    tokenStoreDegraded: boolean
+    account: MicrosoftAccountStatus | null
+  }
+
   interface ScreenshotItem {
     id: string;
     title: string;
@@ -38,101 +783,6 @@ declare global {
     sourceAbsolutePath: string;
   }
   interface Window {
-    electronAPI?: {
-      iconCache: Record<string, string>
-      launchGame: (payload: {
-        folderName?: string
-        profileName: string
-        version: string
-        ram: number
-        modLoader: string
-        loaderVersion?: string
-        javaPath?: string
-        authData?: { type: string; name: string; uuid?: string; token?: string }
-        gameOptions?: Record<string, unknown>
-      }) => void
-      onLaunchStatus?: (callback: (status: string) => void) => () => void
-      onGameClosed?: (callback: (data: { code: number; profileName: string; folderName: string }) => void) => () => void
-      onGameReady?: (callback: (profileName: string) => void) => () => void
-      startMicrosoftLogin?: () => void
-      onMsDeviceCode?: (callback: (data: { userCode: string; verificationUri: string }) => void) => () => void
-      onMsLoginStep?: (callback: (step: string) => void) => () => void
-      onMsLoginResult?: (callback: (result: { success: boolean; name?: string; uuid?: string; token?: string; refreshToken?: string; error?: string }) => void) => () => void
-      copyToClipboard?: (text: string) => void
-      openExternal?: (url: string) => void
-      writeOptionsTxt?: (data: { folderName: string; options: Record<string, unknown> }) => Promise<void>
-      findJava?: () => Promise<string | null>
-      getJavaVersions?: (forceRescan?: boolean) => Promise<{ path: string; version: number; verStr: string }[] | null>
-      getRecommendedJavaForMc?: (mcVersion: string) => Promise<{ recommended: number; selected: { path: string; version: number; verStr: string } | null; available: { path: string; version: number; verStr: string }[] }>
-      findBestJavaForMc?: (mcVersion: string) => Promise<{ path: string; version: number; verStr: string } | null>
-      getProfiles?: () => Promise<any>
-      saveProfiles?: (profiles: any) => Promise<boolean>
-      getCollections?: () => Promise<any[]>
-      saveCollections?: (collections: any[]) => Promise<boolean>
-      openProfileFolder?: (name: string) => Promise<void>
-      openInstanceFolder?: (folderName: string) => Promise<void>
-      downloadMod?: (data: { folderName: string; profileName: string; versionId: string; downloadUrl: string; filename: string; itemType: string }) => Promise<{ success: boolean; path?: string }>
-      installModpackMrpack?: (data: { folderName: string; mcVersion: string; loader: string; mrpackUrl: string }) => Promise<{ success: boolean; modCount?: number; index?: any; error?: string }>
-      getForgeVersions?: () => Promise<string[] | null>
-      getNeoforgeVersions?: () => Promise<string[] | null>
-      getSettings?: () => Promise<any>
-      saveSettings?: (settings: any) => Promise<boolean>
-      getPlayerIdentity?: () => Promise<{ uuid: string | null; username: string | null; type: string } | null>
-      curseforgeSearch?: (data: { query: string; sortBy: string; modFilter?: string; gameVersion?: string; modLoaderType?: number; index?: number; pageSize?: number }) => Promise<any | { error: string }>
-      curseforgeProject?: (modId: string) => Promise<any | { error: string }>
-      curseforgeFiles?: (modId: string, gameVersion?: string, modLoaderType?: number) => Promise<any[] | { error: string }>
-      deleteProfileFiles?: (folderName: string) => Promise<void>
-      repairProfile?: (data: { loader: string; loaderVersion: string; mcVersion: string; folderName?: string }) => Promise<boolean>
-      onRepairProgress?: (callback: (status: string) => void) => () => void
-      completeReinstall?: (profiles: any[]) => Promise<boolean>
-      onReinstallProgress?: (callback: (status: string) => void) => () => void
-      showOpenDialog?: (options: any) => Promise<{ canceled: boolean; filePaths?: string[] }>
-      showSaveDialog?: (options: any) => Promise<{ canceled: boolean; filePath?: string }>
-      pingServer?: (serverIp: string) => Promise<{ online: boolean; playersOnline: number; playersMax: number; motd: string; ping: number; version: string; icon: string | null; error?: string }>
-      readImageFile?: (filePath: string) => Promise<string | null>
-      exportProfile?: (data: { format: string; instanceName: string; folderName: string; manifest: any; options: any; suggestedFileName: string; savePath?: string; mrpackIndex?: any }) => Promise<any>
-      importPreview?: (filePath: string) => Promise<any>
-      importProfile?: (data: any) => Promise<any>
-      // Unified screenshots collection
-      collectAllScreenshots?: () => Promise<ScreenshotItem[]>
-      deleteScreenshotFile?: (payload: { absolutePath: string; sourceAbsolutePath?: string }) => Promise<boolean>
-      openScreenshotsFolder?: () => Promise<void>
-      windowMinimize?: () => void
-      windowClose?: () => void
-      stopGame?: (data: { folderName: string; profileName: string }) => void
-      // Friends API
-      getFriendsStore?: () => Promise<FriendStore | null>
-      saveFriendsStore?: (data: FriendStore) => Promise<boolean>
-      searchUsers?: (query: string) => Promise<FriendProfile[]>
-      sendFriendRequest?: (userId: string) => Promise<boolean>
-      acceptFriendRequest?: (userId: string) => Promise<boolean>
-      declineFriendRequest?: (userId: string) => Promise<boolean>
-      blockUser?: (userId: string) => Promise<boolean>
-      removeFriend?: (userId: string) => Promise<boolean>
-      updateFriendStatus?: (status: string) => Promise<boolean>
-      updateFriendActivity?: (activity: any) => Promise<boolean>
-      buildInviteLink?: (payload: any) => Promise<string>
-      sendFriendInvitation?: (data: any) => Promise<boolean>
-      acceptFriendInvitation?: (notificationId: string) => Promise<boolean>
-      declineFriendInvitation?: (notificationId: string) => Promise<boolean>
-      saveFriendAvatar?: (filePath: string) => Promise<string | null>
-      saveFriendBanner?: (filePath: string) => Promise<string | null>
-      onDeepLinkInvite?: (callback: (payload: any) => void) => () => void
-      getActiveLaunches?: () => Promise<string[]>
-            saveCosmeticFiles?: (data: { slug: string; files: { fileName: string; data: number[] }[] }) => Promise<{ success: boolean; path?: string; fileCount?: number; error?: string }>,
-	readCosmeticFile?: (filePath: string) => Promise<{ success: boolean; data?: string; type?: string; error?: string }>,
-onCosmeticProgress?: (callback: (data: { playtimeHours?: number; blocksMined?: number; mobsKilled?: number; playerKills?: number; distanceTraveled?: number; achievements?: string[] }) => void) => () => void
-
-      detectLanServer?: (folderName: string) => Promise<{ port: number; address: string } | null>
-      getHostedServers?: () => Promise<Record<string, { port: number; address: string; discoveredAt: number }>>
-      // Issue 24: Custom version / local content upload
-      deleteContentFile?: (data: { folderName: string; fileName: string; type: string }) => Promise<void>
-      uploadLocalMod?: (data: { folderName: string; filePath: string; itemType: string }) => Promise<{ success: boolean; error?: string }>
-      onUploadProgress?: (callback: (data: { percent: number }) => void) => () => void
-      listContentFiles?: (data: { folderName: string; type: string }) => Promise<string[]>
-      readFileAsBase64?: (filePath: string) => Promise<string | null>
-      showItemInFolder?: (filePath: string) => Promise<void>
-      saveTempFile?: (data: { data: number[]; fileName: string }) => Promise<string | null>
-    }
+    electronAPI?: BambooApi
   }
 }

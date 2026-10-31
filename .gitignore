@@ -1,82 +1,50 @@
-# =============================================
-# BACKEND-ONLY REPO
-# Alles außer dem server/ Ordner gehört zum
-# Launcher und wird hier NICHT mitcommitted.
-# =============================================
-
-# Launcher (Electron / React / Vite)
-src/
-public/
-main.js
-main.mjs
-preload.js
-index.html
-splash.html
-package.json
-package-lock.json
-pnpm-lock.yaml
-pnpm-workspace.yaml
-vite.config.ts
-tsconfig.*.json
-tsconfig.json
-eslint.config.js
-bamboo-launcher-spec.md
-get_handlers.js
-fix-electron.cjs
-SUMMARY.md
-README.md
-scripts/
-bamboo-fix-plan.md
-logo.png
-# The bundled CurseForge key must ship in every build, so it is tracked.
-# Everything else under resources/ (icons) stays untracked.
-resources/*
-!resources/curseforge-key.txt
-
-# Editor / Temp
-.freebuff/
-desktop.db
-desktop.db-shm
-desktop.db-wal
+# Bamboo Launcher repository ignores.
+# Only generated output, local state and secrets belong here. Source, tests,
+# CI configuration, docs and bundled resources must stay visible to git.
 
 # Dependencies
 node_modules/
-server/node_modules/
 
-# Environment
-.env
-.env.*
-*.local
-server/.env
+# Build output
+/dist/
+/dist-electron/
+/release/
+/build-release/
 
-# Logs
+# Local runtime data
+/logs/
 *.log
-server/logs/
-server/admin.log
+*.log.gz
+desktop.db
+desktop.db-shm
+desktop.db-wal
+.freebuff/
+.wrangler/
+.code-review-graph/
+.e2e-auth/
+*.tmp
+*.temp
+nul
 
-# Build outputs
-dist/
-release/
-
-# Cache
+# Tool caches
 .eslintcache
 .vite/
 .cache/
 coverage/
+*.tsbuildinfo
 
-# OS
+# Gradle output for the standalone mod/
+mod/.gradle/
+mod/build/
+
+# Local environment configuration and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# OS and editor files
 .DS_Store
 Thumbs.db
-
-# IDE
 .vscode/
 .idea/
-
-# Temp
-*.tmp
-*.temp
-
-# Generated server content
-server/content/
-server/cosmetic_models/
-nul

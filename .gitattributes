@@ -1,7 +1,54 @@
-# Erzwinge, dass alle Textdateien standardmäßig LF (Linux) nutzen
-* text eol=lf
+# Normalize real text to LF. Do not force text on unknown paths: Git detects
+# binary content, and the explicit binary rules below cover shipped assets.
+* text=auto eol=lf
 
-# Verhindere, dass Git Binärdateien (Bilder, etc.) anfasst
+# Archives and Java artifacts
+*.zip binary
+*.jar binary
+*.7z binary
+*.rar binary
+*.gz binary
+*.tgz binary
+*.tar binary
+*.bz2 binary
+*.xz binary
+
+# Images
 *.png binary
 *.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
 *.ico binary
+*.bmp binary
+*.tif binary
+*.tiff binary
+
+# Fonts
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+
+# Audio and video
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.flac binary
+*.mp4 binary
+*.webm binary
+*.mov binary
+*.avi binary
+*.mkv binary
+
+# Other binary payloads
+*.pdf binary
+*.wasm binary
+*.bin binary
+*.pak binary
+*.dll binary
+*.exe binary
+*.so binary
+*.dylib binary
+*.class binary

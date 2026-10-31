@@ -1,29 +1,271 @@
-const { app, BrowserWindow, ipcMain, shell, clipboard, dialog, protocol, net, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, clipboard, dialog, protocol, net, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { execSync, exec } = require('child_process');
-const { Client, Authenticator } = require('minecraft-launcher-core');
 const AdmZip = require('adm-zip');
+const { createIpcRegistrar } = require('./dist-electron/ipc-registry.js');
+const { deleteScreenshotFile } = require('./dist-electron/screenshots.js');
+// Single owner for "which folder does this content type go into".
+const { downloadFolder } = require('./dist-electron/mods/legacy/shared.js');
+// Shared with the renderer and the CurseForge provider; compiled from electron/shared.
+const { CURSEFORGE_CLASS_IDS: CF_CLASS_IDS } = require('./dist-electron/shared/curseforgeClassIds.js');
 
 const { startRPC, setActivity: setDiscordActivity } = require('./src/discordRPC');
 
 const INVITE_PROTOCOL = 'bamboo-launcher';
-let pendingDeepLink = null;
+
+// The core creates the file logger; shell code shares it once the core is ready.
+// Before that, warnings and errors still reach the console so a failed boot is visible.
+let shellLogger = null;
+function attachShellLogger(core) {
+  if (core?.logger) shellLogger = core.logger.child('shell');
+}
+const shellLog = {
+  debug(message, data) {
+    if (shellLogger) shellLogger.debug(message, data);
+  },
+  info(message, data) {
+    if (shellLogger) shellLogger.info(message, data);
+  },
+  warn(message, data) {
+    if (shellLogger) shellLogger.warn(message, data);
+    else console.warn(`[shell] ${message}`, data ?? '');
+  },
+  error(message, data) {
+    if (shellLogger) shellLogger.error(message, data);
+    else console.error(`[shell] ${message}`, data ?? '');
+  },
+};
+
+let joinService = null;
+let joinSeamReady = false;
+const preReadyJoinLinks = [];
 const ACTIVE_LAUNCHES = new Map();
+// Every channel below goes through this one registration path. It applies the
+// sender check and the argument schemas before the legacy handler runs.
+const ipc = createIpcRegistrar(ipcMain);
+
+let bambooCorePromise = null;
+function broadcastLogAnalysis(result) {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send('bamboo:logs:analysis', result);
+  }
+}
+
+function broadcastAuthStatus(status) {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send('bamboo:auth:changed', status);
+  }
+}
+
+function getBambooCore() {
+  if (!bambooCorePromise) {
+    bambooCorePromise = require('./dist-electron/index.js').initializeCore({
+      onAnalysis: broadcastLogAnalysis,
+      onSessionLost: broadcastAuthStatus,
+    }).then((core) => {
+      bambooGameRoot = core.paths.gameRoot;
+      attachShellLogger(core);
+      return core;
+    }).catch((err) => {
+      shellLog.error('core initialization failed', { error: err instanceof Error ? err.message : String(err) });
+      bambooCorePromise = null;
+      return null;
+    });
+  }
+  return bambooCorePromise;
+}
+
+function getLegacyModsBridge() {
+  try {
+    return require('./dist-electron/mods/legacy-bridge.js');
+  } catch (error) {
+    shellLog.warn('mods bridge unavailable', { error: error.message });
+    return null;
+  }
+}
+
+let bambooGameRoot = null;
+function legacyGameRoot() {
+  try {
+    return require('./dist-electron/paths.js').legacyGameRoot();
+  } catch (error) {
+    // A missing core build must not break the legacy window.
+    shellLog.debug('legacy game root fallback used', { error: error instanceof Error ? error.message : String(error) });
+    return process.platform === 'win32' ? path.join(process.env.SystemDrive || 'C:', 'BambooLaufwerk') : path.join(require('os').homedir(), 'BambooLaufwerk');
+  }
+}
+function gameRoot() {
+  return bambooGameRoot ?? legacyGameRoot();
+}
+async function resolveGameRoot() {
+  const core = await getBambooCore();
+  if (core) bambooGameRoot = core.paths.gameRoot;
+  return gameRoot();
+}
+
+// ---------------------------------------------------------------------------
+// Instance folders
+//
+// Legacy profiles live in <gameRoot>/profiles/<folderName>. Before 0.2.0 the
+// folder was always derived from the display name, so two installs of the same
+// modpack (or two versions of it) silently shared one directory. Every writer
+// now reserves a free folder first, and existing collisions are repaired once
+// at startup.
+// ---------------------------------------------------------------------------
+function profileFolderSlug(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 64) || 'instance';
+}
+
+function profileFolderOf(profile) {
+  const stored = typeof profile?.folderName === 'string' ? profile.folderName.trim() : '';
+  if (stored && stored !== '.' && stored !== '..') return path.basename(stored);
+  return profileFolderSlug(profile?.name || profile?.id || 'instance');
+}
+
+function readProfilesSync(rootPath) {
+  const profilesPath = path.join(rootPath, 'profiles.json');
+  if (!fs.existsSync(profilesPath)) return [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(profilesPath, 'utf8'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    shellLog.warn('profiles.json is unreadable', { path: profilesPath, error: error.message });
+    return [];
+  }
+}
+
+function writeProfilesSync(rootPath, profiles) {
+  fs.mkdirSync(rootPath, { recursive: true });
+  fs.writeFileSync(path.join(rootPath, 'profiles.json'), JSON.stringify(profiles, null, 2));
+}
+
+function nextFreeProfileFolder(rootPath, base, used) {
+  const slug = profileFolderSlug(base);
+  let candidate = slug;
+  let index = 2;
+  while (
+    used.has(candidate.toLowerCase()) ||
+    fs.existsSync(path.join(rootPath, 'profiles', candidate))
+  ) {
+    candidate = `${slug}-${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function uniqueProfileFolder(rootPath, desiredBase, profiles, excludeFolder) {
+  const base = profileFolderSlug(desiredBase);
+  const excluded = String(excludeFolder || '').toLowerCase();
+  const used = new Set(
+    profiles
+      .map(profileFolderOf)
+      .map((folder) => folder.toLowerCase())
+      .filter((folder) => folder && folder !== excluded),
+  );
+  let candidate = base;
+  let index = 2;
+  while (
+    candidate.toLowerCase() !== excluded &&
+    (used.has(candidate.toLowerCase()) || fs.existsSync(path.join(rootPath, 'profiles', candidate)))
+  ) {
+    candidate = `${base}-${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function uniqueProfileName(profiles, baseName) {
+  const base = String(baseName || '').trim() || 'Instanz';
+  const used = new Set(
+    profiles.map((profile) => String(profile?.name || '').toLowerCase()).filter(Boolean),
+  );
+  if (!used.has(base.toLowerCase())) return base;
+  let index = 2;
+  while (used.has(`${base} (${index})`.toLowerCase())) index += 1;
+  return `${base} (${index})`;
+}
+
+/**
+ * Gives every profile that shared a folder with another profile its own copy.
+ * The first owner keeps the original directory; later profiles are copied so
+ * worlds/config are not lost. Returns the changes so the core register can be
+ * updated too: otherwise its stale folderName would overwrite the repair as
+ * soon as the renderer saves the profile list again.
+ */
+function repairProfileFolderCollisions(rootPath) {
+  const profiles = readProfilesSync(rootPath);
+  if (profiles.length === 0) return { repaired: 0, changes: [] };
+  const used = new Set();
+  const changes = [];
+  for (const profile of profiles) {
+    if (!profile || typeof profile !== 'object') continue;
+    const folder = profileFolderOf(profile);
+    const key = folder.toLowerCase();
+    if (profile.folderName !== folder) {
+      profile.folderName = folder;
+      changes.push({ id: profile.id, folderName: folder });
+    }
+    if (!used.has(key)) {
+      used.add(key);
+      continue;
+    }
+    const source = path.join(rootPath, 'profiles', folder);
+    const targetFolder = nextFreeProfileFolder(rootPath, profile.name || folder, used);
+    const target = path.join(rootPath, 'profiles', targetFolder);
+    try {
+      if (fs.existsSync(source)) {
+        fs.cpSync(source, target, { recursive: true, force: false, errorOnExist: true });
+      } else {
+        fs.mkdirSync(target, { recursive: true });
+      }
+      profile.folderName = targetFolder;
+      used.add(targetFolder.toLowerCase());
+      changes.push({ id: profile.id, folderName: targetFolder });
+      shellLog.info('instance folder collision repaired', {
+        instance: profile.name,
+        from: folder,
+        to: targetFolder,
+      });
+    } catch (error) {
+      shellLog.warn('instance folder collision could not be repaired', {
+        instance: profile.name,
+        from: folder,
+        target: targetFolder,
+        error: error.message,
+      });
+    }
+  }
+  if (changes.length > 0) writeProfilesSync(rootPath, profiles);
+  return { repaired: changes.length, changes };
+}
+
+// Never print credentials: the launch core masks --accessToken before logging.
+const SECRET_LOG_KEY = /(token|secret|password|api[_-]?key|authorization)/i;
+function redactForLog(value) {
+  try {
+    return JSON.parse(JSON.stringify(value, (key, entry) => (SECRET_LOG_KEY.test(key) ? '[redacted]' : entry)));
+  } catch {
+    // Serialising the log payload must not throw; the placeholder is the record.
+    return '[unserializable]';
+  }
+}
 
 const DISCORD_PRESENCE_DEFAULTS = {
   largeImageKey: 'bamboo',
   largeImageText: 'Bamboo Launcher',
 };
 
-/** Last activity JSON sent — prevents pointless duplicate RPC calls */
 let _lastRpcStatus = '';
 let _lastRpcDetails = '';
 
 function updateDiscordPresence(status, profileName, extraText) {
   const now = new Date();
 
-  // Build the activity text based on status
   let details = '';
   let state = '';
   let smallImageKey;
@@ -67,7 +309,6 @@ function updateDiscordPresence(status, profileName, extraText) {
       break;
   }
 
-  // Deduplicate by checking if either field changed
   if (details === _lastRpcDetails && state === _lastRpcStatus) return;
   _lastRpcDetails = details;
   _lastRpcStatus = state;
@@ -87,206 +328,11 @@ function updateDiscordPresence(status, profileName, extraText) {
 const MAX_CONCURRENT_LAUNCHES = 4;
 let launchCounter = 0;
 
-async function scanJavaCandidates() {
-  const candidates = [];
-  if (process.env.JAVA_HOME) {
-    candidates.push({ path: path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'), source: 'JAVA_HOME' });
-  }
-  if (process.platform === 'win32') {
-    const winDirs = ['C:\\Program Files\\Java','C:\\Program Files\\Eclipse Adoptium','C:\\Program Files\\Microsoft','C:\\Program Files\\BellSoft','C:\\Program Files\\Azul Systems','C:\\Program Files\\Amazon Corretto','C:\\Program Files\\Semeru','C:\\Program Files\\Liberica','C:\\Program Files\\ojdkbuild','C:\\Program Files\\Zulu','C:\\Program Files\\OpenJDK'];
-    for (const dir of winDirs) {
-      if (fs.existsSync(dir)) {
-        const subs = fs.readdirSync(dir);
-        for (const sub of subs) {
-          const javaExe = path.join(dir, sub, 'bin', 'java.exe');
-          if (fs.existsSync(javaExe)) candidates.push({ path: javaExe, source: dir });
-        }
-      }
-    }
-    try {
-      const result = execSync('where java', { encoding: 'utf8', timeout: 3000 }).trim();
-      result.split('\n').forEach(p => candidates.push({ path: p.trim(), source: 'PATH' }));
-    } catch (_) {}
-  } else {
-    const unixPaths = ['/usr/bin/java','/usr/lib/jvm/java-21-openjdk-amd64/bin/java','/usr/lib/jvm/java-17-openjdk-amd64/bin/java','/opt/homebrew/bin/java'];
-    unixPaths.forEach(p => candidates.push({ path: p, source: 'default' }));
-    try {
-      const result = execSync('which java', { encoding: 'utf8', timeout: 3000 }).trim();
-      if (result) candidates.push({ path: result, source: 'PATH' });
-    } catch (_) {}
-  }
-  const withVersion = [];
-  for (const c of candidates) {
-    if (c.path && fs.existsSync(c.path)) {
-      try {
-        const verOut = execSync(`"${c.path}" -version 2>&1`, { encoding: 'utf8', timeout: 3000 });
-        const m = verOut.match(/(?:openjdk|java|hotspot|jre)\s+version\s+"([^"]+)"/i) || verOut.match(/"(\d+)\.\d+\.\d+"/);
-        const verStr = m ? m[1] : '';
-        const major = parseInt(verStr.split('.')[0]) || 0;
-        withVersion.push({ path: c.path, version: major, verStr });
-      } catch (_) { withVersion.push({ path: c.path, version: 0, verStr: '' }); }
-    }
-  }
-  withVersion.sort((a, b) => b.version - a.version);
-  return withVersion;
-}
-
-async function findAllJavaVersions() {
-  const versions = await scanJavaCandidates();
-  if (versions.length === 0) return null;
-  console.log('Gefundene Java-Versionen:', versions.map(v => `${v.verStr || '?'} at ${v.path}`).join(' | '));
-  return versions;
-}
-
-// ===== Verbesserte Java-Verwaltung =====
-// Mapping von Minecraft-Versionen zu optimalen Java-Versionen
-const JAVA_VERSION_MAPPING = {
-  // Minecraft 1.8 - 1.12.2 → Java 8
-  '1.8': 8, '1.9': 8, '1.10': 8, '1.11': 8, '1.12': 8,
-  // Minecraft 1.13 - 1.16 → Java 11 (teilweise kompatibel mit 8, aber besser 11)
-  '1.13': 11, '1.14': 11, '1.15': 11, '1.16': 11,
-  // Minecraft 1.17 - 1.20 → Java 17
-  '1.17': 17, '1.18': 17, '1.19': 17, '1.20': 17,
-  // Minecraft 1.21+ → Java 21
-  '1.21': 21,
-  // Minecraft 26.x (Snapshot) → Java 25
-  '26': 25, '26.1': 25, '26.2': 25, '26.3': 25, '26.4': 25, '26.5': 25,
-};
-
-// Finde die beste Java-Version für eine Minecraft-Version
-function getRecommendedJavaVersionForMc(mcVersion) {
-  if (!mcVersion) return 21; // Default: Java 21
-
-  const verStr = String(mcVersion).trim();
-  
-  // Direkte Übereinstimmung
-  if (JAVA_VERSION_MAPPING[verStr]) {
-    return JAVA_VERSION_MAPPING[verStr];
-  }
-
-  // Versuche Major.Minor zu matchen
-  const parts = verStr.split('.');
-  if (parts.length >= 2) {
-    const majorMinor = `${parts[0]}.${parts[1]}`;
-    if (JAVA_VERSION_MAPPING[majorMinor]) {
-      return JAVA_VERSION_MAPPING[majorMinor];
-    }
-  }
-
-  // Fallback: Basierend auf Major-Version
-  const major = parseInt(verStr.split('.')[0], 10);
-  if (major >= 26) return 25; // Snapshots → Java 25
-  if (major === 1) {
-    const minor = parseInt(verStr.split('.')[1], 10) || 0;
-    if (minor >= 21) return 21;
-    if (minor >= 17) return 17;
-    if (minor >= 13) return 11;
-    return 8;
-  }
-  
-  return 21; // Default
-}
-
-// Finde beste Java-Version basierend auf Minecraft-Version
-async function selectBestJavaForMcVersion(mcVersion) {
-  const recommendedVersion = getRecommendedJavaVersionForMc(mcVersion);
-  const availableVersions = await scanJavaCandidates();
-
-  if (availableVersions.length === 0) return null;
-
-  // Suche exakte Übereinstimmung
-  let exactMatch = availableVersions.find(v => v.version === recommendedVersion);
-  if (exactMatch) {
-    console.log(`[Java] MC ${mcVersion} → Java ${recommendedVersion} (exakt) gefunden: ${exactMatch.path}`);
-    return exactMatch;
-  }
-
-  // Suche kompatible höhere Version
-  let higherMatch = availableVersions.find(v => v.version > recommendedVersion && v.version < 100);
-  if (higherMatch) {
-    console.log(`[Java] MC ${mcVersion} → Java ${recommendedVersion} nicht gefunden, verwende Java ${higherMatch.version}: ${higherMatch.path}`);
-    return higherMatch;
-  }
-
-  // Fallback: Beste verfügbare
-  console.log(`[Java] MC ${mcVersion} → Keine kompatible Java gefunden, verwende beste verfügbare: ${availableVersions[0].path}`);
-  return availableVersions[0];
-}
-
-async function findJavaPath() {
-  const versions = await scanJavaCandidates();
-  if (versions.length === 0) return null;
-  console.log('Gefundene Java-Versionen:', versions.map(v => `${v.verStr || '?'} at ${v.path}`).join(' | '));
-  return versions[0].path;
-}
-
-async function findInstallerJavaPath() {
-  const candidates = [];
-  // Before any scanning: hardcoded paths known to work
-  const knownJava21Paths = [
-    'C:\\Program Files\\Java\\jdk-21.0.11\\bin\\java.exe',
-    'C:\\Program Files\\Java\\jdk-21\\bin\\java.exe',
-    'C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11-hotspot\\bin\\java.exe',
-  ];
-  for (const p of knownJava21Paths) {
-    if (fs.existsSync(p)) candidates.push({ path: p, source: 'fallback' });
-  }
-  if (process.env.JAVA_HOME) {
-    candidates.push({ path: path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'), source: 'JAVA_HOME' });
-  }
-  if (process.platform === 'win32') {
-    const winDirs = ['C:\\Program Files\\Java','C:\\Program Files\\Eclipse Adoptium','C:\\Program Files\\Microsoft','C:\\Program Files\\BellSoft','C:\\Program Files\\Azul Systems','C:\\Program Files\\Amazon Corretto','C:\\Program Files\\Semeru','C:\\Program Files\\Liberica','C:\\Program Files\\ojdkbuild','C:\\Program Files\\Zulu','C:\\Program Files\\OpenJDK'];
-    for (const dir of winDirs) {
-      if (fs.existsSync(dir)) {
-        const subs = fs.readdirSync(dir);
-        for (const sub of subs) {
-          const javaExe = path.join(dir, sub, 'bin', 'java.exe');
-          if (fs.existsSync(javaExe)) candidates.push({ path: javaExe, source: dir });
-        }
-      }
-    }
-    try {
-      const result = execSync('where java', { encoding: 'utf8', timeout: 3000 }).trim();
-      result.split('\n').forEach(p => candidates.push({ path: p.trim(), source: 'PATH' }));
-    } catch (_) {}
-  } else {
-    const unixPaths = ['/usr/bin/java','/usr/lib/jvm/java-21-openjdk-amd64/bin/java','/usr/lib/jvm/java-17-openjdk-amd64/bin/java','/opt/homebrew/bin/java'];
-    unixPaths.forEach(p => candidates.push({ path: p, source: 'default' }));
-    try {
-      const result = execSync('which java', { encoding: 'utf8', timeout: 3000 }).trim();
-      if (result) candidates.push({ path: result, source: 'PATH' });
-    } catch (_) {}
-  }
-  const withVersion = [];
-  for (const c of candidates) {
-    if (c.path && fs.existsSync(c.path)) {
-      try {
-        const verOut = execSync(`"${c.path}" -version 2>&1`, { encoding: 'utf8', timeout: 3000 });
-        const m = verOut.match(/(?:openjdk|java|hotspot|jre)\s+version\s+"([^"]+)"/i) || verOut.match(/"(\d+)\.\d+\.\d+"/);
-        const verStr = m ? m[1] : '';
-        const major = parseInt(verStr.split('.')[0]) || 0;
-        withVersion.push({ path: c.path, version: major, verStr });
-      } catch (_) { withVersion.push({ path: c.path, version: 0, verStr: '' }); }
-    }
-  }
-  // Prefer Java 17-21 for installer compatibility, avoid Java 25+
-  withVersion.sort((a, b) => {
-    const aScore = (a.version >= 17 && a.version < 25) ? a.version + 100 : (a.version >= 25 ? 0 : a.version);
-    const bScore = (b.version >= 17 && b.version < 25) ? b.version + 100 : (b.version >= 25 ? 0 : b.version);
-    return bScore - aScore;
-  });
-  console.log('Installer Java-Auswahl:', withVersion.map(v => `${v.verStr || '?'} (Score: ${v.version >= 17 && v.version < 25 ? v.version + 100 : v.version >= 25 ? 0 : v.version}) at ${v.path}`).join(' | '));
-  return withVersion.length > 0 ? withVersion[0].path : null;
-}
-
 function mcVersionNum(ver) {
   const parts = String(ver || '').split('.').map(Number);
   return (parts[0] || 0) * 10000 + (parts[1] || 0) * 100 + (parts[2] || 0);
 }
 
-// Minecraft key code → Minecraft options.txt format
-// Frontend liefert: W, A, SPACE, LEFT_SHIFT, MOUSE_BUTTON_1, F5 usw.
-// options.txt erwartet: key.keyboard.w, key.keyboard.space, key.keyboard.left.shift, key.mouse.left, key.keyboard.f5
 const FRONTEND_KEY_TO_MINECRAFT = {
   'A':'key.keyboard.a','B':'key.keyboard.b','C':'key.keyboard.c','D':'key.keyboard.d',
   'E':'key.keyboard.e','F':'key.keyboard.f','G':'key.keyboard.g','H':'key.keyboard.h',
@@ -325,12 +371,9 @@ function convertKeyCode(code) {
   return FRONTEND_KEY_TO_MINECRAFT[code] || code;
 }
 
-// Approximative Data Version für MC-Version
-// Siehe https://minecraft.wiki/w/Data_version
 function getDataVersion(ver) {
   const parts = String(ver || '').split('.').map(Number);
   const major = parts[0] || 0, minor = parts[1] || 0, patch = parts[2] || 0;
-  // 26.x series
   if (major === 26) {
     if (minor >= 2) return 5200;
     if (minor >= 1) {
@@ -339,7 +382,6 @@ function getDataVersion(ver) {
     }
   }
   if (major === 1) {
-    // 1.21.x series
     if (minor >= 21) {
       if (patch >= 11) return 4903; if (patch >= 10) return 4902;
       if (patch >= 9) return 4901; if (patch >= 8) return 4200;
@@ -367,6 +409,27 @@ function getDataVersion(ver) {
   return 0;
 }
 
+// Only `key.*` ids with `key.*` token values belong in options.txt; anything
+// else is dropped so a malformed profile can never corrupt the file.
+function normalizeKeyBindings(bindings) {
+  if (!bindings || typeof bindings !== 'object' || Array.isArray(bindings)) return undefined;
+  const normalized = {};
+  for (const [id, token] of Object.entries(bindings)) {
+    if (id.startsWith('key.') && typeof token === 'string' && token.startsWith('key.')) normalized[id] = token;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function writeFirstRunOptions(gameDir, options) {
+  const optionsPath = path.join(gameDir, 'options.txt');
+  if (!options || typeof options !== 'object') return { created: false, path: optionsPath, reason: 'no-options' };
+  if (fs.existsSync(optionsPath)) return { created: false, path: optionsPath, reason: 'exists' };
+  fs.mkdirSync(gameDir, { recursive: true });
+  const keyBindings = normalizeKeyBindings(options.keyBindings);
+  fs.writeFileSync(optionsPath, buildOptionsTxt({ ...options, keyBindings }), 'utf8');
+  return { created: true, path: optionsPath, keybindCount: keyBindings ? Object.keys(keyBindings).length : 0 };
+}
+
 function buildOptionsTxt(options) {
   const lines = [];
   const mcVer = mcVersionNum(options._mcVersion || '1.21');
@@ -379,14 +442,12 @@ function buildOptionsTxt(options) {
   function bool(v) { return v === true || v === 'true' || v === 1 || v === '1'; }
   function str(v, fallback) { return (v !== undefined && v !== null && v !== '') ? String(v).trim() : fallback; }
   function pctToFloat(v, fallback) { return (clamp(safeNum(v, fallback * 100), 0, 100) / 100).toFixed(1); }
+  function enumValue(v) { return mcVer >= 26000 ? '"' + v + '"' : v; }
 
-  // === VERSION (CRITICAL) ===
-  // "If this field is missing, the file is discarded and replaced with the defaults."
   const dataVersion = getDataVersion(options._mcVersion || '1.21');
   if (dataVersion > 0) lines.push('version:' + dataVersion);
+  if (mcVer >= 26000) lines.push('graphicsPreset:"custom"');
 
-  // ===================== VIDEO =====================
-  // FOV: degrees = 40 * value + 70 → value = (degrees - 70) / 40
   const fovDeg = clamp(safeNum(options.fov, 70), 30, 110);
   lines.push('fov:' + ((fovDeg - 70) / 40).toFixed(6));
 
@@ -408,71 +469,55 @@ function buildOptionsTxt(options) {
     lines.push('entityDistanceScaling:' + eds.toFixed(1));
   }
 
-  // Gamma: 0-100 → 0.0-1.0
   lines.push('gamma:' + (clamp(safeNum(options.gamma, 50), 0, 100) / 100).toFixed(1));
 
-  // ao: boolean or string
   lines.push('ao:' + (bool(options.ao) ? 'true' : 'false'));
 
-  // particles: 0=All, 1=Decreased, 2=Minimal
   lines.push('particles:' + clamp(safeNum(options.particles, 0), 0, 2));
 
   lines.push('mipmapLevels:' + clamp(safeNum(options.mipmapLevels, 4), 0, 4));
 
   if (mcVer >= 11300) lines.push('biomeBlendRadius:' + clamp(safeNum(options.biomeBlendRadius, 2), 0, 7));
 
-  // entityShadows
   lines.push('entityShadows:' + (bool(options.entityShadows !== false) ? 'true' : 'false'));
 
-  // fovEffectScale
   const fovScale = clamp(safeNum(options.fovEffectScale, 100), 0, 100);
   lines.push('fovEffectScale:' + (fovScale / 100).toFixed(2));
 
-  // darknessEffectScale
   const darkScale = clamp(safeNum(options.darknessEffectScale, 100), 0, 100);
   lines.push('darknessEffectScale:' + (darkScale / 100).toFixed(2));
 
-  // glintSpeed
   const glintSpd = clamp(safeNum(options.glintSpeed, 50), 0, 100);
   lines.push('glintSpeed:' + (glintSpd / 100).toFixed(2));
 
-  // glintStrength
   const glintStr = clamp(safeNum(options.glintStrength, 75), 0, 100);
   lines.push('glintStrength:' + (glintStr / 100).toFixed(2));
 
-  // graphicsMode → "graphics" key in options.txt (fancy/fast/fabulous)
   const gfx = str(options.graphicsMode, 'fancy').toLowerCase();
   lines.push('graphics:' + (gfx === 'fast' ? 'fast' : (gfx === 'fabulous' ? 'fabulous' : 'fancy')));
+  if (mcVer >= 26000) lines.push('graphicsMode:' + (gfx === 'fast' ? 0 : (gfx === 'fabulous' ? 2 : 1)));
 
-  // prioritizeChunkUpdates: 0=default, 1=player, 2=near
   if (mcVer >= 11800) {
     lines.push('prioritizeChunkUpdates:' + clamp(safeNum(options.prioritizeChunkUpdates, 0), 0, 2));
   }
 
-  // improvedTransparency
   if (mcVer >= 11700) {
     lines.push('improvedTransparency:' + (bool(options.improvedTransparency) ? 'true' : 'false'));
   }
 
-  // inactivityFpsLimit
   const fpsLim = str(options.inactivityFpsLimit, 'minimized');
-  lines.push('inactivityFpsLimit:' + fpsLim);
+  lines.push('inactivityFpsLimit:' + enumValue(fpsLim));
 
-  // renderClouds / cloudRange
-  lines.push('renderClouds:' + (bool(options.renderClouds !== false) ? 'true' : 'false'));
+  lines.push('renderClouds:' + enumValue(bool(options.renderClouds !== false) ? 'true' : 'false'));
   lines.push('cloudRange:' + clamp(safeNum(options.cloudRange, 128), 32, 256));
 
-  // screenEffectScale
   const scrEff = clamp(safeNum(options.screenEffectScale, 100), 0, 100);
   lines.push('screenEffectScale:' + (scrEff / 100).toFixed(2));
 
-  // vignette
   lines.push('vignette:' + (bool(options.vignette !== false) ? 'true' : 'false'));
 
-  // weatherRadius
   lines.push('weatherRadius:' + clamp(safeNum(options.weatherRadius, 10), 5, 25));
 
-  // ===================== SOUND =====================
   const soundKeys = ['master', 'music', 'record', 'weather', 'block', 'hostile', 'neutral', 'player', 'ambient', 'voice', 'ui'];
   for (const key of soundKeys) {
     const val = options['soundCategory_' + key];
@@ -483,49 +528,38 @@ function buildOptionsTxt(options) {
 
   if (mcVer >= 11900) lines.push('directionalAudio:' + (bool(options.directionalAudio !== false) ? 'true' : 'false'));
 
-  // musicToast: String (never/pause/pause_and_toast), kein Boolean!
   if (mcVer >= 12000) {
-    // Wenn showMusicToast true = Toasts anzeigen → pause_and_toast
-    lines.push('musicToast:' + (bool(options.showMusicToast) ? 'pause_and_toast' : 'never'));
+    lines.push('musicToast:' + enumValue(bool(options.showMusicToast) ? 'pause_and_toast' : 'never'));
   }
 
-  // musicFrequency: String (DEFAULT/FREQUENT/CONSTANT), kein Float!
   if (mcVer >= 12000) {
     const freqMap = { standard: 'DEFAULT', haeufig: 'FREQUENT', konstant: 'CONSTANT' };
-    lines.push('musicFrequency:' + (freqMap[options.musicFrequency] || 'DEFAULT'));
+    lines.push('musicFrequency:' + enumValue(freqMap[options.musicFrequency] || 'DEFAULT'));
   }
 
-  // ===================== LANGUAGE =====================
   const lang = (options.lang && String(options.lang).trim()) || 'en_us';
   lines.push('lang:' + lang);
 
-  // forceUnicodeFont
   if (mcVer >= 11300) {
     lines.push('forceUnicodeFont:' + (bool(options.forceUnicodeFont) ? 'true' : 'false'));
   }
 
-  // ===================== ACCESSIBILITY =====================
   lines.push('narrator:' + clamp(safeNum(options.narrator, 0), 0, 3));
   lines.push('narratorHotKey:' + (bool(options.narratorHotKey !== false) ? 'true' : 'false'));
   lines.push('onboardAccessibility:' + (bool(options.onboardAccessibility) ? 'true' : 'false'));
 
-  // highContrast / highContrastBlockOutline
   lines.push('highContrast:' + (bool(options.highContrast) ? 'true' : 'false'));
   lines.push('highContrastBlockOutline:' + (bool(options.highContrastBlockOutline) ? 'true' : 'false'));
 
-  // damageTiltStrength: 0-100 → 0.0-1.0
   const dmgTilt = clamp(safeNum(options.damageTiltStrength, 100), 0, 100);
   lines.push('damageTiltStrength:' + (dmgTilt / 100).toFixed(2));
 
-  // menuBackgroundBlurriness: 0-10
   if (mcVer >= 12000) {
     lines.push('menuBackgroundBlurriness:' + clamp(safeNum(options.menuBackgroundBlurriness, 0), 0, 10));
   }
 
-  // ===================== CONTROLS =====================
   lines.push('autoJump:' + (bool(options.autoJump) ? 'true' : 'false'));
 
-  // mouseSensitivity: 0-100 → 0.0-1.0
   const ms = clamp(safeNum(options.mouseSensitivity, 50), 0, 100);
   lines.push('mouseSensitivity:' + (ms / 100).toFixed(2));
 
@@ -539,27 +573,21 @@ function buildOptionsTxt(options) {
     lines.push('toggleUse:' + (bool(options.toggleUse) ? 'true' : 'false'));
   }
 
-  // mouseWheelSensitivity
   lines.push('mouseWheelSensitivity:' + clamp(safeNum(options.mouseWheelSensitivity, 100), 1, 100));
   lines.push('discreteMouseScroll:' + (bool(options.discreteMouseScroll) ? 'true' : 'false'));
   lines.push('rawMouseInput:' + (bool(options.rawMouseInput !== false) ? 'true' : 'false'));
   lines.push('bobView:' + (bool(options.bobView !== false) ? 'true' : 'false'));
   lines.push('rotateWithMinecart:' + (bool(options.rotateWithMinecart) ? 'true' : 'false'));
 
-  // mainHand
   const hand = str(options.mainHand, 'right').toLowerCase();
-  lines.push('mainHand:' + (hand === 'left' ? 'left' : 'right'));
+  lines.push('mainHand:' + enumValue(hand === 'left' ? 'left' : 'right'));
 
-  // sprintWindow (1.20+)
   if (mcVer >= 12000) {
     lines.push('sprintWindow:' + clamp(safeNum(options.sprintWindow, 7), 0, 20));
   }
 
-  // attackIndicator: 0=off, 1=crosshair, 2=hotbar
   lines.push('attackIndicator:' + clamp(safeNum(options.attackIndicator, 1), 0, 2));
 
-  // ===================== CHAT =====================
-  // chatVisibility: 0=shown, 1=commands only, 2=hidden
   lines.push('chatVisibility:' + clamp(safeNum(options.chatVisibility, 0), 0, 2));
 
   const chatOp = clamp(safeNum(options.chatOpacity, 100), 0, 100);
@@ -598,7 +626,6 @@ function buildOptionsTxt(options) {
   lines.push('hideMatchedNames:' + (bool(options.hideMatchedNames !== false) ? 'true' : 'false'));
   lines.push('hideSplashTexts:' + (bool(options.hideSplashTexts) ? 'true' : 'false'));
 
-  // ===================== MISC =====================
   lines.push('pauseOnLostFocus:' + (bool(options.pauseOnLostFocus !== false) ? 'true' : 'false'));
   lines.push('advancedItemTooltips:' + (bool(options.advancedItemTooltips) ? 'true' : 'false'));
   lines.push('realmsNotifications:' + (bool(options.realmsNotifications !== false) ? 'true' : 'false'));
@@ -623,67 +650,173 @@ function buildOptionsTxt(options) {
   const pano = clamp(safeNum(options.panoramaScrollSpeed, 100), 0, 200);
   lines.push('panoramaScrollSpeed:' + (pano / 100).toFixed(2));
 
-  // ===================== KEY BINDINGS =====================
-  if (options.keyBindings && typeof options.keyBindings === 'object') {
-    for (const [keyName, keyCode] of Object.entries(options.keyBindings)) {
-      if (keyCode) lines.push('key_' + keyName + ':' + convertKeyCode(keyCode));
+  const keyBindings = normalizeKeyBindings(options.keyBindings);
+  if (keyBindings) {
+    for (const [keyName, keyCode] of Object.entries(keyBindings)) {
+      lines.push('key_' + keyName + ':' + convertKeyCode(keyCode));
     }
   }
 
-  const result = lines.join('\r\n') + '\r\n';
-  console.log('[buildOptionsTxt] options.txt für ' + (options._mcVersion || '?') + ' (dataVersion=' + dataVersion + '):');
-  console.log('[buildOptionsTxt] ---BEGIN---');
-  console.log(result);
-  console.log('[buildOptionsTxt] ---END---');
-  return result;
+  return lines.join('\r\n') + '\r\n';
 }
 
-ipcMain.handle('write-options-txt', async (_event, { folderName, options }) => {
-  const rootPath = 'C:\\BambooLaufwerk';
-  const gameDir = path.join(rootPath, 'profiles', folderName);
-  if (!fs.existsSync(gameDir)) fs.mkdirSync(gameDir, { recursive: true });
-  const optionsPath = path.join(gameDir, 'options.txt');
-  const content = buildOptionsTxt(options);
-  fs.writeFileSync(optionsPath, content, 'utf8');
-  console.log('[write-options-txt] Geschrieben nach: ' + optionsPath);
-});
-
-// --- Window Controls ---
-ipcMain.on('window-minimize', () => mainWindow?.minimize());
-ipcMain.on('window-close', () => mainWindow?.close());
-
-ipcMain.handle('find-java', async () => {
-  return await findJavaPath();
-});
-
-let javaCache = null;
-ipcMain.handle('get-java-versions', async (_event, forceRescan) => {
-  if (forceRescan || !javaCache) {
-    javaCache = await findAllJavaVersions();
+ipc.handle('create-instance', async (_event, { folderName, options } = {}) => {
+  try {
+    if (!folderName || typeof folderName !== 'string' || folderName.includes('..')) {
+      return { success: false, error: 'Ungültiger Instanzordner.' };
+    }
+    const rootPath = await resolveGameRoot();
+    const profileFolder = uniqueProfileFolder(rootPath, folderName, readProfilesSync(rootPath));
+    const gameDir = path.join(rootPath, 'profiles', profileFolder);
+    fs.mkdirSync(gameDir, { recursive: true });
+    const result = writeFirstRunOptions(gameDir, options);
+    shellLog.debug('create-instance: options.txt ready', {
+      path: result.path,
+      created: result.created,
+      keybinds: result.keybindCount ?? 0,
+      requestedFolder: folderName,
+      folder: profileFolder,
+    });
+    return {
+      success: true,
+      folderName: profileFolder,
+      path: result.path,
+      created: result.created,
+      reason: result.reason,
+      keybindCount: result.keybindCount ?? 0,
+    };
+  } catch (error) {
+    shellLog.error('create-instance failed', { error: error.message });
+    return { success: false, error: error.message };
   }
-  return javaCache;
 });
 
-// Neue IPC-Handler für verbesserte Java-Verwaltung
-ipcMain.handle('get-recommended-java-for-mc', async (_event, mcVersion) => {
-  const javaVersion = getRecommendedJavaVersionForMc(mcVersion);
-  const candidates = await scanJavaCandidates();
-  const selected = await selectBestJavaForMcVersion(mcVersion);
-  return {
-    recommended: javaVersion,
-    selected: selected,
-    available: candidates,
+function applyLauncherGameOptions(gameDir, options) {
+  if (!options || typeof options !== 'object') return [];
+  const optionsPath = path.join(gameDir, 'options.txt');
+  if (!fs.existsSync(optionsPath)) return [];
+
+  const original = fs.readFileSync(optionsPath, 'utf8');
+  const eol = original.includes('\r\n') ? '\r\n' : '\n';
+  const lines = original.split(/\r?\n/);
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+
+  const mcVer = mcVersionNum(options._mcVersion || '1.21');
+  const fresh = parseOptionsText(buildOptionsTxt({ ...options, keyBindings: undefined }));
+  const applied = [];
+  let changed = false;
+
+  const setOption = (key, value, reportKey) => {
+    const line = key + ':' + value;
+    const index = lines.findIndex((entry) => entry.startsWith(key + ':'));
+    if (index >= 0) {
+      if (lines[index] === line) return;
+      lines[index] = line;
+    } else {
+      lines.push(line);
+    }
+    changed = true;
+    if (reportKey && !applied.includes(reportKey)) applied.push(reportKey);
   };
+
+  const customised = Object.keys(OPTION_MERGE_DEFAULTS).filter((key) => {
+    if (!(key in options)) return false;
+    return String(options[key]) !== String(OPTION_MERGE_DEFAULTS[key]);
+  });
+
+  for (const key of customised) {
+    if (key === 'graphicsMode') {
+      const mode = String(options.graphicsMode).toLowerCase();
+      if (!GRAPHICS_BUNDLES[mode]) continue;
+      if (fresh.graphics) setOption('graphics', fresh.graphics, key);
+      if (fresh.graphicsMode) setOption('graphicsMode', fresh.graphicsMode, key);
+      for (const [bundleKey, bundleValue] of Object.entries(GRAPHICS_BUNDLES[mode])) setOption(bundleKey, bundleValue, key);
+      continue;
+    }
+    const lineKey = OPTION_MERGE_KEYS[key] || key;
+    if (!(lineKey in fresh)) continue;
+    setOption(lineKey, fresh[lineKey], key);
+  }
+
+  if (typeof options.lang === 'string' && options.lang.trim()) {
+    setOption('lang', options.lang.trim(), 'lang');
+  }
+
+  if (mcVer >= 26000) {
+    const distances = customised.includes('renderDistance') || customised.includes('simulationDistance');
+    const mode = String(options.graphicsMode || '').toLowerCase();
+    const hasPreset = lines.some((entry) => entry.startsWith('graphicsPreset:'));
+    const preset = distances ? 'custom' : customised.includes('graphicsMode') && GRAPHICS_BUNDLES[mode] ? mode : hasPreset ? '' : 'custom';
+    if (preset) setOption('graphicsPreset', '"' + preset + '"', 'graphicsPreset');
+  }
+
+  if (!changed) return [];
+  fs.writeFileSync(optionsPath, lines.join(eol) + eol, 'utf8');
+  return applied;
+}
+
+const OPTION_MERGE_DEFAULTS = {
+  renderDistance: 12, simulationDistance: 12, fov: 70, guiScale: 0, maxFramerate: 120,
+  vsync: true, graphicsMode: 'fancy', particles: 0, mipmapLevels: 4, gamma: 50,
+  entityDistanceScaling: 100, biomeBlendRadius: 2, entityShadows: true,
+  fovEffectScale: 100, screenEffectScale: 100, vignette: true, renderClouds: true,
+  directionalAudio: true, showSubtitles: false, mouseSensitivity: 50, invertYMouse: false,
+  autoJump: false, rawMouseInput: true, bobView: true, toggleCrouch: false, toggleSprint: false,
+  mainHand: 'right', attackIndicator: 1, chatVisibility: 0, chatOpacity: 100, chatScale: 100,
+  chatWidth: 100, chatLineSpacing: 0, textBackgroundOpacity: 50, chatColors: true, chatLinks: true,
+  autoSuggestions: true, narrator: 0, highContrast: false, highContrastBlockOutline: false,
+  damageTiltStrength: 100, menuBackgroundBlurriness: 0, forceUnicodeFont: false,
+  notificationDisplayTime: 100, fullscreen: false,
+};
+for (const channel of ['master', 'music', 'record', 'weather', 'block', 'hostile', 'neutral', 'player', 'ambient', 'voice', 'ui']) {
+  OPTION_MERGE_DEFAULTS['soundCategory_' + channel] = 100;
+}
+
+const OPTION_MERGE_KEYS = { maxFramerate: 'maxFps', vsync: 'enableVsync' };
+
+const GRAPHICS_BUNDLES = {
+  fast: { improvedTransparency: 'false', cloudRange: '64' },
+  fancy: { improvedTransparency: 'false', cloudRange: '128' },
+  fabulous: { improvedTransparency: 'true', cloudRange: '128' },
+};
+
+function parseOptionsText(text) {
+  const map = {};
+  for (const line of String(text).split(/\r?\n/)) {
+    const separator = line.indexOf(':');
+    if (separator > 0) map[line.slice(0, separator)] = line.slice(separator + 1);
+  }
+  return map;
+}
+
+ipc.handle('apply-options-patch', async (_event, { folderName, patch }) => {
+  try {
+    if (!folderName || typeof folderName !== 'string') {
+      return { success: false, error: 'Ungültiger Instanzordner.' };
+    }
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+      return { success: false, error: 'Ungültige options.txt-Werte.' };
+    }
+    const rootPath = await resolveGameRoot();
+    const gameDir = path.join(rootPath, 'profiles', folderName);
+    if (!fs.existsSync(gameDir)) fs.mkdirSync(gameDir, { recursive: true });
+    const { GameSettingsService } = require('./dist-electron/gamesettings/service.js');
+    const service = new GameSettingsService();
+    const result = await service.editOptions(gameDir, patch);
+    shellLog.debug('apply-options-patch: options updated', { file: result.file, changed: Object.keys(result.diff) });
+    return { success: true, changed: Object.keys(result.diff), path: result.file };
+  } catch (error) {
+    shellLog.error('apply-options-patch failed', { error: error.message });
+    return { success: false, error: error.message };
+  }
 });
 
-ipcMain.handle('find-best-java-for-mc', async (_event, mcVersion) => {
-  const result = await selectBestJavaForMcVersion(mcVersion);
-  return result;
-});
+ipc.on('window-minimize', () => mainWindow?.minimize());
+ipc.on('window-focus', () => { mainWindow?.show(); mainWindow?.focus(); });
+ipc.on('window-close', () => mainWindow?.close());
 
-// --- Profile Ordner öffnen (Welten: saves Unterordner) ---
-ipcMain.handle('open-profile-folder', async (_event, folderName) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('open-profile-folder', async (_event, folderName) => {
+  const rootPath = gameRoot();
   const gameDir = path.join(rootPath, 'profiles', folderName, 'saves');
   if (!fs.existsSync(gameDir)) {
     fs.mkdirSync(gameDir, { recursive: true });
@@ -691,9 +824,8 @@ ipcMain.handle('open-profile-folder', async (_event, folderName) => {
   shell.openPath(gameDir);
 });
 
-// --- Instanzordner öffnen (Root des Profils) ---
-ipcMain.handle('open-instance-folder', async (_event, folderName) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('open-instance-folder', async (_event, folderName) => {
+  const rootPath = gameRoot();
   const gameDir = path.join(rootPath, 'profiles', folderName);
   if (!fs.existsSync(gameDir)) {
     fs.mkdirSync(gameDir, { recursive: true });
@@ -701,14 +833,13 @@ ipcMain.handle('open-instance-folder', async (_event, folderName) => {
   shell.openPath(gameDir);
 });
 
-ipcMain.handle('delete-profile-files', async (_event, folderName) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('delete-profile-files', async (_event, folderName) => {
+  const rootPath = gameRoot();
   const gameDir = path.join(rootPath, 'profiles', folderName);
   if (fs.existsSync(gameDir)) {
     fs.rmSync(gameDir, { recursive: true, force: true });
-    console.log(`Profil-Ordner gelöscht: ${gameDir}`);
+    shellLog.info('profile folder deleted', { gameDir });
   }
-  // Also delete associated screenshots (named with instance prefix)
   const screenshotsDir = path.join(rootPath, 'screenshots');
   if (fs.existsSync(screenshotsDir)) {
     const prefix = folderName + '__';
@@ -720,363 +851,254 @@ ipcMain.handle('delete-profile-files', async (_event, folderName) => {
           fs.unlinkSync(path.join(screenshotsDir, file));
           deletedCount++;
         } catch (e) {
-          console.warn(`[delete-profile-files] Could not delete screenshot ${file}: ${e.message}`);
+          shellLog.debug('profile screenshot could not be deleted', { file, error: e.message });
         }
       }
     }
     if (deletedCount > 0) {
-      console.log(`[delete-profile-files] ${deletedCount} Screenshots für '${folderName}' gelöscht`);
+      shellLog.debug('profile screenshots deleted', { folderName, deletedCount });
     }
   }
 });
 
-async function downloadVanillaJar(rootPath, mcVersion) {
-  const verDir = path.join(rootPath, 'versions', mcVersion);
-  const jarFile = path.join(verDir, `${mcVersion}.jar`);
-  const verFile = path.join(verDir, `${mcVersion}.json`);
-  if (!fs.existsSync(verFile)) throw new Error(`Version-JSON für ${mcVersion} fehlt`);
-  if (fs.existsSync(jarFile)) return;
-  console.log(`Lade Vanilla-JAR ${mcVersion} von Mojang herunter...`);
-  const verMeta = JSON.parse(fs.readFileSync(verFile, 'utf8'));
-  const jarUrl = verMeta.downloads?.client?.url;
-  if (!jarUrl) throw new Error(`Kein client-JAR in Version ${mcVersion} gefunden`);
-  const res = await fetch(jarUrl);
-  if (!res.ok) throw new Error(`JAR-Download fehlgeschlagen (${res.status})`);
-  fs.writeFileSync(jarFile, Buffer.from(await res.arrayBuffer()));
-  console.log(`Vanilla-JAR ${mcVersion} heruntergeladen (${(fs.statSync(jarFile).size / 1024 / 1024).toFixed(1)} MB)`);
-}
-
-async function downloadLibraryByPath(rootPath, libPath, directUrl, expectedSize) {
-  const targetFile = path.join(rootPath, 'libraries', libPath);
-  // Prüfe ob Datei bereits existiert und korrekt ist
-  if (fs.existsSync(targetFile)) {
-    if (expectedSize > 0) {
-      const actualSize = fs.statSync(targetFile).size;
-      if (actualSize === expectedSize) return;
-      console.warn(`Library ${libPath} hat falsche Grösse (${actualSize} statt ${expectedSize}), lade neu...`);
-    } else {
-      return; // Keine Grössenangabe -> existierende Datei akzeptieren
-    }
-  }
-  const targetDir = path.dirname(targetFile);
-  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-  // Direkte URL bevorzugen (aus version.json)
-  if (directUrl) {
-    try {
-      const res = await fetch(directUrl);
-      if (res.ok) {
-        fs.writeFileSync(targetFile, Buffer.from(await res.arrayBuffer()));
-        console.log(`Library geladen (direkt): ${libPath}`);
-        return;
-      }
-      console.warn(`Direkter Download fehlgeschlagen für ${directUrl}, versuche Maven...`);
-    } catch (e) {
-      console.warn(`Direkter Download-Fehler: ${e.message}`);
-    }
-  }
-  // Fallback: Maven-URL aus Pfad konstruieren
-  const parts = libPath.replace(/\\/g, '/').split('/');
-  const archiveName = parts.pop();
-  const versionDir = parts.pop();
-  const artifactDir = parts.pop();
-  const groupPath = parts.join('.');
-  const archiveParts = archiveName.split('@');
-  const jarName = archiveParts[0];
-  const ext = archiveParts[1] || 'jar';
-  const mavenUrls = [
-    `https://maven.neoforged.net/releases/${groupPath.replace(/\./g, '/')}/${artifactDir}/${versionDir}/${jarName}.${ext}`,
-    `https://repo1.maven.org/maven2/${groupPath.replace(/\./g, '/')}/${artifactDir}/${versionDir}/${jarName}.${ext}`,
-    `https://files.minecraftforge.net/maven/${groupPath.replace(/\./g, '/')}/${artifactDir}/${versionDir}/${jarName}.${ext}`,
-  ];
-  for (const url of mavenUrls) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        fs.writeFileSync(targetFile, Buffer.from(await res.arrayBuffer()));
-        console.log(`Library geladen (Maven): ${libPath}`);
-        return;
-      }
-    } catch (_) {}
-  }
-  console.warn(`Library nicht gefunden: ${libPath}`);
-}
-
-async function downloadProfileLibraries(rootPath, versionId, sendProgress) {
-  const verFile = path.join(rootPath, 'versions', versionId, `${versionId}.json`);
-  if (!fs.existsSync(verFile)) return;
-  const data = JSON.parse(fs.readFileSync(verFile, 'utf8'));
-  const libs = data.libraries || [];
-  for (let i = 0; i < libs.length; i++) {
-    const lib = libs[i];
-    if (lib.rule && lib.rule.os && lib.rule.os.name === 'osx') continue;
-    const artifact = lib.downloads?.artifact;
-    const libPath = artifact?.path || (() => {
-      const parts = lib.name.split(':');
-      const group = parts[0].replace(/\./g, '/');
-      const artifactName = parts[1];
-      const ver = parts[2] || '';
-      const ext = parts[3] || 'jar';
-      return `${group}/${artifactName}/${ver}/${artifactName}-${ver}.${ext}`;
-    })();
-    if (libPath) {
-      await downloadLibraryByPath(rootPath, libPath, artifact?.url, artifact?.size || 0);
-    }
-    if (i % 10 === 0 && sendProgress) {
-      sendProgress(`Bibliotheken: ${i + 1}/${libs.length}`);
-    }
-  }
-}
-
-ipcMain.handle('repair-profile', async (event, { loader, loaderVersion, mcVersion, folderName }) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('repair-profile', async (event, { loader, loaderVersion, mcVersion, folderName }) => {
   const normalizedLoader = String(loader || '').toLowerCase();
-  const gameDir = path.join(rootPath, 'profiles', folderName || 'default');
+  const taskId = folderName ? `repair:${folderName}` : '';
 
-  function sendProgress(msg) {
-    event.sender.send('repair-progress', msg);
-  }
-
-  sendProgress('Starte Reparatur...');
-
-  // 1. Loader-Version-ID bestimmen
-  let loaderVersionId = '';
-  let libDir = '';
-  if (normalizedLoader === 'forge') {
-    loaderVersionId = `${mcVersion}-forge-${loaderVersion}`;
-    libDir = 'net/minecraftforge';
-  } else if (normalizedLoader === 'neoforge') {
-    loaderVersionId = `neoforge-${loaderVersion}`;
-    libDir = 'net/neoforged';
-  } else if (normalizedLoader === 'fabric') {
-    loaderVersionId = `fabric-loader-${loaderVersion}-${mcVersion}`;
-  }
-
-  // 2. Vanilla-Version + JAR löschen und neu laden
-  sendProgress('Lösche alte Vanilla-Dateien...');
-  const vanillaVerDir = path.join(rootPath, 'versions', mcVersion);
-  if (fs.existsSync(vanillaVerDir)) {
-    fs.rmSync(vanillaVerDir, { recursive: true, force: true });
-    console.log(`Vanilla-Version gelöscht: ${vanillaVerDir}`);
-  }
-
-  sendProgress('Lade Vanilla-Version von Mojang herunter...');
-  await ensureVanillaVersion(rootPath, mcVersion);
-  await downloadVanillaJar(rootPath, mcVersion);
-
-  // 3. Loader-Version + Libraries löschen
-  if (loaderVersionId) {
-    sendProgress(`Lösche ${normalizedLoader}-Version...`);
-    const verDir = path.join(rootPath, 'versions', loaderVersionId);
-    if (fs.existsSync(verDir)) {
-      fs.rmSync(verDir, { recursive: true, force: true });
-      console.log(`Loader-Version gelöscht: ${verDir}`);
-    }
-  }
-  if (libDir) {
-    sendProgress(`Lösche ${normalizedLoader}-Libraries...`);
-    const libPath = path.join(rootPath, 'libraries', libDir);
-    if (fs.existsSync(libPath)) {
-      fs.rmSync(libPath, { recursive: true, force: true });
-      console.log(`Loader-Libraries gelöscht: ${libPath}`);
-    }
-  }
-
-  // 4. Loader neu installieren (via JAR-Extraktion, kein --installClient)
-  if (normalizedLoader !== 'vanilla' && loaderVersion) {
-    sendProgress(`Installiere ${normalizedLoader} ${loaderVersion} neu...`);
-    if (normalizedLoader === 'forge') {
-      await installForgeLoaderClean(rootPath, null, mcVersion, loaderVersion, sendProgress);
-    } else if (normalizedLoader === 'neoforge') {
-      await installNeoforgeLoaderClean(rootPath, null, mcVersion, loaderVersion, sendProgress);
-    } else if (normalizedLoader === 'fabric') {
-      await installModloader(rootPath, mcVersion, normalizedLoader, loaderVersion);
-    }
-  }
-
-  // 5. Loader-Libraries von Servern herunterladen (falls im version JSON referenziert)
-  if (loaderVersionId) {
-    sendProgress('Lade Loader-Bibliotheken von Maven...');
-    await downloadProfileLibraries(rootPath, loaderVersionId, sendProgress);
-  }
-
-  sendProgress('Reparatur abgeschlossen!');
-  console.log(`Reparatur abgeschlossen für ${normalizedLoader} ${loaderVersion} (${mcVersion})`);
-  return true;
-});
-
-ipcMain.handle('complete-reinstall', async (event, { profiles }) => {
-  const rootPath = 'C:\\BambooLaufwerk';
-
-  function sendProgress(msg) {
-    event.sender.send('reinstall-progress', msg);
-  }
-
-  // 1. ALLE Versionen, Libraries, Assets, Natives löschen
-  sendProgress('Lösche alle Versionen...');
-  const versionsDir = path.join(rootPath, 'versions');
-  if (fs.existsSync(versionsDir)) fs.rmSync(versionsDir, { recursive: true, force: true });
-
-  sendProgress('Lösche alle Libraries...');
-  const libsDir = path.join(rootPath, 'libraries');
-  if (fs.existsSync(libsDir)) fs.rmSync(libsDir, { recursive: true, force: true });
-
-  sendProgress('Lösche Assets...');
-  const assetsDir = path.join(rootPath, 'assets');
-  if (fs.existsSync(assetsDir)) fs.rmSync(assetsDir, { recursive: true, force: true });
-
-  sendProgress('Lösche Natives...');
-  const nativesDir = path.join(rootPath, 'natives');
-  if (fs.existsSync(nativesDir)) fs.rmSync(nativesDir, { recursive: true, force: true });
-
-  // 2. Für jedes Profil neu aufbauen
-  for (let i = 0; i < profiles.length; i++) {
-    const p = profiles[i];
-    if (!p || !p.version) continue;
-    sendProgress(`[${i + 1}/${profiles.length}] ${p.name}: Vanilla-Version...`);
-    await ensureVanillaVersion(rootPath, p.version);
-    await downloadVanillaJar(rootPath, p.version);
-
-    if (p.loader && p.loader !== 'Vanilla' && p.loaderVersion) {
-      const normLoader = String(p.loader).toLowerCase();
-      sendProgress(`[${i + 1}/${profiles.length}] ${p.name}: Installiere ${normLoader} ${p.loaderVersion}...`);
-      try {
-        if (normLoader === 'forge') {
-          const finalId = await installForgeLoaderClean(rootPath, null, p.version, p.loaderVersion, sendProgress);
-          await downloadProfileLibraries(rootPath, finalId, sendProgress);
-        } else if (normLoader === 'neoforge') {
-          const finalId = await installNeoforgeLoaderClean(rootPath, null, p.version, p.loaderVersion, sendProgress);
-          await downloadProfileLibraries(rootPath, finalId, sendProgress);
-        } else if (normLoader === 'fabric') {
-          await installModloader(rootPath, p.version, normLoader, p.loaderVersion);
-        }
-      } catch (e) {
-        console.warn(`Loader-Installation fehlgeschlagen für ${p.name}:`, e.message);
-        sendProgress(`[${i + 1}/${profiles.length}] ${p.name}: Fehler bei ${normLoader} - ${e.message}`);
+  function sendProgress(msg, percent) {
+    try {
+      event.sender.send('repair-progress', msg);
+      if (taskId) {
+        event.sender.send('background-task-progress', {
+          id: taskId,
+          percent: typeof percent === 'number' ? percent : null,
+          label: String(msg || ''),
+        });
       }
+    } catch (error) {
+      shellLog.debug('repair-profile: progress could not be sent', { error: error.message });
     }
   }
 
-  sendProgress('Neuinstallation abgeschlossen!');
+  if (!mcVersion) throw new Error('Minecraft-Version fehlt');
+  sendProgress('Starte Reparatur...', 2);
+
+  if (normalizedLoader === 'vanilla') {
+    const { installVersion } = require('./dist-electron/install/version.js');
+    const rootPath = await resolveGameRoot();
+    await installVersion(rootPath, mcVersion, { cacheDir: path.join(rootPath, 'cache'), withAssets: true });
+  } else {
+    await installLoaderViaCore(normalizedLoader, mcVersion, loaderVersion, (progress) => {
+      if (progress && progress.message) sendProgress(progress.message);
+    });
+  }
+
+  sendProgress('Reparatur abgeschlossen!', 100);
+  shellLog.info('profile repaired', { loader: normalizedLoader, loaderVersion: loaderVersion || '', mcVersion });
   return true;
 });
 
-// --- Settings Persistenz ---
-ipcMain.handle('get-settings', async () => {
-  const rootPath = 'C:\\BambooLaufwerk';
-  const settingsPath = path.join(rootPath, 'settings.json');
-  if (fs.existsSync(settingsPath)) {
-    try { return JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch (_) { return null; }
+ipc.handle('get-settings', async () => {
+  const core = await getBambooCore();
+  if (core) {
+    try { return await core.getSettingsForRenderer(); } catch (e) { shellLog.error('get-settings failed', { error: e.message }); }
   }
   return null;
 });
 
-// ===== Player Identity (for Cosmetics / Skin Viewer) =====
-ipcMain.handle('get-player-identity', async () => {
-  const rootPath = 'C:BambooLaufwerk';
-  const settingsPath = path.join(rootPath, 'settings.json');
-  if (!fs.existsSync(settingsPath)) return null;
+ipc.handle('get-player-identity', async () => {
+  const core = await getBambooCore();
+  if (!core) return null;
+  try { return await core.getPlayerIdentity(); } catch (e) { shellLog.error('get-player-identity failed', { error: e.message }); return null; }
+});
+
+ipc.handle('save-settings', async (_event, settings) => {
+  const core = await getBambooCore();
+  if (!core) throw new Error('Launcher core unavailable');
+  return core.saveSettingsFromRenderer(settings);
+});
+
+function readCurseForgeApiKey() {
   try {
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    const accounts = settings.accounts || [];
-    const active = accounts.find(a => a.active) || accounts[0];
-    if (!active) return null;
-    return {
-      uuid: active.uuid || null,
-      username: active.name || active.username || null,
-      type: active.type || 'offline',
-    };
-  } catch (_) {
-    return null;
+    return fs.readFileSync(path.join(__dirname, 'resources', 'curseforge-key.txt'), 'utf8').trim();
+  } catch {
+    // No bundled key is a supported state; the UI reports missing-key explicitly.
+    return '';
   }
-});
+}
 
-ipcMain.handle('save-settings', async (_event, settings) => {
-  const rootPath = 'C:\\BambooLaufwerk';
-  if (!fs.existsSync(rootPath)) fs.mkdirSync(rootPath, { recursive: true });
-  fs.writeFileSync(path.join(rootPath, 'settings.json'), JSON.stringify(settings, null, 2));
-  return true;
-});
+function curseForgeHeaders() {
+  const apiKey = readCurseForgeApiKey();
+  return apiKey ? { 'Accept': 'application/json', 'x-api-key': apiKey } : null;
+}
 
-// ===== CURSEFORGE API (Backend, kein CORS/Rate-Limit) =====
-// API-Key hier eintragen: https://console.curseforge.com/
-const CURSEFORGE_API_KEY = '$2a$10$s45iJ2QFz7VP7Ri35ZTjo.fdwq4QVHTD/RYmbf00SNIhHrP2OZjJm';
+const CURSEFORGE_RETRY_STATUS = new Set([401, 403, 408, 425, 429, 500, 502, 503, 504]);
 
-const CF_HEADERS = {
-  'Accept': 'application/json',
-  'x-api-key': CURSEFORGE_API_KEY,
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function curseForgeFetch(url, options, attempts = 4) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      if (!CURSEFORGE_RETRY_STATUS.has(response.status) || attempt === attempts - 1) return response;
+      // The retry path already has a response to discard; a failed cancel is harmless.
+      try { await response.body?.cancel(); } catch (_) { /* body already consumed */ }
+    } catch (err) {
+      lastError = err;
+      if (attempt === attempts - 1) throw err;
+    }
+    await sleepMs(250 * (attempt + 1));
+  }
+  throw lastError || new Error('CurseForge request failed');
+}
+
+const CURSEFORGE_KEY_MISSING = {
+  error: 'Kein CurseForge API-Key gesetzt',
+  code: 'missing-key',
 };
 
-const CF_CLASS_IDS = {
-  mod: 6, modpack: 4471, resourcepack: 12, shader: 6552, datapack: 6945, worlds: 17,
-};
+// Documented search bounds: pageSize <= 50 and index + pageSize <= 10,000.
+const CURSEFORGE_MAX_PAGE_SIZE = 50;
+const CURSEFORGE_SEARCH_LIMIT = 10000;
+
+function clampCurseForgeSearchPage(pageSize, index) {
+  const requestedPageSize = Number(pageSize);
+  const safePageSize = Math.min(
+    CURSEFORGE_MAX_PAGE_SIZE,
+    Math.max(1, Number.isFinite(requestedPageSize) ? Math.trunc(requestedPageSize) : 20),
+  );
+  const requestedIndex = Number(index);
+  const safeIndex = Math.min(
+    CURSEFORGE_SEARCH_LIMIT - safePageSize,
+    Math.max(0, Number.isFinite(requestedIndex) ? Math.trunc(requestedIndex) : 0),
+  );
+  return { pageSize: safePageSize, index: safeIndex };
+}
+
+async function curseForgeFailure(res) {
+  let detail = '';
+  try { detail = (await res.text()).slice(0, 300).trim(); } catch (_) { /* body is optional */ }
+  const code = res.status === 401 || res.status === 403 ? 'invalid-key'
+    : res.status === 429 ? 'rate-limited'
+      : 'http';
+  return {
+    error: `CurseForge API-Fehler: ${res.status}${detail ? ` — ${detail}` : ''}`,
+    code,
+    status: res.status,
+    detail,
+  };
+}
 
 function cfLoaderTypeToNum(loader) {
   const map = { forge: 1, fabric: 4, quilt: 5, neoforge: 6 };
   return map[String(loader).toLowerCase()] ?? undefined;
 }
 
-ipcMain.handle('curseforge-search', async (_event, { query, sortBy = '6', modFilter, gameVersion, modLoaderType, index = 0, pageSize = 20 }) => {
-  if (!CURSEFORGE_API_KEY) return { error: 'Kein CurseForge API-Key gesetzt' };
-  const gameId = 432;
-  const classId = CF_CLASS_IDS[modFilter] || (modFilter ? 6 : undefined);
-  const params = new URLSearchParams({ gameId, pageSize: String(pageSize) });
-  if (classId) params.set('classId', String(classId));
-  if (query) params.set('searchFilter', query);
-  if (sortBy) params.set('sortField', sortBy);
-  params.set('sortOrder', 'desc');
-  if (index > 0) params.set('index', String(index));
-  if (gameVersion) params.set('gameVersion', gameVersion);
-  if (modLoaderType !== undefined && modLoaderType !== null) params.set('modLoaderType', String(modLoaderType));
-  try {
-    const res = await fetch(`https://api.curseforge.com/v1/mods/search?${params.toString()}`, { headers: CF_HEADERS });
-    if (!res.ok) return { error: `CurseForge API-Fehler: ${res.status}` };
-    const data = await res.json();
-    return { data: data.data || [], pagination: data.pagination || { totalCount: 0 } };
-  } catch (err) {
-    return { error: err.message };
-  }
-});
+function createCurseForgeSearchHandler({ curseForgeHeaders, curseForgeFetch, curseForgeFailure, shellLog }) {
+  return async (_event, { query, sortBy = '6', modFilter, gameVersion, modLoaderType, index = 0, pageSize = 20 }) => {
+    const headers = curseForgeHeaders();
+    if (!headers) return { ...CURSEFORGE_KEY_MISSING };
+    const gameId = 432;
+    // The renderer sends the numeric class id (6, 12, 17, ...), older callers
+    // send the project-type name. Without accepting both, every numeric filter
+    // fell through to classId 6 and every tab showed the same mods.
+    const numericClassId = typeof modFilter === 'string' && /^\d+$/.test(modFilter)
+      ? Number(modFilter)
+      : undefined;
+    const classId = CF_CLASS_IDS[modFilter] || numericClassId || (modFilter ? 6 : undefined);
+    const page = clampCurseForgeSearchPage(pageSize, index);
+    const params = new URLSearchParams({ gameId, pageSize: String(page.pageSize) });
+    if (classId) params.set('classId', String(classId));
+    if (query) params.set('searchFilter', query);
+    if (sortBy) params.set('sortField', sortBy);
+    params.set('sortOrder', 'desc');
+    if (page.index > 0) params.set('index', String(page.index));
+    if (gameVersion) params.set('gameVersion', gameVersion);
+    if (modLoaderType !== undefined && modLoaderType !== null) params.set('modLoaderType', String(modLoaderType));
+    try {
+      const res = await curseForgeFetch(`https://api.curseforge.com/v1/mods/search?${params.toString()}`, { headers });
+      if (!res.ok) {
+        const failure = await curseForgeFailure(res);
+        shellLog.warn('curseforge: search failed', { status: res.status, code: failure.code });
+        return failure;
+      }
+      const data = await res.json();
+      return { data: data.data || [], pagination: data.pagination || { totalCount: 0 } };
+    } catch (err) {
+      return { error: `CurseForge nicht erreichbar: ${err.message}`, code: 'network', detail: err.message };
+    }
+  };
+}
 
-ipcMain.handle('curseforge-project', async (_event, modId) => {
-  if (!CURSEFORGE_API_KEY) return { error: 'Kein CurseForge API-Key gesetzt' };
+ipc.handle('curseforge-search', createCurseForgeSearchHandler({
+  curseForgeHeaders,
+  curseForgeFetch,
+  curseForgeFailure,
+  shellLog,
+}));
+
+ipc.handle('curseforge-project', async (_event, modId) => {
+  const headers = curseForgeHeaders();
+  if (!headers) return { ...CURSEFORGE_KEY_MISSING };
   try {
     const [modRes, descRes] = await Promise.all([
-      fetch(`https://api.curseforge.com/v1/mods/${modId}`, { headers: CF_HEADERS }),
-      fetch(`https://api.curseforge.com/v1/mods/${modId}/description`, { headers: CF_HEADERS }),
+      curseForgeFetch(`https://api.curseforge.com/v1/mods/${modId}`, { headers }),
+      curseForgeFetch(`https://api.curseforge.com/v1/mods/${modId}/description`, { headers }),
     ]);
-    if (!modRes.ok) return { error: `Modul ${modRes.status}` };
-    const modData = (await modRes.json()).data;
-    let description = '';
-    if (descRes.ok) {
-      const descData = await descRes.json();
-      description = descData.data?.body || '';
+    if (!modRes.ok) {
+      const failure = await curseForgeFailure(modRes);
+      shellLog.warn('curseforge: project lookup failed', { modId, status: modRes.status, code: failure.code });
+      return failure;
     }
-    return { ...modData, description };
+    const modData = (await modRes.json()).data;
+    let fullDescription = '';
+    if (descRes.ok) {
+      try {
+        const descData = await descRes.json();
+        fullDescription = descData?.data?.body || descData?.body || '';
+        shellLog.debug('curseforge: description loaded', { modId, length: fullDescription.length });
+      } catch (e) {
+        shellLog.warn('curseforge: description parse failed', { modId, error: e.message });
+      }
+    } else {
+      shellLog.warn('curseforge: description unavailable', { modId, status: descRes.status });
+    }
+    if (!fullDescription && modData.summary) {
+      fullDescription = '<p>' + String(modData.summary).replace(/\n/g, '<br>') + '</p>';
+    }
+    return { ...modData, fullDescription: fullDescription, description: fullDescription || modData.summary || '' };
   } catch (err) {
-    return { error: err.message };
+    return { error: `CurseForge nicht erreichbar: ${err.message}`, code: 'network', detail: err.message };
   }
 });
 
-ipcMain.handle('curseforge-files', async (_event, modId, gameVersion, modLoaderType) => {
-  if (!CURSEFORGE_API_KEY) return { error: 'Kein CurseForge API-Key gesetzt' };
+ipc.handle('curseforge-files', async (_event, modId, gameVersion, modLoaderType) => {
+  const headers = curseForgeHeaders();
+  if (!headers) return { ...CURSEFORGE_KEY_MISSING };
   try {
-    let url = `https://api.curseforge.com/v1/mods/${modId}/files?pageSize=50&sortField=2&sortOrder=desc`;
+    let url = `https://api.curseforge.com/v1/mods/${modId}/files?pageSize=100&sortField=2&sortOrder=desc`;
     if (gameVersion) url += `&gameVersion=${encodeURIComponent(gameVersion)}`;
     if (modLoaderType !== undefined && modLoaderType !== null) url += `&modLoaderType=${modLoaderType}`;
-    const res = await fetch(url, { headers: CF_HEADERS });
-    if (!res.ok) return { error: `Files ${res.status}` };
+    const res = await curseForgeFetch(url, { headers });
+    if (!res.ok) {
+      const failure = await curseForgeFailure(res);
+      shellLog.warn('curseforge: file list failed', { modId, status: res.status, code: failure.code });
+      return failure;
+    }
     const data = await res.json();
     return data.data || [];
   } catch (err) {
-    return { error: err.message };
+    return { error: `CurseForge nicht erreichbar: ${err.message}`, code: 'network', detail: err.message };
   }
 });
 
-// — Dynamische Loader-Versionen von Maven-Metadaten —
 let forgeVersionsCache = null;
 let neoforgeVersionsCache = null;
 
-ipcMain.handle('get-forge-versions', async () => {
+ipc.handle('get-forge-versions', async () => {
   if (forgeVersionsCache) return forgeVersionsCache;
   try {
     const res = await fetch('https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml');
@@ -1091,12 +1113,12 @@ ipcMain.handle('get-forge-versions', async () => {
     forgeVersionsCache = versions;
     return versions;
   } catch (err) {
-    console.error('Forge-Versionen konnten nicht geladen werden:', err.message);
+    shellLog.error('forge versions could not be loaded', { error: err.message });
     return null;
   }
 });
 
-ipcMain.handle('get-neoforge-versions', async () => {
+ipc.handle('get-neoforge-versions', async () => {
   if (neoforgeVersionsCache) return neoforgeVersionsCache;
   try {
     const res = await fetch('https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml');
@@ -1111,40 +1133,69 @@ ipcMain.handle('get-neoforge-versions', async () => {
     neoforgeVersionsCache = versions;
     return versions;
   } catch (err) {
-    console.error('NeoForge-Versionen konnten nicht geladen werden:', err.message);
+    shellLog.error('neoforge versions could not be loaded', { error: err.message });
     return null;
   }
 });
 
-ipcMain.handle('get-profiles', async () => {
-  const rootPath = 'C:\\BambooLaufwerk';
+async function withStableInstanceFolders(profiles) {
+  if (!Array.isArray(profiles)) return profiles;
+  try {
+    const core = await getBambooCore();
+    if (!core) return profiles;
+    const records = await core.instances.list();
+    const folders = new Map(records.map((record) => [record.id, record.folderName]));
+    return profiles.map((profile) => {
+      if (!profile || typeof profile !== 'object') return profile;
+      const folderName = folders.get(profile.id);
+      return folderName ? { ...profile, folderName } : profile;
+    });
+  } catch (error) {
+    shellLog.warn('get-profiles: stable folder lookup failed', { error: error.message });
+    return profiles;
+  }
+}
 
-  // Versuche profiles.json im Hauptordner
+ipc.handle('get-profiles', async () => {
+  const rootPath = gameRoot();
+  let profiles = null;
+
   const profilesPath = path.join(rootPath, 'profiles.json');
   if (fs.existsSync(profilesPath)) {
-    try { return JSON.parse(fs.readFileSync(profilesPath, 'utf8')); } catch (_) { return []; }
-  }
-
-  // Versuche profiles.json im profiles/ Unterordner
-  const profilesSubPath = path.join(rootPath, 'profiles', 'profiles.json');
-  if (fs.existsSync(profilesSubPath)) {
-    try { return JSON.parse(fs.readFileSync(profilesSubPath, 'utf8')); } catch (_) { return []; }
-  }
-
-  // Versuche einzelne .json-Dateien pro Profil im profiles/-Ordner
-  const profilesDir = path.join(rootPath, 'profiles');
-  if (fs.existsSync(profilesDir) && fs.statSync(profilesDir).isDirectory()) {
-    const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.json') && f !== 'profiles.json');
-    if (files.length > 0) {
-      const result = [];
-      for (const f of files) {
-        try { result.push(JSON.parse(fs.readFileSync(path.join(profilesDir, f), 'utf8'))); } catch (_) {}
-      }
-      if (result.length > 0) return result;
+    try { profiles = JSON.parse(fs.readFileSync(profilesPath, 'utf8')); } catch (error) {
+      // Keep looking in the legacy locations instead of showing an empty list.
+      shellLog.warn('get-profiles: profiles.json is unreadable', { path: profilesPath, error: error.message });
+      profiles = null;
     }
   }
 
-  return null;
+  if (profiles === null) {
+    const profilesSubPath = path.join(rootPath, 'profiles', 'profiles.json');
+    if (fs.existsSync(profilesSubPath)) {
+      try { profiles = JSON.parse(fs.readFileSync(profilesSubPath, 'utf8')); } catch (error) {
+        shellLog.warn('get-profiles: profiles/profiles.json is unreadable', { path: profilesSubPath, error: error.message });
+        profiles = null;
+      }
+    }
+  }
+
+  if (profiles === null) {
+    const profilesDir = path.join(rootPath, 'profiles');
+    if (fs.existsSync(profilesDir) && fs.statSync(profilesDir).isDirectory()) {
+      const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.json') && f !== 'profiles.json');
+      if (files.length > 0) {
+        const result = [];
+        for (const f of files) {
+          try { result.push(JSON.parse(fs.readFileSync(path.join(profilesDir, f), 'utf8'))); } catch (error) {
+            shellLog.debug('get-profiles: skipping unreadable profile file', { file: f, error: error.message });
+          }
+        }
+        if (result.length > 0) profiles = result;
+      }
+    }
+  }
+
+  return withStableInstanceFolders(profiles ?? []);
 });
 
 function getFolderSize(dirPath) {
@@ -1170,36 +1221,38 @@ function formatSize(bytes) {
   return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-ipcMain.handle('save-profiles', async (_event, profiles) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('save-profiles', async (_event, profiles) => {
+  const rootPath = gameRoot();
   if (!fs.existsSync(rootPath)) fs.mkdirSync(rootPath, { recursive: true });
   const enriched = profiles.map(p => {
-    const folderName = String(p.name || p.id || '').toLowerCase().replace(/\s+/g, '-');
+    const folderName = profileFolderOf(p);
     const dirPath = path.join(rootPath, 'profiles', folderName);
     const bytes = getFolderSize(dirPath);
-    return { ...p, size: formatSize(bytes) || '0 B' };
+    return { ...p, folderName, size: formatSize(bytes) || '0 B' };
   });
   fs.writeFileSync(path.join(rootPath, 'profiles.json'), JSON.stringify(enriched, null, 2));
   return true;
 });
 
-ipcMain.handle('get-collections', async () => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('get-collections', async () => {
+  const rootPath = gameRoot();
   const collectionsPath = path.join(rootPath, 'collections.json');
   if (fs.existsSync(collectionsPath)) {
-    try { return JSON.parse(fs.readFileSync(collectionsPath, 'utf8')); } catch (_) { return []; }
+    try { return JSON.parse(fs.readFileSync(collectionsPath, 'utf8')); } catch (error) {
+      shellLog.warn('get-collections: collections.json is unreadable', { path: collectionsPath, error: error.message });
+      return [];
+    }
   }
   return [];
 });
 
-ipcMain.handle('save-collections', async (_event, collections) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('save-collections', async (_event, collections) => {
+  const rootPath = gameRoot();
   if (!fs.existsSync(rootPath)) fs.mkdirSync(rootPath, { recursive: true });
   fs.writeFileSync(path.join(rootPath, 'collections.json'), JSON.stringify(collections, null, 2));
   return true;
 });
 
-// Lese SystemIcons als base64 — fürs Preload (sync IPC)
 const __sysIcons = {};
 try {
   const iconPaths = [
@@ -1219,29 +1272,32 @@ try {
       const data = fs.readFileSync(path.join(foundDir, f));
       __sysIcons[name] = `data:image/png;base64,${data.toString('base64')}`;
     }
-    console.log(`[main] SystemIcons geladen (${Object.keys(__sysIcons).length}):`, Object.keys(__sysIcons).join(', '));
+    shellLog.debug('system icons loaded', { count: Object.keys(__sysIcons).length });
   } else {
-    console.warn('[main] SystemIcons-Verzeichnis nicht gefunden');
+    shellLog.warn('system icons directory not found');
   }
 } catch (e) {
-  console.error('[main] SystemIcons-Fehler:', e);
+  shellLog.error('system icons failed to load', { error: e.message });
 }
 
-ipcMain.on('get-icons', (event) => {
+ipc.on('get-icons', (event) => {
   event.returnValue = __sysIcons;
 });
 
-// ===== Dialog-Handler für Export/Import =====
-ipcMain.handle('show-open-dialog', async (_event, options) => {
+ipc.on('renderer-log', (_event, { level, message, data }) => {
+  const write = shellLog[level] || shellLog.warn;
+  write(`renderer: ${message}`, data);
+});
+
+ipc.handle('show-open-dialog', async (_event, options) => {
   return dialog.showOpenDialog(options);
 });
 
-ipcMain.handle('show-save-dialog', async (_event, options) => {
+ipc.handle('show-save-dialog', async (_event, options) => {
   return dialog.showSaveDialog(options);
 });
 
-// ===== Server Ping (Backend, kein CORS) =====
-ipcMain.handle('ping-server', async (_event, serverIp) => {
+ipc.handle('ping-server', async (_event, serverIp) => {
   const startTime = Date.now();
   try {
     const url = `https://api.mcsrvstat.us/3/${encodeURIComponent(serverIp)}`;
@@ -1263,135 +1319,45 @@ ipcMain.handle('ping-server', async (_event, serverIp) => {
   }
 });
 
-// ===== Image File Reader (gibt Data-URL zurück, um file:// Block zu umgehen) =====
-// ===== Neue IPC-Handler für Profile Export/Import (Phase 11) =====
-ipcMain.handle('read-file-as-base64', async (_event, filePath) => {
+ipc.handle('read-file-as-base64', async (_event, filePath) => {
   try {
     if (!filePath || !fs.existsSync(filePath)) return null;
     const data = fs.readFileSync(filePath);
     return data.toString('base64');
   } catch (e) {
-    console.error('[read-file-as-base64] Fehler:', e.message);
+    shellLog.error('read-file-as-base64 failed', { error: e.message });
     return null;
   }
 });
 
-// ===== Save cosmetic files to disk (BambooLaufwerk/cosmetics/{slug}/) =====
-ipcMain.handle('save-cosmetic-files', async (_event, { slug, files }) => {
+ipc.handle('save-temp-file', async (_event, { data, fileName }) => {
   try {
-    var rootPath = 'C:\\BambooLaufwerk';
-    var cosmeticDir = path.join(rootPath, 'cosmetics', slug);
-    console.log('[cosmetics] save-cosmetic-files: target dir =', cosmeticDir);
-    console.log('[cosmetics] save-cosmetic-files: slug =', slug, ', files count =', (files || []).length);
-    if (!fs.existsSync(cosmeticDir)) fs.mkdirSync(cosmeticDir, { recursive: true });
-    var savedFiles = [];
-    for (var i = 0; i < files.length; i++) {
-      var f = files[i];
-      if (!f.fileName || !f.data) continue;
-      var filePath = path.join(cosmeticDir, f.fileName);
-      // Ensure subdirectories exist (e.g. textures/subfolder/)
-      var dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(filePath, Buffer.from(f.data));
-      savedFiles.push(f.fileName);
-    }
-    // Build manifest.json with real filenames
-    var modelFile = null;
-    var textureFiles = [];
-    for (var fi = 0; fi < files.length; fi++) {
-      var ftype = files[fi].fileType || "other";
-      if (ftype === "model" && !modelFile) modelFile = files[fi].fileName;
-      if (ftype === "texture" || ftype === "icon") textureFiles.push(files[fi].fileName);
-    }
-    // Fallback: if no model file detected, use first .json that isnt manifest.json
-    if (!modelFile) {
-      for (var sj = 0; sj < savedFiles.length; sj++) {
-        if (savedFiles[sj].toLowerCase().endsWith(".json") && savedFiles[sj] !== "manifest.json") {
-          modelFile = savedFiles[sj]; break;
-        }
-      }
-    }
-    // Fallback for textures: any .png files
-    if (textureFiles.length === 0) {
-      for (var sk = 0; sk < savedFiles.length; sk++) {
-        if (savedFiles[sk].toLowerCase().endsWith(".png")) textureFiles.push(savedFiles[sk]);
-      }
-    }
-    var manifest = {
-      slug: slug,
-      installedAt: Date.now(),
-      fileCount: savedFiles.length,
-      files: savedFiles,
-      modelFile: modelFile,
-      textureFiles: textureFiles,
-    };
-    fs.writeFileSync(path.join(cosmeticDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
-    console.log('[cosmetics] save-cosmetic-files: SUCCESS — saved', savedFiles.length, 'files to', cosmeticDir);
-    console.log('[cosmetics] Manifest — modelFile:', modelFile, ', textureFiles:', JSON.stringify(textureFiles));
-    return { success: true, path: cosmeticDir, fileCount: savedFiles.length };
-  } catch (e) {
-    console.error('[cosmetics] Save error:', e.message);
-    return { success: false, error: e.message };
-  }
-});
-// ===== Read cosmetic files from disk (BambooLaufwerk/cosmetics/{slug}/) =====
-ipcMain.handle('read-cosmetic-file', async (_event, filePath) => {
-  var rootPath = 'C:\\BambooLaufwerk';
-  try {
-    if (!filePath) return { success: false, error: 'No file path provided' };
-    var fullPath = path.isAbsolute(filePath) ? filePath : path.join(rootPath, filePath);
-    if (!fs.existsSync(fullPath)) {
-      return { success: false, error: 'File not found: ' + filePath };
-    }
-    var ext = path.extname(fullPath).toLowerCase();
-    if (ext === '.json') {
-      var content = fs.readFileSync(fullPath, 'utf-8');
-      return { success: true, data: content, type: 'json' };
-    }
-    if (ext === '.png' || ext === '.jpg' || ext === '.jpeg' || ext === '.gif' || ext === '.webp') {
-      var raw = fs.readFileSync(fullPath);
-      var mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
-      var mimeType = mime[ext] || 'image/png';
-      var base64 = raw.toString('base64');
-      return { success: true, data: 'data:' + mimeType + ';base64,' + base64, type: 'image' };
-    }
-    var content = fs.readFileSync(fullPath, 'utf-8');
-    return { success: true, data: content, type: 'text' };
-  } catch (e) {
-    console.error('[cosmetics] Read error:', e.message);
-    return { success: false, error: e.message };
-  }
-});
-
-ipcMain.handle('save-temp-file', async (_event, { data, fileName }) => {
-  try {
-    const rootPath = 'C:\\BambooLaufwerk';
+    const rootPath = gameRoot();
     const tempDir = path.join(rootPath, 'temp');
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
     const safeName = (fileName || 'temp.zip').replace(/[^a-zA-Z0-9._-]/g, '_');
     const filePath = path.join(tempDir, `${Date.now()}-${safeName}`);
     const buffer = Buffer.from(data);
     fs.writeFileSync(filePath, buffer);
-    console.log('[save-temp-file] Saved:', filePath);
+    shellLog.debug('save-temp-file: saved', { filePath });
     return filePath;
   } catch (e) {
-    console.error('[save-temp-file] Fehler:', e.message);
+    shellLog.error('save-temp-file failed', { error: e.message });
     return null;
   }
 });
 
-ipcMain.handle('show-item-in-folder', async (_event, filePath) => {
+ipc.handle('show-item-in-folder', async (_event, filePath) => {
   try {
     if (filePath && fs.existsSync(filePath)) {
       shell.showItemInFolder(filePath);
     }
   } catch (e) {
-    console.error('[show-item-in-folder] Fehler:', e.message);
+    shellLog.error('show-item-in-folder failed', { error: e.message });
   }
 });
 
-// ===== Existing image reader =====
-ipcMain.handle('read-image-file', async (_event, filePath) => {
+ipc.handle('read-image-file', async (_event, filePath) => {
   try {
     const data = fs.readFileSync(filePath);
     const ext = path.extname(filePath).toLowerCase();
@@ -1400,12 +1366,11 @@ ipcMain.handle('read-image-file', async (_event, filePath) => {
     const base64 = data.toString('base64');
     return `data:${mimeType};base64,${base64}`;
   } catch (e) {
-    console.error('[read-image-file] Fehler:', e);
+    shellLog.error('read-image-file failed', { error: e.message });
     return null;
   }
 });
 
-// ===== Rekursive Kopierhilfe =====
 function copyRecursive(src, dest) {
   if (!fs.existsSync(src)) return;
   fs.mkdirSync(dest, { recursive: true });
@@ -1418,10 +1383,16 @@ function copyRecursive(src, dest) {
   }
 }
 
-// ===== PROFIL EXPORT =====
-ipcMain.handle('export-profile', async (_event, payload) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('export-profile', async (_event, payload) => {
+  const rootPath = gameRoot();
   const { format, instanceName, folderName, manifest, options, suggestedFileName, savePath } = payload || {};
+
+  if (format === 'mrpack') {
+    const bridge = getLegacyModsBridge();
+    if (bridge && typeof bridge.exportLegacyProfile === 'function') {
+      return bridge.exportLegacyProfile(payload);
+    }
+  }
 
   if (!manifest || !folderName) {
     return { success: false, error: 'Ungültige Exportdaten: Manifest oder Ordnername fehlt' };
@@ -1431,48 +1402,32 @@ ipcMain.handle('export-profile', async (_event, payload) => {
   fs.mkdirSync(tmpDir, { recursive: true });
 
   try {
-    // --- Write manifest.json (for .zip) ---
     if (format === 'zip') {
       fs.writeFileSync(path.join(tmpDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     }
 
-    // --- Collect content files from the instance folder ---
     const gameDir = path.join(rootPath, 'profiles', folderName);
     const selectedContent = options || {};
     
-    // Diagnostics: check if gameDir exists
     const gameDirExists = fs.existsSync(gameDir);
-    console.log(`[export-profile] gameDir=${gameDir}, exists=${gameDirExists}, format=${format}, folderName=${folderName}`);
-    
+    shellLog.debug('export-profile: collecting', { gameDir, gameDirExists, format, folderName });
+
     let collectedAnything = false;
     const collectedTypes = [];
 
-    // Helper to collect files from a subdirectory
     function collectDir(srcSubDir, destSubDir) {
       const src = path.join(gameDir, srcSubDir);
-      if (fs.existsSync(src)) {
-        const files = fs.readdirSync(src).filter(f => {
-          const fullPath = path.join(src, f);
-          return fs.statSync(fullPath).isFile();
-        });
-        if (files.length === 0) {
-          console.log(`[export-profile] collectDir(${srcSubDir}): directory exists but empty`);
-          return false;
-        }
-        const d = path.join(tmpDir, destSubDir || srcSubDir);
-        fs.mkdirSync(d, { recursive: true });
-        for (const entry of files) {
-          const s = path.join(src, entry);
-          fs.copyFileSync(s, path.join(d, entry));
-        }
-        console.log(`[export-profile] collectDir(${srcSubDir}): ${files.length} files copied`);
-        return true;
-      }
-      console.log(`[export-profile] collectDir(${srcSubDir}): directory NOT found`);
-      return false;
+      if (!fs.existsSync(src) || !fs.statSync(src).isDirectory()) return false;
+      const entries = fs.readdirSync(src);
+      if (entries.length === 0) return false;
+      // Configs and worlds are trees, not flat folders. Copying only the files
+      // directly below the source silently dropped every world and nested config.
+      const d = path.join(tmpDir, destSubDir || srcSubDir);
+      fs.mkdirSync(path.dirname(d), { recursive: true });
+      fs.cpSync(src, d, { recursive: true, force: true });
+      return true;
     }
 
-    // Collect selected content based on manifest contents
     if (selectedContent.includeMods !== false && collectDir('mods', 'mods')) { collectedAnything = true; collectedTypes.push('mods'); }
     if (selectedContent.includeResourcepacks !== false && collectDir('resourcepacks', 'resourcepacks')) { collectedAnything = true; collectedTypes.push('resourcepacks'); }
     if (selectedContent.includeShaderpacks !== false && collectDir('shaderpacks', 'shaderpacks')) { collectedAnything = true; collectedTypes.push('shaderpacks'); }
@@ -1481,17 +1436,16 @@ ipcMain.handle('export-profile', async (_event, payload) => {
     if (selectedContent.includeScreenshots !== false && collectDir('screenshots', 'screenshots')) { collectedAnything = true; collectedTypes.push('screenshots'); }
     if (selectedContent.includeWorlds !== false && collectDir('saves', 'worlds')) { collectedAnything = true; collectedTypes.push('worlds'); }
     
-    console.log(`[export-profile] Collected types: [${collectedTypes.join(', ')}], total: ${collectedTypes.length}`);
-    
+    shellLog.debug('export-profile: content collected', { types: collectedTypes, total: collectedTypes.length });
+
     if (!collectedAnything && gameDirExists) {
-      console.warn(`[export-profile] WARNING: gameDir exists but no content directories found. Contents may be empty.`);
+      shellLog.warn('export-profile: profile folder has no content directories', { gameDir });
     }
     if (!gameDirExists) {
-      console.warn(`[export-profile] WARNING: gameDir does NOT exist at ${gameDir}. Creating empty profile folder for future use.`);
+      shellLog.warn('export-profile: profile folder missing; creating it', { gameDir });
       fs.mkdirSync(gameDir, { recursive: true });
     }
 
-    // Save icon from manifest
     if (manifest.contents?.icon && typeof manifest.contents.icon === 'string') {
       const iconData = manifest.contents.icon;
       try {
@@ -1499,24 +1453,20 @@ ipcMain.handle('export-profile', async (_event, payload) => {
           const b64 = iconData.split(',')[1];
           if (b64) fs.writeFileSync(path.join(tmpDir, 'icon.png'), Buffer.from(b64, 'base64'));
         }
-      } catch (_) {}
+      } catch (error) {
+        shellLog.debug('export-profile: icon could not be written', { error: error.message });
+      }
     }
 
-    // --- Build archive based on format ---
     const zip = new AdmZip();
 
     if (format === 'zip') {
-      // Add all collected files
       zip.addLocalFolder(tmpDir);
     } else if (format === 'mrpack') {
-      // For .mrpack: build modrinth.index.json and use overrides/ folder structure
-      // Proper .mrpack spec: mods go in overrides/, NOT in root
       
-      // Collect all content files into overrides/ folder
       const overridesDir = path.join(tmpDir, 'overrides');
       fs.mkdirSync(overridesDir, { recursive: true });
       
-      // Helper to collect into overrides/
       function collectToOverrides(srcSubDir, destSubDir) {
         const src = path.join(gameDir, srcSubDir);
         if (fs.existsSync(src)) {
@@ -1533,16 +1483,12 @@ ipcMain.handle('export-profile', async (_event, payload) => {
         }
       }
       
-      // Collect content based on user selection (mods go into overrides/mods/ for mrpack)
       if (selectedContent.includeMods !== false) collectToOverrides('mods', 'mods');
       if (selectedContent.includeResourcepacks !== false) collectToOverrides('resourcepacks', 'resourcepacks');
       if (selectedContent.includeShaderpacks !== false) collectToOverrides('shaderpacks', 'shaderpacks');
       if (selectedContent.includeConfig !== false) collectToOverrides('config', 'config');
       if (selectedContent.includeWorlds !== false) collectToOverrides('saves', 'worlds');
       
-      // Per .mrpack spec: alle Dateien sind in overrides/ gebündelt
-      // Das files-Array bleibt leer (nur für Dateien mit download-URLs gedacht)
-      // Launcher kopieren overrides/ direkt ins Instance-Verzeichnis
       const mrpackIndex = payload.mrpackIndex || {
         formatVersion: 1,
         game: 'minecraft',
@@ -1561,21 +1507,16 @@ ipcMain.handle('export-profile', async (_event, payload) => {
         },
       };
       
-      // Write modrinth.index.json at ROOT of archive
       fs.writeFileSync(path.join(tmpDir, 'modrinth.index.json'), JSON.stringify(mrpackIndex, null, 2));
       
-      // Add ALL tmpDir contents to zip (overrides/ + modrinth.index.json)
       zip.addLocalFolder(tmpDir);
     }
 
     const buf = zip.toBuffer();
     const fileName = suggestedFileName || `${(instanceName || 'export').replace(/[^a-zA-Z0-9_-]/g, '_')}.${format === 'mrpack' ? 'mrpack' : 'zip'}`;
-  // Use savePath if provided (user chose a location via save dialog)
-  // otherwise save to cache folder
   const exportPath = savePath || path.join(rootPath, 'cache', fileName);
   fs.writeFileSync(exportPath, buf);
 
-    // Cleanup tmp
     fs.rmSync(tmpDir, { recursive: true, force: true });
 
     const stats = fs.statSync(exportPath);
@@ -1587,18 +1528,20 @@ ipcMain.handle('export-profile', async (_event, payload) => {
       fileSize: stats.size,
     };
   } catch (err) {
+    shellLog.error('export-profile failed', { folderName, format, error: err.message });
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
     return { success: false, error: err.message };
   }
 });
 
-// Keep the old save-dialog-based export handler as fallback
-ipcMain.handle('export-profile-legacy', async (_event, { profileId, mode, options }) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('export-profile-legacy', async (_event, { profileId, mode, options }) => {
+  const rootPath = gameRoot();
   let profiles = [];
   const profilesPath = path.join(rootPath, 'profiles.json');
   if (fs.existsSync(profilesPath)) {
-    try { profiles = JSON.parse(fs.readFileSync(profilesPath, 'utf8')); } catch (_) {}
+    try { profiles = JSON.parse(fs.readFileSync(profilesPath, 'utf8')); } catch (error) {
+      shellLog.warn('export-profile-legacy: profiles.json is unreadable', { path: profilesPath, error: error.message });
+    }
   }
   const p = profiles.find(x => x.id === profileId);
   if (!p) return { success: false, error: 'Profil nicht gefunden' };
@@ -1631,7 +1574,6 @@ ipcMain.handle('export-profile-legacy', async (_event, { profileId, mode, option
 
     fs.writeFileSync(path.join(tmpDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
-    // Icon aus data-URI extrahieren
     const iconStr = p.icon || '';
     if (iconStr.startsWith('<img')) {
       const m = iconStr.match(/src="([^"]+)"/);
@@ -1669,7 +1611,6 @@ ipcMain.handle('export-profile-legacy', async (_event, { profileId, mode, option
       fs.writeFileSync(path.join(tmpDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     }
 
-    // ZIP erstellen
     const zip = new AdmZip();
     zip.addLocalFolder(tmpDir);
     const buf = zip.toBuffer();
@@ -1687,465 +1628,82 @@ ipcMain.handle('export-profile-legacy', async (_event, { profileId, mode, option
     fs.rmSync(tmpDir, { recursive: true, force: true });
     return { success: true, path: saveResult.filePath, size: buf.length };
   } catch (err) {
+    shellLog.error('export-profile-legacy failed', { profileId, mode, error: err.message });
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
     return { success: false, error: err.message };
   }
 });
 
-// ===== PROFIL IMPORT VORSCHAU =====
-ipcMain.handle('import-preview', async (_event, filePath) => {
-  const rootPath = 'C:\\BambooLaufwerk';
-  const ext = path.extname(filePath).toLowerCase();
-  if (!fs.existsSync(filePath)) return { error: 'Datei nicht gefunden' };
-
-  const tmpDir = path.join(rootPath, 'cache', `import-${Date.now()}`);
-  fs.mkdirSync(tmpDir, { recursive: true });
-
+ipc.handle('import-preview', async (_event, filePath) => {
+  const bridge = getLegacyModsBridge();
+  if (!bridge || typeof bridge.previewLegacyProfile !== 'function') {
+    return { error: 'Import-Kern nicht verfügbar' };
+  }
   try {
-    const zip = new AdmZip(filePath);
-    zip.extractAllTo(tmpDir, true);
-
-    // --- .mrpack ---
-    if (ext === '.mrpack') {
-      const indexPath = path.join(tmpDir, 'modrinth.index.json');
-      if (!fs.existsSync(indexPath)) return { error: 'Ungültiges .mrpack: modrinth.index.json fehlt' };
-      const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
-      const loaderKey = Object.keys(index.dependencies || {}).find(k =>
-        ['fabric-loader', 'forge', 'neoforge', 'quilt'].includes(k));
-      const loaderName = loaderKey ? loaderKey.replace('-loader', '') : '';
-      const mcVer = index.dependencies?.minecraft || '';
-
-      // Count from files array if present, otherwise scan overrides/ on disk
-      let modCount = 0, rpCount = 0, shaderCount = 0, datapackCount = 0, worldCount = 0;
-      let hasConfig = false, hasScreenshots = false;
-      
-      if ((index.files || []).length > 0) {
-        // Count from files array
-        for (const f of index.files) {
-          const fp = f.path;
-          if (fp.startsWith('overrides/mods/') || fp.startsWith('mods/')) modCount++;
-          else if (fp.startsWith('overrides/resourcepacks/') || fp.startsWith('resourcepacks/')) rpCount++;
-          else if (fp.startsWith('overrides/shaderpacks/') || fp.startsWith('shaderpacks/')) shaderCount++;
-          else if (fp.startsWith('overrides/datapacks/') || fp.startsWith('datapacks/')) datapackCount++;
-          else if (fp.startsWith('overrides/saves/') || fp.startsWith('overrides/worlds/') || fp.startsWith('saves/') || fp.startsWith('worlds/')) worldCount++;
-        }
-      } else {
-        // files array empty - scan overrides/ directory directly
-        const overridesDir = path.join(tmpDir, 'overrides');
-        if (fs.existsSync(overridesDir)) {
-          function countDirFiles(subDir) {
-            const p = path.join(overridesDir, subDir);
-            if (!fs.existsSync(p)) return 0;
-            return fs.readdirSync(p).filter(f => fs.statSync(path.join(p, f)).isFile()).length;
-          }
-          modCount = countDirFiles('mods');
-          rpCount = countDirFiles('resourcepacks');
-          shaderCount = countDirFiles('shaderpacks');
-          datapackCount = countDirFiles('datapacks');
-          worldCount = countDirFiles('saves') + countDirFiles('worlds');
-          hasConfig = fs.existsSync(path.join(overridesDir, 'config'));
-          hasScreenshots = fs.existsSync(path.join(overridesDir, 'screenshots'));
-        }
-      }
-
-      const preview = {
-        format: 'mrpack',
-        title: index.name || path.basename(filePath, '.mrpack'),
-        minecraftVersion: mcVer,
-        modloader: loaderName || 'Vanilla',
-        modloaderVersion: index.dependencies?.[loaderKey] || '',
-        description: index.summary || '',
-        author: index.author || '',
-        fileSize: fs.statSync(filePath).size,
-        totalFiles: modCount + rpCount + shaderCount + datapackCount + worldCount,
-        modCount,
-        resourcepackCount: rpCount,
-        shaderCount,
-        datapackCount,
-        worldCount,
-        hasIcon: fs.existsSync(path.join(tmpDir, 'overrides', 'icon.png')),
-        hasBanner: false,
-        hasConfig,
-        hasScreenshots,
-        isModpack: true,
-      };
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      return preview;
-    }
-
-    // --- .zip mit manifest.json ---
-    const manifestPath = path.join(tmpDir, 'manifest.json');
-    if (ext === '.zip' && fs.existsSync(manifestPath)) {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-      if (!manifest.formatVersion) return { error: 'Ungültiges Format (formatVersion fehlt)' };
-
-      // Support both old (manifest.profile) and new (manifest.instance) formats
-      const profile = manifest.profile || manifest.instance || {};
-      if (!profile.name && !manifest.instance?.name) return { error: 'Kein Profilname in manifest.json' };
-
-      let iconBase64 = null;
-      const iconPath = path.join(tmpDir, 'icon.png');
-      if (fs.existsSync(iconPath)) {
-        const data = fs.readFileSync(iconPath);
-        iconBase64 = `data:image/png;base64,${data.toString('base64')}`;
-      }
-
-      const mcVer = profile.minecraftVersion || manifest.instance?.minecraftVersion || '';
-
-      // Count files in the extracted archive
-      function countDir(dir) {
-        const p = path.join(tmpDir, dir);
-        if (!fs.existsSync(p)) return 0;
-        return fs.readdirSync(p).filter(f => fs.statSync(path.join(p, f)).isFile()).length;
-      }
-
-      const modCount = countDir('mods');
-      const rpCount = countDir('resourcepacks');
-      const shaderCount = countDir('shaderpacks');
-      const dpCount = countDir('datapacks');
-      const worldCount = countDir('saves') + countDir('worlds');
-
-      const contents = manifest.contents || {};
-      const preview = {
-        format: 'zip',
-        title: profile.name || manifest.instance?.name || path.basename(filePath, ext),
-        minecraftVersion: mcVer,
-        modloader: (profile.modLoader || manifest.instance?.modloader || 'Vanilla').replace(/^./, c => c.toUpperCase()),
-        modloaderVersion: profile.loaderVersion || manifest.instance?.modloaderVersion || '',
-        description: profile.description || manifest.instance?.description || manifest.meta?.description || '',
-        author: manifest.meta?.author || manifest.instance?.author || '',
-        fileSize: fs.statSync(filePath).size,
-        totalFiles: modCount + rpCount + shaderCount + dpCount + worldCount + countDir('screenshots') + countDir('config'),
-        modCount,
-        resourcepackCount: rpCount,
-        shaderCount,
-        datapackCount: dpCount,
-        worldCount,
-        hasIcon: !!iconBase64 || !!(contents.icon),
-        hasBanner: !!(contents.banner),
-        hasConfig: countDir('config') > 0 || !!(contents.config?.count && contents.config.count > 0),
-        hasScreenshots: countDir('screenshots') > 0 || !!(contents.screenshots?.count && contents.screenshots.count > 0),
-        worlds: fs.existsSync(path.join(tmpDir, 'saves')) ? fs.readdirSync(path.join(tmpDir, 'saves')).filter(f => fs.statSync(path.join(tmpDir, 'saves', f)).isDirectory()) :
-                 fs.existsSync(path.join(tmpDir, 'worlds')) ? fs.readdirSync(path.join(tmpDir, 'worlds')).filter(f => fs.statSync(path.join(tmpDir, 'worlds', f)).isDirectory()) : undefined,
-        isModpack: manifest.instance?.isModpack || manifest.meta?.isModpack || false,
-      };
-
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      return preview;
-    }
-
-    // --- Generisches .zip ---
-    if (ext === '.zip') {
-      const hasMods = fs.existsSync(path.join(tmpDir, 'mods'));
-      const hasRP = fs.existsSync(path.join(tmpDir, 'resourcepacks'));
-      const hasShader = fs.existsSync(path.join(tmpDir, 'shaderpacks'));
-      const hasSaves = fs.existsSync(path.join(tmpDir, 'saves')) || fs.existsSync(path.join(tmpDir, 'worlds'));
-      if (!hasMods && !hasRP && !hasShader) {
-        return { error: 'Unbekanntes ZIP-Format. Keine mods/, resourcepacks/ oder shaderpacks/ gefunden.' };
-      }
-      const name = path.basename(filePath, '.zip');
-
-      function countDir(dir) {
-        const p = path.join(tmpDir, dir);
-        if (!fs.existsSync(p)) return 0;
-        return fs.readdirSync(p).filter(f => fs.statSync(path.join(p, f)).isFile()).length;
-      }
-
-      const preview = {
-        format: 'zip',
-        title: name,
-        minecraftVersion: '',
-        modloader: 'Vanilla',
-        modloaderVersion: '',
-        description: '',
-        author: '',
-        fileSize: fs.statSync(filePath).size,
-        totalFiles: countDir('mods') + countDir('resourcepacks') + countDir('shaderpacks') + countDir('datapacks'),
-        modCount: countDir('mods'),
-        resourcepackCount: countDir('resourcepacks'),
-        shaderCount: countDir('shaderpacks'),
-        datapackCount: countDir('datapacks'),
-        worldCount: countDir('saves') + countDir('worlds'),
-        hasIcon: false,
-        hasBanner: false,
-        hasConfig: countDir('config') > 0,
-        hasScreenshots: countDir('screenshots') > 0,
-        worlds: fs.existsSync(path.join(tmpDir, 'saves')) ? fs.readdirSync(path.join(tmpDir, 'saves')).filter(f => fs.statSync(path.join(tmpDir, 'saves', f)).isDirectory()) : undefined,
-        isModpack: false,
-      };
-
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      return preview;
-    }
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    return { error: `Nicht unterstütztes Format: ${ext}` };
-  } catch (err) {
-    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
-    return { error: `Fehler beim Lesen der Datei: ${err.message}` };
+    return await bridge.previewLegacyProfile(filePath, {
+      curseforgeApiKey: readCurseForgeApiKey(),
+    });
+  } catch (error) {
+    shellLog.error('profile archive could not be read', { error: error.message });
+    return { error: `Fehler beim Lesen der Datei: ${error.message}` };
   }
 });
 
-// ===== PROFIL IMPORT DURCHFÜHREN =====
-ipcMain.handle('import-profile', async (_event, payload) => {
-  const rootPath = 'C:\\BambooLaufwerk';
-  const {
-    filePath,
-    format,
-    targetInstanceName,
-    installMods = true,
-    installResourcepacks = true,
-    installShaderpacks = true,
-    installDatapacks = true,
-    installWorlds = true,
-    installConfig = true,
-    installScreenshots = true,
-  } = payload || {};
-
-  if (!filePath || !fs.existsSync(filePath)) {
-    return { success: false, error: 'Datei nicht gefunden' };
+ipc.handle('import-profile', async (event, payload) => {
+  const bridge = getLegacyModsBridge();
+  if (!bridge || typeof bridge.importLegacyProfile !== 'function') {
+    return { success: false, error: 'Import-Kern nicht verfügbar' };
   }
-
-  const tmpDir = path.join(rootPath, 'cache', `import-${Date.now()}`);
-  fs.mkdirSync(tmpDir, { recursive: true });
-
   try {
-    const zip = new AdmZip(filePath);
-    zip.extractAllTo(tmpDir, true);
-
-    // Load existing profiles
-    let profiles = [];
-    const profilesPath = path.join(rootPath, 'profiles.json');
-    if (fs.existsSync(profilesPath)) {
-      try { profiles = JSON.parse(fs.readFileSync(profilesPath, 'utf8')); } catch (_) {}
-    }
-
-    // Read manifest if present (support both old and new format)
-    let manifest = null;
-    const manifestPath = path.join(tmpDir, 'manifest.json');
-    if (fs.existsSync(manifestPath)) {
-      try {
-        manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-      } catch (_) {}
-    }
-
-    // For .mrpack files: read modrinth.index.json for metadata
-    let mrpackIndex = null;
-    const mrpackIndexPath = path.join(tmpDir, 'modrinth.index.json');
-    if (fs.existsSync(mrpackIndexPath) && !manifest) {
-      try {
-        mrpackIndex = JSON.parse(fs.readFileSync(mrpackIndexPath, 'utf8'));
-      } catch (_) {}
-    }
-
-    // Determine instance name and metadata (support .mrpack)
-    const profileInfo = manifest?.profile || manifest?.instance || {};
-    const mrpackInfo = mrpackIndex ? {
-      name: mrpackIndex.name,
-      minecraftVersion: mrpackIndex.dependencies?.minecraft || '',
-      modloader: Object.keys(mrpackIndex.dependencies || {}).find(k =>
-        ['forge', 'neoforge', 'fabric-loader', 'quilt-loader'].includes(k))?.replace('-loader', '') || 'Vanilla',
-      modloaderVersion: (() => {
-        const key = Object.keys(mrpackIndex.dependencies || {}).find(k =>
-          ['forge', 'neoforge', 'fabric-loader', 'quilt-loader'].includes(k));
-        return key ? mrpackIndex.dependencies[key] : '';
-      })(),
-      description: mrpackIndex.summary || '',
-    } : null;
-    
-    const meta = mrpackInfo || profileInfo;
-    const baseName = targetInstanceName || mrpackInfo?.name || profileInfo.name || path.basename(filePath, path.extname(filePath));
-    let finalName = baseName;
-    const existingNames = profiles.map(p => p.name.toLowerCase());
-
-    // Handle naming conflicts: append number if name exists
-    if (existingNames.includes(finalName.toLowerCase())) {
-      let cnt = 1;
-      while (existingNames.includes(`${finalName} (${cnt})`.toLowerCase())) cnt++;
-      finalName = `${finalName} (${cnt})`;
-    }
-
-    const folderName = finalName.toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-    const gameDir = path.join(rootPath, 'profiles', folderName);
-    fs.mkdirSync(gameDir, { recursive: true });
-
-    // Stats counters
-    let modsInstalled = 0;
-    let rpInstalled = 0;
-    let shadersInstalled = 0;
-    let dpInstalled = 0;
-    let worldsImported = 0;
-
-    // Install selected content types
-    const contentDirs = [
-      { src: 'mods', enabled: installMods, countRef: () => modsInstalled },
-      { src: 'resourcepacks', enabled: installResourcepacks, countRef: () => rpInstalled },
-      { src: 'shaderpacks', enabled: installShaderpacks, countRef: () => shadersInstalled },
-      { src: 'datapacks', enabled: installDatapacks, countRef: () => dpInstalled },
-    ];
-
-    for (const item of contentDirs) {
-      // Check both root and overrides/ (for .mrpack compatibility)
-      const srcDir = path.join(tmpDir, item.src);
-      const srcOverride = path.join(tmpDir, 'overrides', item.src);
-      const src = fs.existsSync(srcDir) ? srcDir : (fs.existsSync(srcOverride) ? srcOverride : null);
-      if (item.enabled && src) {
-        const dest = path.join(gameDir, item.src);
-        fs.mkdirSync(dest, { recursive: true });
-        for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-          const s = path.join(src, entry.name);
-          const d = path.join(dest, entry.name);
-          if (entry.isDirectory()) copyRecursive(s, d);
-          else fs.copyFileSync(s, d);
+    return await bridge.importLegacyProfile(payload, {
+      curseforgeApiKey: readCurseForgeApiKey(),
+      onBackgroundTask: (progress) => {
+        try {
+          event.sender.send('background-task-progress', progress);
+        } catch (error) {
+          shellLog.debug('import-profile: progress could not be sent', { error: error.message });
         }
-        // Count installed files
-        const fileCount = fs.readdirSync(dest).filter(f => fs.statSync(path.join(dest, f)).isFile()).length;
-        if (item.src === 'mods') modsInstalled = fileCount;
-        else if (item.src === 'resourcepacks') rpInstalled = fileCount;
-        else if (item.src === 'shaderpacks') shadersInstalled = fileCount;
-        else if (item.src === 'datapacks') dpInstalled = fileCount;
-      }
-    }
-
-    // Helper to find content in tmpDir (checks both root and overrides/ for .mrpack compatibility)
-    function findContent(subDir) {
-      const direct = path.join(tmpDir, subDir);
-      if (fs.existsSync(direct)) return direct;
-      const overridden = path.join(tmpDir, 'overrides', subDir);
-      if (fs.existsSync(overridden)) return overridden;
-      return null;
-    }
-
-    // Install worlds (saves folder in tmp -> saves folder in game dir)
-    if (installWorlds) {
-      for (const srcSub of ['saves', 'worlds']) {
-        const src = findContent(srcSub);
-        if (src) {
-          const dest = path.join(gameDir, 'saves');
-          fs.mkdirSync(dest, { recursive: true });
-          copyRecursive(src, dest);
-          // Count world directories (each world is a subfolder in saves)
-          worldsImported += fs.readdirSync(dest).filter(f => fs.statSync(path.join(dest, f)).isDirectory()).length;
-        }
-      }
-    }
-
-    // Install config
-    if (installConfig) {
-      const src = findContent('config');
-      if (src) {
-        const dest = path.join(gameDir, 'config');
-        fs.mkdirSync(dest, { recursive: true });
-        copyRecursive(src, dest);
-      }
-    }
-
-    // Install screenshots
-    if (installScreenshots) {
-      const src = findContent('screenshots');
-      if (src) {
-        const dest = path.join(gameDir, 'screenshots');
-        fs.mkdirSync(dest, { recursive: true });
-        copyRecursive(src, dest);
-      }
-    }
-
-    // Create profile entry
-    const mcVersion = mrpackInfo?.minecraftVersion || profileInfo.minecraftVersion || manifest?.instance?.minecraftVersion || '';
-    const modloaderRaw = mrpackInfo?.modloader || profileInfo.modLoader || manifest?.instance?.modloader || 'Vanilla';
-    const modloader = modloaderRaw.replace(/^./, c => c.toUpperCase());
-    const modloaderVersion = mrpackInfo?.modloaderVersion || profileInfo.loaderVersion || manifest?.instance?.modloaderVersion || '';
-
-    let iconHtml = '📦';
-    const iconPath = path.join(tmpDir, 'icon.png');
-    if (fs.existsSync(iconPath)) {
-      const d = fs.readFileSync(iconPath);
-      iconHtml = `<img src="data:image/png;base64,${d.toString('base64')}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit"/>`;
-    }
-    
-    // Also check overrides/ for icon (mrpack)
-    const iconOverridePath = path.join(tmpDir, 'overrides', 'icon.png');
-    if (!fs.existsSync(iconPath) && fs.existsSync(iconOverridePath)) {
-      const d = fs.readFileSync(iconOverridePath);
-      iconHtml = `<img src="data:image/png;base64,${d.toString('base64')}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit"/>`;
-    }
-
-    const newProfile = {
-      id: require('crypto').randomUUID(),
-      name: finalName,
-      folderName,
-      icon: iconHtml,
-      color: '#4CAF50',
-      version: mcVersion || '1.21',
-      loader: modloader,
-      loaderVersion: modloaderVersion,
-      playtime: 0,
-      lastPlayed: '',
-      ram: manifest?.settings?.ram || 4096,
-      javaPath: meta.javaPath || '',
-      installedMods: modsInstalled > 0 ? [{ id: 'imported', name: `${modsInstalled} Mods`, icon: '', version: '', enabled: true, locked: false }] : [],
-      installedResourcePacks: rpInstalled > 0 ? [{ id: 'imported-rp', name: `${rpInstalled} Packs`, icon: '', version: '', enabled: true, locked: false }] : [],
-      installedShaders: shadersInstalled > 0 ? [{ id: 'imported-sh', name: `${shadersInstalled} Packs`, icon: '', version: '', enabled: true, locked: false }] : [],
-    };
-    newProfile.mods = modsInstalled;
-    newProfile.resourcePacks = rpInstalled;
-    newProfile.shaderPacks = shadersInstalled;
-    newProfile.desc = meta.description || manifest?.meta?.description || manifest?.instance?.description || '';
-    newProfile.minecraftVersion = mcVersion;
-    newProfile.modloader = modloader;
-    newProfile.modloaderVersion = modloaderVersion;
-
-    // Save profile
-    profiles.push(newProfile);
-    fs.writeFileSync(profilesPath, JSON.stringify(profiles, null, 2));
-
-    // Cleanup
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-
-    return {
-      success: true,
-      instanceId: newProfile.id,
-      instanceName: finalName,
-      modsInstalled,
-      resourcepacksInstalled: rpInstalled,
-      shaderpacksInstalled: shadersInstalled,
-      datapacksInstalled: dpInstalled,
-      worldsImported,
-    };
-  } catch (err) {
-    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
-    return { success: false, error: err.message };
+      },
+    });
+  } catch (error) {
+    shellLog.error('import-profile failed', { error: error.message });
+    return { success: false, error: error.message };
   }
 });
 
-// Registriere das eigene Protokoll für lokale Bilder VOR dem App-Start
 protocol.registerSchemesAsPrivileged([
   { scheme: 'bamboo-file', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true } }
 ]);
 
 let mainWindow;
 
-// ===== Window State Persistenz =====
-const STATE_PATH = path.join('C:\\BambooLaufwerk', 'window-state.json');
+function windowStatePath() {
+  return path.join(gameRoot(), 'window-state.json');
+}
 
 function loadWindowState() {
   try {
-    if (fs.existsSync(STATE_PATH)) {
-      return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+    const statePath = windowStatePath();
+    if (fs.existsSync(statePath)) {
+      return JSON.parse(fs.readFileSync(statePath, 'utf8'));
     }
-  } catch (_) {}
+  } catch (error) {
+    shellLog.debug('window state unreadable; using defaults', { error: error.message });
+  }
   return {};
 }
 
 function saveWindowState(state) {
   try {
-    const dir = path.dirname(STATE_PATH);
+    const statePath = windowStatePath();
+    const dir = path.dirname(statePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(STATE_PATH, JSON.stringify(state));
-  } catch (_) {}
+    fs.writeFileSync(statePath, JSON.stringify(state));
+  } catch (error) {
+    shellLog.debug('window state could not be saved', { error: error.message });
+  }
 }
 
-// ===== Single Instance Lock =====
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -2159,11 +1717,12 @@ if (!gotLock) {
     if (deepLinkArg) {
       handleDeepLinkUrl(deepLinkArg);
     }
+    const instanceArg = readInstanceLaunchArg(commandLine);
+    if (instanceArg) queueInstanceLaunch(instanceArg);
   });
 }
 
 function createWindow() {
-  // Protokoll-Handler einrichten, um Sicherheits-Blockaden bei lokalen Bildern zu umgehen
   protocol.handle('bamboo-file', (request) => {
     const urlPath = request.url.replace('bamboo-file://', '');
     const decodedPath = decodeURIComponent(urlPath);
@@ -2182,6 +1741,7 @@ function createWindow() {
     minWidth: 1024, minHeight: 700,
     frame: false, titleBarStyle: 'hidden',
     backgroundColor: '#121212', show: false,
+    icon: path.join(__dirname, 'resources', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -2196,16 +1756,21 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // DevTools mit F12 oder Strg+Umschalt+I oeffnen (funktioniert IMMER)
   mainWindow.webContents.on('before-input-event', (_event, input) => {
     if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i') || (input.meta && input.alt && input.key.toLowerCase() === 'i')) {
       mainWindow.webContents.toggleDevTools();
     }
   });
 
-  mainWindow.loadURL('http://localhost:5173').catch(() => {
-    mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
-  });
+  // A packaged build must never depend on (or trust) a local dev server.
+  const rendererEntry = path.join(__dirname, 'dist', 'index.html');
+  if (app.isPackaged) {
+    void mainWindow.loadFile(rendererEntry);
+  } else {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173').catch(() => {
+      void mainWindow.loadFile(rendererEntry);
+    });
+  }
 
   if (saved.isMaximized) mainWindow.maximize();
 
@@ -2213,7 +1778,6 @@ function createWindow() {
     mainWindow.show();
   });
 
-  // Window-State speichern
   const saveBounds = () => {
     if (!mainWindow.isMaximized()) {
       saveWindowState(mainWindow.getBounds());
@@ -2223,40 +1787,174 @@ function createWindow() {
   mainWindow.on('move', saveBounds);
   mainWindow.on('maximize', () => saveWindowState({ isMaximized: true }));
   mainWindow.on('unmaximize', () => saveWindowState(mainWindow.getBounds()));
-  mainWindow.on('close', () => {
+
+  let allowClose = false;
+  let closeTimer = null;
+  const finishClose = () => {
+    if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+    ipc.removeListener('app:flush-before-close-done', finishClose);
+    allowClose = true;
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+  };
+  mainWindow.on('close', (event) => {
     const state = mainWindow.isMaximized()
       ? { isMaximized: true }
       : mainWindow.getBounds();
     saveWindowState(state);
+
+    if (allowClose) return;
+    event.preventDefault();
+    if (closeTimer) return;
+
+    ipc.once('app:flush-before-close-done', finishClose);
+    closeTimer = setTimeout(finishClose, 2500);
+    try {
+      mainWindow.webContents.send('app:flush-before-close');
+    } catch (_) {
+      finishClose();
+    }
+  });
+  mainWindow.on('closed', () => {
+    if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+    ipc.removeListener('app:flush-before-close-done', finishClose);
   });
 }
 
+const joinLogger = {
+  debug: (message, data) => shellLog.debug(`join: ${message}`, data),
+  info: (message, data) => shellLog.info(`join: ${message}`, data),
+  warn: (message, data) => shellLog.warn(`join: ${message}`, data),
+  error: (message, data) => shellLog.error(`join: ${message}`, data),
+  child: () => joinLogger,
+};
+
+function getJoinService() {
+  if (!joinService) {
+    const { JoinService } = require('./dist-electron/join/index.js');
+    joinService = new JoinService({
+      appDataPath: app.getPath('userData'),
+      logger: joinLogger,
+      deliver: (payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('deep-link-invite', payload);
+        }
+      },
+      runtime: async () => {
+        const core = await getBambooCore();
+        if (!core) throw new Error('Launcher-Core (dist-electron) nicht verfügbar');
+        return {
+          instances: core.instanceManager,
+          launch: (request, onEvent) => core.launchInstance(request, onEvent),
+        };
+      },
+    });
+  }
+  return joinService;
+}
+
 function buildInviteUrl(payload) {
-  return `${INVITE_PROTOCOL}://invite?data=${encodeURIComponent(JSON.stringify(payload))}`;
+  return getJoinService().buildInviteUrl(payload);
 }
 
 function handleDeepLinkUrl(url) {
   if (!url || typeof url !== 'string') return;
+  if (!joinSeamReady) {
+    preReadyJoinLinks.push(url);
+    if (preReadyJoinLinks.length > 5) preReadyJoinLinks.shift();
+    return;
+  }
   try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== `${INVITE_PROTOCOL}:`) return;
-    if (parsed.hostname !== 'invite') return;
-    const data = parsed.searchParams.get('data');
-    if (!data) return;
-    const payload = JSON.parse(decodeURIComponent(data));
-    pendingDeepLink = payload;
-    if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.send('deep-link-invite', payload);
-      pendingDeepLink = null;
-    }
-  } catch (e) {
-    console.error('[deep-link] failed to parse invite URL:', e);
+    void getJoinService().receive(url).then((result) => {
+      if (!result.ok) shellLog.warn('join: deep link rejected', { code: result.code, error: result.message });
+    }).catch((error) => {
+      shellLog.error('join: deep link failed', { error: error.message });
+    });
+  } catch (error) {
+    shellLog.error('join: module unavailable', { error: error.message });
   }
 }
 
+// Desktop shortcuts pass --bamboo-instance=<folder>; the renderer starts the
+// profile once it has loaded, so the shortcut behaves like pressing Play.
+let rendererReady = false;
+let pendingInstanceLaunch = '';
+
+function readInstanceLaunchArg(argv) {
+  const args = Array.isArray(argv) ? argv : [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (typeof arg !== 'string') continue;
+    if (arg.startsWith('--bamboo-instance=')) {
+      return arg.slice('--bamboo-instance='.length).replace(/^"|"$/g, '').trim();
+    }
+    if (arg === '--bamboo-instance' && typeof args[index + 1] === 'string') {
+      return args[index + 1].replace(/^"|"$/g, '').trim();
+    }
+  }
+  return '';
+}
+
+function sendInstanceLaunchRequest(folderName) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    pendingInstanceLaunch = folderName;
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send('bamboo:launch-instance-request', folderName);
+}
+
+function flushPendingInstanceLaunch() {
+  if (!pendingInstanceLaunch || !rendererReady) return;
+  const folderName = pendingInstanceLaunch;
+  pendingInstanceLaunch = '';
+  sendInstanceLaunchRequest(folderName);
+}
+
+function queueInstanceLaunch(folderName) {
+  const clean = String(folderName || '').trim();
+  if (!clean) return;
+  pendingInstanceLaunch = clean;
+  flushPendingInstanceLaunch();
+}
+
 app.whenReady().then(async () => {
+  if (process.platform === 'win32' && typeof app.setAppUserModelId === 'function') {
+    app.setAppUserModelId('de.bamboo.launcher.app');
+  }
   app.setAsDefaultProtocolClient(INVITE_PROTOCOL);
+  const core = await getBambooCore();
+  try {
+    const { repaired, changes } = repairProfileFolderCollisions(gameRoot());
+    if (repaired > 0) shellLog.info('instance folder collisions repaired at startup', { repaired });
+    if (core && changes.length > 0) {
+      const rootPath = gameRoot();
+      for (const change of changes) {
+        if (!change || typeof change.id !== 'string' || !change.id) continue;
+        await core.instances.upsert({
+          id: change.id,
+          folderName: change.folderName,
+          path: path.join(rootPath, 'profiles', change.folderName),
+          legacy: true,
+        });
+      }
+    }
+  } catch (error) {
+    shellLog.warn('instance folder collision migration failed', { error: error.message });
+  }
+  try {
+    const { setupAutoUpdater } = require('./dist-electron/updater.js');
+    setupAutoUpdater({ logger: shellLog });
+  } catch (error) {
+    // A missing updater module must never prevent the launcher from starting.
+    shellLog.warn('auto-updater unavailable', { error: error.message });
+  }
   createWindow();
+  joinSeamReady = true;
+  const startupInstance = readInstanceLaunchArg(process.argv);
+  if (startupInstance) queueInstanceLaunch(startupInstance);
+  for (const link of preReadyJoinLinks.splice(0)) handleDeepLinkUrl(link);
   if (process.platform === 'win32') {
     const deepLinkArg = (process.argv || []).find(arg => typeof arg === 'string' && arg.startsWith(`${INVITE_PROTOCOL}://`));
     if (deepLinkArg) handleDeepLinkUrl(deepLinkArg);
@@ -2270,637 +1968,273 @@ app.on('open-url', (event, url) => {
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
-// ===== FRIENDS IPC HANDLERS =====
-const FRIENDS_PATH = path.join('C:\\BambooLaufwerk', 'friends');
-if (!fs.existsSync(FRIENDS_PATH)) fs.mkdirSync(FRIENDS_PATH, { recursive: true });
-const FRIENDS_STORE_PATH = path.join(FRIENDS_PATH, 'store.json');
+ipc.handle('build-invite-link', async (_event, payload) => buildInviteUrl(payload));
+ipc.handle('bamboo:ui:ready', async () => {
+  rendererReady = true;
+  const result = await getJoinService().uiReady();
+  setTimeout(flushPendingInstanceLaunch, 200);
+  return result;
+});
+ipc.handle('bamboo:join:prepare', async (_event, payload) => getJoinService().prepare(payload));
+ipc.handle('bamboo:join:confirm', async (_event, offerId) => getJoinService().confirm(offerId));
 
-function readFriendsStore() {
-  try {
-    if (fs.existsSync(FRIENDS_STORE_PATH)) return JSON.parse(fs.readFileSync(FRIENDS_STORE_PATH, 'utf-8'));
-  } catch (e) { console.error('[friends] read error:', e); }
-  return null;
+async function installLoaderViaCore(loader, minecraftVersion, loaderVersion, onProgress) {
+  const kind = String(loader || '').toLowerCase();
+  const version = String(minecraftVersion || '');
+  if (!kind || kind === 'vanilla') return { versionId: version, loaderVersion: '' };
+  const core = await getBambooCore();
+  if (!core) throw new Error('Launcher-Core (dist-electron) nicht verfügbar');
+  const result = await core.loaders.install(kind, {
+    minecraftVersion: version,
+    ...(loaderVersion ? { loaderVersion: String(loaderVersion) } : {}),
+    installBaseVersion: true,
+    ...(onProgress ? { onProgress: (progress) => { if (progress) onProgress(progress); } } : {}),
+  });
+  return {
+    versionId: result.versionId || version,
+    loaderVersion: result.loaderVersion || String(loaderVersion || ''),
+  };
 }
 
-function writeFriendsStore(data) {
-  try { fs.writeFileSync(FRIENDS_STORE_PATH, JSON.stringify(data, null, 2), 'utf-8'); return true; }
-  catch (e) { console.error('[friends] write error:', e); return false; }
-}
-
-ipcMain.handle('get-friends-store', () => readFriendsStore());
-ipcMain.handle('save-friends-store', (_event, data) => writeFriendsStore(data));
-
-ipcMain.handle('search-users', async (_event, query) => {
-  // Placeholder: Lokale Suche oder API-Abfrage
-  try {
-    const store = readFriendsStore();
-    if (!store) return [];
-    const friends = Object.values(store.friends || {});
-    return friends.filter(f =>
-      f.username?.toLowerCase().includes(query.toLowerCase()) ||
-      f.displayName?.toLowerCase().includes(query.toLowerCase()) ||
-      f.id?.toLowerCase().includes(query.toLowerCase())
-    );
-  } catch { return []; }
-});
-
-ipcMain.handle('send-friend-request', async (_event, userId) => {
-  const store = readFriendsStore() || { friends: {}, relations: {}, friendRequests: [], blockedUsers: [] };
-  store.friendRequests = store.friendRequests || [];
-  store.friendRequests.push({ from: store.myProfile?.id || 'local', to: userId, timestamp: Date.now() });
-  return writeFriendsStore(store);
-});
-
-ipcMain.handle('accept-friend-request', async (_event, userId) => {
-  const store = readFriendsStore() || { friends: {}, relations: {}, friendRequests: [], blockedUsers: [] };
-  store.friendRequests = (store.friendRequests || []).filter(r => r.from !== userId);
-  if (store.friends && !store.friends[userId]) {
-    store.friends[userId] = {
-      id: userId, username: userId, displayName: userId, avatar: '👤', banner: '', bio: '',
-      accentColor: '#4CAF50', createdAt: Date.now(), status: 'offline',
-      activity: { type: 'offline' }, friendCount: 0, lastOnline: Date.now(), launcherVersion: '0.1.0'
-    };
+/** Every `overrides/` + `client-overrides/` file must exist after install. */
+function verifyOverrideFiles(archivePath, instanceDir) {
+  const zip = new AdmZip(archivePath);
+  const prefixes = ['overrides/', 'client-overrides/'];
+  const root = path.resolve(instanceDir);
+  const missing = [];
+  const present = [];
+  let checked = 0;
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue;
+    const normalized = String(entry.entryName || '').replace(/\\/g, '/');
+    const prefix = prefixes.find((candidate) => normalized.startsWith(candidate));
+    if (!prefix) continue;
+    const relative = normalized.slice(prefix.length);
+    if (!relative) continue;
+    checked += 1;
+    const target = path.resolve(root, relative);
+    if (!target.startsWith(root + path.sep) || !fs.existsSync(target)) missing.push(relative);
+    else present.push(relative);
   }
-  store.relations = store.relations || {};
-  store.relations[userId] = { userId, since: Date.now(), direction: 'accepted' };
-  return writeFriendsStore(store);
-});
+  return { checked, missing, present };
+}
 
-ipcMain.handle('decline-friend-request', async (_event, userId) => {
-  const store = readFriendsStore();
-  if (!store) return false;
-  store.friendRequests = (store.friendRequests || []).filter(r => r.from !== userId);
-  return writeFriendsStore(store);
-});
-
-ipcMain.handle('block-user', async (_event, userId) => {
-  const store = readFriendsStore() || { friends: {}, relations: {}, friendRequests: [], blockedUsers: [] };
-  store.blockedUsers = store.blockedUsers || [];
-  if (!store.blockedUsers.includes(userId)) store.blockedUsers.push(userId);
-  delete (store.friends || {})[userId];
-  delete (store.relations || {})[userId];
-  return writeFriendsStore(store);
-});
-
-ipcMain.handle('remove-friend', async (_event, userId) => {
-  const store = readFriendsStore();
-  if (!store) return false;
-  delete (store.friends || {})[userId];
-  delete (store.relations || {})[userId];
-  return writeFriendsStore(store);
-});
-
-ipcMain.handle('update-friend-status', async (_event, status) => {
-  const store = readFriendsStore();
-  if (!store) return false;
-  if (store.myProfile) store.myProfile.status = status;
-  return writeFriendsStore(store);
-});
-
-ipcMain.handle('update-friend-activity', async (_event, activity) => {
-  const store = readFriendsStore();
-  if (!store) return false;
-  if (store.myProfile) store.myProfile.activity = activity;
-  return writeFriendsStore(store);
-});
-
-ipcMain.handle('build-invite-link', async (_event, payload) => buildInviteUrl(payload));
-
-ipcMain.handle('send-friend-invitation', async (_event, data) => {
-  try {
-    const store = readFriendsStore() || { friends: {}, relations: {}, friendRequests: [], blockedUsers: [], activities: [], notifications: [], privacySettings: { statusVisible: 'everyone', profileVisible: 'friends', whoCanAdd: 'everyone', activitiesVisible: 'friends', invitationsAllowed: 'friends', currentProfileVisible: 'friends' }, myProfile: { id: 'local', username: 'BambooPlayer', displayName: 'BambooPlayer', avatar: '🎋', banner: '', bio: 'Bamboo Launcher Nutzer', accentColor: '#4CAF50', createdAt: Date.now(), status: 'online', activity: { type: 'in_launcher' }, friendCount: 0, lastOnline: Date.now(), launcherVersion: '0.1.0' } };
-    if (data && data.toUserId && data.invitationData) {
-      store.notifications = store.notifications || [];
-      store.notifications.unshift({
-        id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
-        type: 'invitation',
-        fromUserId: store.myProfile?.id || 'local',
-        fromUserName: store.myProfile?.displayName || store.myProfile?.username || 'BambooPlayer',
-        fromUserAvatar: store.myProfile?.avatar || '🎋',
-        message: `${store.myProfile?.displayName || 'Jemand'} hat dir eine Einladung gesendet.`,
-        timestamp: Date.now(),
-        read: false,
-        invitationData: data.invitationData,
+ipc.handle('install-modpack-mrpack', async (event, { folderName, mcVersion, loader, mrpackUrl, mode = 'install' }) => {
+  const emitProgress = (percent, label) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+    const message = String(label || '');
+    try {
+      event.sender.send('modpack-install-progress', {
+        folderName,
+        percent: clamped,
+        label: message,
       });
-      writeFriendsStore(store);
+      // Same operation, second consumer: the footer bar is mounted in App and
+      // therefore keeps its progress when the mod browser is left behind.
+      event.sender.send('background-task-progress', {
+        id: `modpack:${folderName}`,
+        percent: clamped,
+        label: message,
+      });
+    } catch (error) {
+      shellLog.debug('install-modpack: progress could not be sent', { error: error.message });
     }
-    return true;
-  } catch (e) {
-    console.error('[friends] send invitation error:', e);
-    return false;
+  };
+  const rootPath = gameRoot();
+  const requestedFolder = path.basename(String(folderName || ''));
+  if (!requestedFolder || requestedFolder !== String(folderName) || requestedFolder === '.' || requestedFolder === '..') {
+    return { success: false, error: 'Ungültiger Instanzordner' };
   }
-});
-ipcMain.handle('accept-friend-invitation', async (_event, notificationId) => {
-  const store = readFriendsStore();
-  if (!store || !store.notifications) return false;
-  const index = store.notifications.findIndex(n => n.id === notificationId);
-  if (index === -1) return false;
-  const notification = store.notifications[index];
-  if (notification.type !== 'invitation') return false;
-  store.notifications[index].read = true;
-
-  const fromId = notification.fromUserId;
-  if (fromId && !store.blockedUsers?.includes(fromId)) {
-    store.friends = store.friends || {};
-    if (!store.friends[fromId]) {
-      store.friends[fromId] = {
-        id: fromId,
-        username: notification.fromUserName || fromId,
-        displayName: notification.fromUserName || fromId,
-        avatar: notification.fromUserAvatar || '👤',
-        banner: '',
-        bio: '',
-        accentColor: '#4CAF50',
-        createdAt: Date.now(),
-        status: 'offline',
-        activity: { type: 'offline' },
-        friendCount: 0,
-        lastOnline: Date.now(),
-        launcherVersion: '0.1.0',
-      };
-      store.relations = store.relations || {};
-      store.relations[fromId] = { userId: fromId, since: Date.now(), direction: 'accepted' };
-    }
-  }
-
-  return writeFriendsStore(store);
-});
-ipcMain.handle('decline-friend-invitation', async (_event, notificationId) => {
-  const store = readFriendsStore();
-  if (!store || !store.notifications) return false;
-  const index = store.notifications.findIndex(n => n.id === notificationId);
-  if (index === -1) return false;
-  store.notifications[index].read = true;
-  return writeFriendsStore(store);
-});
-
-const FRIEND_AVATARS_PATH = path.join(FRIENDS_PATH, 'avatars');
-if (!fs.existsSync(FRIEND_AVATARS_PATH)) fs.mkdirSync(FRIEND_AVATARS_PATH, { recursive: true });
-
-ipcMain.handle('save-friend-avatar', async (_event, filePath) => {
-  try {
-    if (!filePath || typeof filePath !== 'string') return null;
-    const ext = path.extname(filePath).toLowerCase();
-    const allowedExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
-    if (!allowedExts.includes(ext)) { console.warn('[friends] invalid avatar type:', ext); return null; }
-    const stat = fs.statSync(filePath);
-    if (!stat.isFile()) return null;
-    const maxSize = 5 * 1024 * 1024;
-    if (stat.size > maxSize) { console.warn('[friends] avatar too large:', stat.size); return null; }
-    const img = nativeImage.createFromPath(filePath);
-    if (img.isEmpty()) { console.warn('[friends] avatar image is empty/invalid'); return null; }
-    const size = Math.min(img.getSize().width, img.getSize().height);
-    const cropped = img.crop({
-      x: Math.floor((img.getSize().width - size) / 2),
-      y: Math.floor((img.getSize().height - size) / 2),
-      width: size, height: size,
-    });
-    const resized = cropped.resize({ width: 256, height: 256 });
-    const destName = 'avatar.png';
-    const destPath = path.join(FRIEND_AVATARS_PATH, destName);
-    fs.writeFileSync(destPath, resized.toPNG());
-    return toBambooFileUrl(destPath);
-  } catch (e) { console.error('[friends] avatar save error:', e); return null; }
-});
-
-function toBambooFileUrl(localPath) {
-  return `bamboo-file://${encodeURIComponent(localPath)}`;
-}
-
-ipcMain.handle('save-friend-banner', async (_event, filePath) => {
-  try {
-    if (!filePath || typeof filePath !== 'string') return null;
-    const ext = path.extname(filePath).toLowerCase();
-    const allowedExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
-    if (!allowedExts.includes(ext)) { console.warn('[friends] invalid banner type:', ext); return null; }
-    const stat = fs.statSync(filePath);
-    if (!stat.isFile()) return null;
-    const maxSize = 10 * 1024 * 1024;
-    if (stat.size > maxSize) { console.warn('[friends] banner too large:', stat.size); return null; }
-    const img = nativeImage.createFromPath(filePath);
-    if (img.isEmpty()) { console.warn('[friends] banner image is empty/invalid'); return null; }
-    const resized = img.resize({ width: 1200, height: 400 });
-    const destName = 'banner.png';
-    const destPath = path.join(FRIEND_AVATARS_PATH, destName);
-    fs.writeFileSync(destPath, resized.toPNG());
-    return toBambooFileUrl(destPath);
-  } catch (e) { console.error('[friends] banner save error:', e); return null; }
-});
-
-function getSafeProfileFolderName(name) { return name.replace(/[^a-zA-Z0-9_-]/g, '_'); }
-
-// Automatische Fabric-Installation
-async function installModloader(rootPath, mcVersion, loaderType, loaderVersion) {
-  const typeLower = loaderType.toLowerCase();
-  const customId = `fabric-loader-${loaderVersion}-${mcVersion}`;
-  const versionFolder = path.join(rootPath, 'versions', customId);
-  const versionFile = path.join(versionFolder, `${customId}.json`);
-
-  if (fs.existsSync(versionFile)) {
-    console.log(`Fabric ${customId} bereits vorhanden.`);
-    return customId;
-  }
-  console.log(`Installiere Fabric: ${customId}...`);
-  if (!fs.existsSync(versionFolder)) fs.mkdirSync(versionFolder, { recursive: true });
-
-  const url = `https://meta.fabricmc.net/v2/versions/loader/${mcVersion}/${loaderVersion}/profile/json`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Fabric JSON nicht gefunden für Version ${mcVersion}`);
-  
-  const jsonData = await response.json();
-  fs.writeFileSync(versionFile, JSON.stringify(jsonData, null, 2));
-  return customId;
-}
-
-async function ensureVanillaVersion(rootPath, mcVersion) {
-  const verDir = path.join(rootPath, 'versions', mcVersion);
-  const verFile = path.join(verDir, `${mcVersion}.json`);
-  if (fs.existsSync(verFile)) return;
-  if (!fs.existsSync(verDir)) fs.mkdirSync(verDir, { recursive: true });
-  const manifestRes = await fetch('https://launchermeta.mojang.com/mc/game/version_manifest_v2.json');
-  if (!manifestRes.ok) throw new Error('Version-Manifest nicht ladbar');
-  const manifest = await manifestRes.json();
-  const verEntry = manifest.versions.find(v => v.id === mcVersion);
-  if (!verEntry) throw new Error(`Minecraft ${mcVersion} nicht im Manifest`);
-  const verMetaRes = await fetch(verEntry.url);
-  if (!verMetaRes.ok) throw new Error('Version-Metadaten nicht ladbar');
-  const verMeta = await verMetaRes.json();
-  fs.writeFileSync(verFile, JSON.stringify(verMeta, null, 2));
-  console.log(`Vanilla ${mcVersion} heruntergeladen`);
-}
-
-function patchLoaderVersion(rootPath, finalId) {
-  const verFile = path.join(rootPath, 'versions', finalId, `${finalId}.json`);
-  if (!fs.existsSync(verFile)) return;
-  try {
-    const data = JSON.parse(fs.readFileSync(verFile, 'utf8'));
-    const libDir = path.join(rootPath, 'libraries');
-    const props = [
-      `-Dnet.neoforged.loader.libraryDirectory=${libDir}`,
-      `-DlibraryDirectory=${libDir}`,
-      `-Dfml.libraryDirectory=${libDir}`,
-    ];
-    if (!data.arguments) data.arguments = {};
-    if (!Array.isArray(data.arguments.jvm)) data.arguments.jvm = [];
-    for (const prop of props) {
-      const exists = data.arguments.jvm.some(a => typeof a === 'string' && a.includes(prop.split('=')[0]));
-      if (!exists) {
-        data.arguments.jvm.push(prop);
-        console.log(`Patch: ${prop} in ${finalId}`);
-      }
-    }
-    fs.writeFileSync(verFile, JSON.stringify(data, null, 2));
-  } catch (e) { console.warn(`Patch fehlgeschlagen für ${finalId}:`, e.message); }
-}
-
-// ===== Bamboo Client MOD für Fabric 26.2 =====
-// Prüft vor dem Start, ob die Bamboo-Client-JAR existiert und lädt sie herunter, falls nötig
-async function ensureBambooClientMod(gameDir, mcVersion) {
-  // Nur für Fabric 26.2 + Versionen
-  if (!mcVersion || !String(mcVersion).startsWith('26')) {
-    console.log('[Bamboo-Client] Nicht für MC-Version relevant:', mcVersion);
-    return;
-  }
-
-  const modsDir = path.join(gameDir, 'mods');
-  if (!fs.existsSync(modsDir)) {
-    fs.mkdirSync(modsDir, { recursive: true });
-    console.log(`[Bamboo-Client] Mods-Ordner erstellt: ${modsDir}`);
-  }
-
-  const files = [
-    { name: 'bamboo-client-1.0.0.jar', url: 'https://cdn.discordapp.com/attachments/1520745540239753216/1520754748385656942/bamboo-client-1.0.0.jar?ex=6a4258ba&is=6a41073a&hm=fcbf53ccbb22e182470273cbdb05e601e3fcc14955b00d1c68d4e4477efab375&' },
-    { name: 'fabric-api-0.153.026.2.jar', url: 'https://cdn.discordapp.com/attachments/1520745540239753216/1520745581117440090/fabric-api-0.153.026.2.jar?ex=6a425030&is=6a40feb0&hm=84ee852622bf3ba5e6a4b265a743876b82b80ab85ec07c703f7e7fbd92464b7e&' },
-    { name: 'fabric-language-kotlin-1.13.12kotlin.2.4.0.jar', url: 'https://cdn.discordapp.com/attachments/1520745540239753216/1520751705468305438/fabric-language-kotlin-1.13.12kotlin.2.4.0.jar?ex=6a4255e4&is=6a410464&hm=07ef782295cb5f5ef3cdf7935cd806a9c3b7d97f149a397bb429d3988da210c0&' },
-  ];
-
-  for (const file of files) {
-    const dest = path.join(modsDir, file.name);
-    if (fs.existsSync(dest)) {
-      console.log(`[Bamboo-Client] Datei bereits vorhanden: ${file.name}`);
-      continue;
-    }
-    console.log(`[Bamboo-Client] Starte Download: ${file.name}`);
-    downloadBambooClientFile(file.url, dest);
-  }
-}
-
-async function downloadBambooClientFile(url, dest) {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.error(`[Bamboo-Client] Download fehlgeschlagen (${response.status}): ${url}`);
-      return;
-    }
-    const buffer = await response.arrayBuffer();
-    fs.writeFileSync(dest, Buffer.from(buffer));
-    console.log(`[Bamboo-Client] Erfolgreich gespeichert: ${dest}`);
-  } catch (error) {
-    console.error(`[Bamboo-Client] Fehler beim Download: ${error.message}`);
-  }
-}
-
-function ensureClientJarForNeoForge(rootPath, mcVersion) {
-  // NeoForge >1.20.6 erwartet die Vanilla-Client-JAR unter libraries/net/minecraft/client/<version>/client-<version>.jar
-  // MCLC legt sie aber in versions/<version>/<version>.jar ab. Kopiere sie an den erwarteten Pfad.
-  const srcJar = path.join(rootPath, 'versions', mcVersion, `${mcVersion}.jar`);
-  if (!fs.existsSync(srcJar)) {
-    console.warn(`Client-JAR nicht gefunden: ${srcJar}`);
-    return;
-  }
-  const dstDir = path.join(rootPath, 'libraries', 'net', 'minecraft', 'client', mcVersion);
-  const dstJar = path.join(dstDir, `client-${mcVersion}.jar`);
-  if (fs.existsSync(dstJar)) {
-    // Prüfe ob vorhandene Datei gleich gross ist
-    if (fs.statSync(dstJar).size === fs.statSync(srcJar).size) return;
-  }
-  if (!fs.existsSync(dstDir)) fs.mkdirSync(dstDir, { recursive: true });
-  fs.copyFileSync(srcJar, dstJar);
-  console.log(`Client-JAR kopiert: ${srcJar} -> ${dstJar}`);
-  // Auch srg-Variante für NeoForge >1.21 erstellen falls benötigt
-  const dstJarSrg = path.join(dstDir, `client-${mcVersion}-srg.jar`);
-  if (!fs.existsSync(dstJarSrg)) {
-    try { fs.copyFileSync(srcJar, dstJarSrg); console.log(`Client-JAR (srg) kopiert: ${dstJarSrg}`); } catch (_) {}
-  }
-}
-
-async function extractLoaderFromInstallerJar(rootPath, installerPath, finalId, versionIdInJar) {
-  // Installer-JAR (ein ZIP) öffnen und version.json + Libraries extrahieren
-  const verDir = path.join(rootPath, 'versions', finalId);
-  if (!fs.existsSync(verDir)) fs.mkdirSync(verDir, { recursive: true });
-  const targetVerFile = path.join(verDir, `${finalId}.json`);
-
-  const zip = new AdmZip(installerPath);
-  const entries = zip.getEntries();
-
-  // 1. version.json aus dem JAR extrahieren
-  const verEntryName = versionIdInJar ? `${versionIdInJar}.json` : 'version.json';
-  let foundVer = false;
-  for (const entry of entries) {
-    if (entry.entryName === verEntryName || entry.entryName.endsWith(`/${verEntryName}`) || entry.entryName === 'version.json') {
-      let jsonStr = entry.getData().toString('utf8');
-      // Im JAR heisst die version-ID oft anders -> umschreiben auf finalId
-      let verData = JSON.parse(jsonStr);
-      verData.id = finalId;
-      // InheritsFrom setzen falls nicht vorhanden
-      if (!verData.inheritsFrom && finalId.includes('-')) {
-        const parts = finalId.split('-');
-        if (finalId.startsWith('neoforge')) {
-          // NeoForge: neoforge-21.0.0 -> erbt von MC-Version, die schauen wir aus dem JAR
-        }
-      }
-      fs.writeFileSync(targetVerFile, JSON.stringify(verData, null, 2));
-      foundVer = true;
-      console.log(`version.json extrahiert: ${targetVerFile}`);
-      break;
-    }
-  }
-  if (!foundVer) {
-    throw new Error(`Keine version.json in ${installerPath} gefunden`);
-  }
-
-  // 2. Libraries aus maven/-Verzeichnis im JAR extrahieren
-  const libBase = path.join(rootPath, 'libraries');
-  let libCount = 0;
-  for (const entry of entries) {
-    if (entry.entryName.startsWith('maven/') && !entry.isDirectory) {
-      const relPath = entry.entryName.slice('maven/'.length);
-      const targetPath = path.join(libBase, relPath);
-      const targetDir = path.dirname(targetPath);
-      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-      fs.writeFileSync(targetPath, entry.getData());
-      libCount++;
-    }
-  }
-  console.log(`${libCount} Libraries aus ${installerPath} extrahiert`);
-
-  // 3. version.json patchen (libraryDirectory setzen)
-  patchLoaderVersion(rootPath, finalId);
-  return finalId;
-}
-
-async function installForgeLoader(rootPath, javaPath, mcVersion, loaderVersion, sendProgress) {
-  return installForgeLoaderClean(rootPath, javaPath, mcVersion, loaderVersion, sendProgress);
-}
-
-async function installForgeLoaderClean(rootPath, javaPath, mcVersion, loaderVersion, sendProgress) {
-  const finalId = `${mcVersion}-forge-${loaderVersion}`;
-  const localFile = path.join(rootPath, 'versions', finalId, `${finalId}.json`);
-  if (fs.existsSync(localFile)) { patchLoaderVersion(rootPath, finalId); console.log(`Forge ${finalId} bereits vorhanden.`); return finalId; }
-  if (sendProgress) sendProgress(`Lade Forge-Installer ${loaderVersion} von Maven...`);
-  await ensureVanillaVersion(rootPath, mcVersion);
-  await downloadVanillaJar(rootPath, mcVersion);
-  const installerUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${loaderVersion}/forge-${mcVersion}-${loaderVersion}-installer.jar`;
-  const installerDir = path.join(rootPath, 'versions', `${mcVersion}-${loaderVersion}`);
-  const installerPath = path.join(installerDir, `forge-${mcVersion}-${loaderVersion}-installer.jar`);
-  if (!fs.existsSync(installerDir)) fs.mkdirSync(installerDir, { recursive: true });
-  console.log(`Lade Forge-Installer: ${installerUrl}`);
-  const res = await fetch(installerUrl);
-  if (!res.ok) throw new Error(`Forge-Installer nicht gefunden (${res.status})`);
-  fs.writeFileSync(installerPath, Buffer.from(await res.arrayBuffer()));
-  if (sendProgress) sendProgress('Extrahiere Forge-Dateien aus Installer...');
-  await extractLoaderFromInstallerJar(rootPath, installerPath, finalId, finalId);
-  console.log(`Forge ${finalId} installiert.`);
-  return finalId;
-}
-
-async function installNeoforgeLoader(rootPath, javaPath, mcVersion, loaderVersion, sendProgress) {
-  return installNeoforgeLoaderClean(rootPath, javaPath, mcVersion, loaderVersion, sendProgress);
-}
-
-async function installNeoforgeLoaderClean(rootPath, javaPath, mcVersion, loaderVersion, sendProgress) {
-  const finalId = `neoforge-${loaderVersion}`;
-  const localFile = path.join(rootPath, 'versions', finalId, `${finalId}.json`);
-  if (fs.existsSync(localFile)) { patchLoaderVersion(rootPath, finalId); console.log(`NeoForge ${finalId} bereits vorhanden.`); return finalId; }
-  if (sendProgress) sendProgress(`Lade NeoForge-Installer ${loaderVersion} von Maven...`);
-  await ensureVanillaVersion(rootPath, mcVersion);
-  await downloadVanillaJar(rootPath, mcVersion);
-  const installerUrl = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${loaderVersion}/neoforge-${loaderVersion}-installer.jar`;
-  const installerDir = path.join(rootPath, 'versions', `neoforge-${loaderVersion}`);
-  const installerPath = path.join(installerDir, `neoforge-${loaderVersion}-installer.jar`);
-  if (!fs.existsSync(installerDir)) fs.mkdirSync(installerDir, { recursive: true });
-  console.log(`Lade NeoForge-Installer: ${installerUrl}`);
-  const res = await fetch(installerUrl);
-  if (!res.ok) throw new Error(`NeoForge-Installer nicht gefunden (${res.status})`);
-  fs.writeFileSync(installerPath, Buffer.from(await res.arrayBuffer()));
-  if (sendProgress) sendProgress('Extrahiere NeoForge-Dateien aus Installer...');
-  await extractLoaderFromInstallerJar(rootPath, installerPath, finalId, finalId);
-  console.log(`NeoForge ${finalId} installiert.`);
-  return finalId;
-}
-
-// Fabric API automatisch von Modrinth herunterladen
-async function installFabricApi(gameDir, mcVersion) {
-  const modsDir = path.join(gameDir, 'mods');
-  if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
-
-  const url = `https://api.modrinth.com/v2/project/P7dR8mSH/version?loaders=["fabric"]&game_versions=["${mcVersion}"]&featured=true`;
-  const response = await fetch(url, { headers: { 'User-Agent': 'BambooLauncher/0.1.0' } });
-  if (!response.ok) {
-    console.warn(`Fabric API versions nicht abrufbar (${response.status}) – überspringe`);
-    return;
-  }
-  const versions = await response.json();
-  if (!versions || versions.length === 0) {
-    console.warn('Keine Fabric API Version für ' + mcVersion + ' gefunden – überspringe');
-    return;
-  }
-
-  const primaryFile = versions[0].files?.find(f => f.primary) || versions[0].files?.[0];
-  if (!primaryFile) {
-    console.warn('Kein Download-File für Fabric API – überspringe');
-    return;
-  }
-
-  const dest = path.join(modsDir, primaryFile.filename);
-  if (fs.existsSync(dest)) {
-    console.log(`Fabric API ${primaryFile.filename} bereits vorhanden`);
-    return;
-  }
-
-  console.log(`Lade Fabric API herunter: ${primaryFile.filename}`);
-  const fileRes = await fetch(primaryFile.url);
-  if (!fileRes.ok) throw new Error(`Fabric API Download fehlgeschlagen (${fileRes.status})`);
-  const arrayBuffer = await fileRes.arrayBuffer();
-  fs.writeFileSync(dest, Buffer.from(arrayBuffer));
-  console.log(`Fabric API gespeichert: ${dest}`);
-}
-
-// Content-Download von Modrinth
-// Modpack (mrpack) Installation
-ipcMain.handle('install-modpack-mrpack', async (_event, { folderName, mcVersion, loader, mrpackUrl }) => {
-  const rootPath = 'C:\\BambooLaufwerk';
-  const gameDir = path.join(rootPath, 'profiles', folderName);
+  // `update` targets the existing folder; `install` must never reuse another
+  // instance's directory even when the display name is identical.
+  const profileFolder = mode === 'update'
+    ? requestedFolder
+    : uniqueProfileFolder(rootPath, requestedFolder, readProfilesSync(rootPath));
+  const gameDir = path.join(rootPath, 'profiles', profileFolder);
   if (!fs.existsSync(gameDir)) fs.mkdirSync(gameDir, { recursive: true });
-  const modsDir = path.join(gameDir, 'mods');
-  if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
   const tempDir = path.join(rootPath, 'cache', 'mrpack-tmp-' + Date.now());
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+  let usedTar = false;
   try {
+    emitProgress(2, 'Modpack wird vorbereitet…');
     const mrpackPath = path.join(tempDir, 'modpack.mrpack');
-    console.log('Lade mrpack:', mrpackUrl);
+    shellLog.debug('install-modpack: downloading mrpack', { folderName, mcVersion, loader });
     const res = await fetch(mrpackUrl);
     if (!res.ok) throw new Error('mrpack download fehlgeschlagen ' + res.status);
     const buf = await res.arrayBuffer();
     fs.writeFileSync(mrpackPath, Buffer.from(buf));
-    // ZIP mit AdmZip extrahieren (unterstützt .mrpack nativ, kein Expand-Archive nötig)
+    emitProgress(8, 'Modpack wird entpackt…');
     const extractDir = path.join(tempDir, 'extracted');
     if (!fs.existsSync(extractDir)) fs.mkdirSync(extractDir, { recursive: true });
     try {
       const zip = new AdmZip(mrpackPath);
       zip.extractAllTo(extractDir, true);
-      console.log('[install-modpack-mrpack] Extraktion erfolgreich mit AdmZip');
-    } catch (_) {
-      // Fallback: tar (falls verfügbar)
-      try { execSync(`tar -xf "${mrpackPath}" -C "${extractDir}"`, { encoding: 'utf8', timeout: 60000 }); } catch (_2) { throw new Error('mrpack konnte nicht entpackt werden'); }
+    } catch (admError) {
+      try {
+        const { extractMrpackWithTar } = require('./dist-electron/mods/tar.js');
+        await extractMrpackWithTar(mrpackPath, extractDir);
+        usedTar = true;
+        shellLog.debug('install-modpack: used tar fallback', { error: admError.message });
+      } catch (tarError) {
+        shellLog.error('install-modpack: extraction failed', { admError: admError.message, tarError: tarError.message });
+        throw new Error(`mrpack konnte nicht entpackt werden: ${tarError.message}`);
+      }
     }
     const indexJson = path.join(extractDir, 'modrinth.index.json');
     if (!fs.existsSync(indexJson)) throw new Error('modrinth.index.json nicht gefunden');
     const index = JSON.parse(fs.readFileSync(indexJson, 'utf8'));
-    const files = index.files || [];
-    // overrides KOPIEREN (Überschreiben: alte Dateien werden ersetzt)
-    for (const sub of ['overrides', 'client-overrides']) {
-      const src = path.join(extractDir, sub);
-      if (fs.existsSync(src)) {
-        copyRecursiveOverwriteSync(src, gameDir);
-      }
+    const files = Array.isArray(index.files) ? index.files : [];
+    const dependencies = index.dependencies || {};
+    const loaderDependencies = [
+      ['fabric-loader', 'fabric'],
+      ['quilt-loader', 'quilt'],
+      ['neoforge', 'neoforge'],
+      ['forge', 'forge'],
+    ];
+    const dependencyEntry = loaderDependencies.find(([key]) => typeof dependencies[key] === 'string' && dependencies[key]);
+    const packLoader = dependencyEntry
+      ? dependencyEntry[1]
+      : String(loader || '').toLowerCase();
+    const normLoader = ['fabric', 'quilt', 'forge', 'neoforge'].includes(packLoader) ? packLoader : 'vanilla';
+    const packMcVersion = String(dependencies.minecraft || mcVersion || '');
+    const requestedLoaderVersion = dependencyEntry ? String(dependencies[dependencyEntry[0]] || '') : '';
+    const downloadable = files.filter((file) => {
+      const envClient = file.env?.client || 'required';
+      return envClient !== 'unsupported' && Boolean(file.downloads?.[0]);
+    });
+    emitProgress(13, 'Modpack-Dateien werden übernommen…');
+
+    let archiveForInstall = mrpackPath;
+    if (usedTar) {
+      const repacked = path.join(tempDir, 'repacked.mrpack');
+      const repack = new AdmZip();
+      repack.addLocalFolder(extractDir);
+      repack.writeZip(repacked);
+      archiveForInstall = repacked;
     }
-    // Alle vorhandenen Mod-Verzeichnisse INHALTLICH bereinigen (alte Mod-JARs, die nicht mehr im Index sind, werden gelöscht)
-    const knownPaths = new Set(files.map(f => f.path.replace(/\\/g, '/')));
-    for (const contentSubDir of ['mods', 'resourcepacks', 'shaderpacks', 'datapacks']) {
-      const dir = path.join(gameDir, contentSubDir);
-      if (fs.existsSync(dir)) {
-        const entries = fs.readdirSync(dir);
-        for (const entry of entries) {
-          const entryPath = (contentSubDir + '/' + entry).replace(/\\/g, '/');
-          if (!knownPaths.has(entryPath) && !knownPaths.has('overrides/' + entryPath)) {
-            try {
-              fs.unlinkSync(path.join(dir, entry));
-              console.log('[install-modpack-mrpack] Alte nicht mehr benötigte Datei gelöscht:', entryPath);
-            } catch (e) {
-              console.warn('[install-modpack-mrpack] Konnte alte Datei nicht löschen:', entryPath, e.message);
-            }
-          }
+
+    // The core installer is the single owner of hash checks, override order,
+    // stale-file cleanup and the modpack lock. The legacy handler used to
+    // reimplement all four and could leave a pack that installs but cannot run.
+    const { installModpack } = require('./dist-electron/mods/index.js');
+    const installResult = await installModpack({
+      instanceDir: gameDir,
+      archivePath: archiveForInstall,
+      ...(packMcVersion ? { minecraftVersion: packMcVersion } : {}),
+      onProgress: (progress) => {
+        const total = Math.max(1, Number(progress.total) || downloadable.length || 1);
+        const done = Math.min(Number(progress.done) || 0, total);
+        if (progress.phase === 'files') {
+          emitProgress(
+            16 + Math.round((done / total) * 54),
+            `Lade ${Math.min(done + 1, total)}/${total}: ${String(progress.file || '').split('/').pop()}`,
+          );
+        } else if (progress.phase === 'overrides') {
+          emitProgress(
+            70 + Math.round((done / total) * 8),
+            `Override ${Math.min(done + 1, total)}/${total}: ${String(progress.file || '').split('/').pop()}`,
+          );
         }
-      }
+      },
+    });
+
+    // Overrides are the pack author's own files (configs, resource packs, UI
+    // data). Verify each one actually landed instead of trusting the archive.
+    const overrideCheck = verifyOverrideFiles(archiveForInstall, gameDir);
+    if (overrideCheck.missing.length > 0) {
+      throw new Error(
+        `${overrideCheck.missing.length} von ${overrideCheck.checked} Override-Dateien fehlen nach der Installation ` +
+        `(z. B. ${overrideCheck.missing.slice(0, 3).join(', ')})`,
+      );
     }
-    // Mods herunterladen (alte Versionen werden überschrieben)
-    let modCount = 0;
-    for (const file of files) {
-      try {
-        const envClient = file.env?.client || 'required';
-        if (envClient === 'unsupported') continue;
-        const downloadUrl = file.downloads?.[0];
-        if (!downloadUrl) continue;
-        const destPath = path.join(gameDir, file.path);
-        const destDir = path.dirname(destPath);
-        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-        // Alte Datei löschen falls vorhanden (für Update)
-        if (fs.existsSync(destPath)) {
-          try { fs.unlinkSync(destPath); } catch (e) { console.warn('[Modpack] Konnte alte Datei nicht löschen:', file.path, e.message); }
-        }
-        const fileRes = await fetch(downloadUrl);
-        if (!fileRes.ok) continue;
-        const fileBuf = await fileRes.arrayBuffer();
-        fs.writeFileSync(destPath, Buffer.from(fileBuf));
-        modCount++;
-        console.log(`[Modpack] ${file.path} heruntergeladen`);
-      } catch (e) { console.warn('[Modpack] Download-Fehler:', file.path, e.message); }
+    shellLog.info('install-modpack: overrides verified', {
+      folderName,
+      profileFolder,
+      checked: overrideCheck.checked,
+    });
+    emitProgress(78, 'Loader wird eingerichtet…');
+    const modCount = installResult.installed.length + installResult.updated.length;
+
+  let loaderInstalled = false;
+  let loaderError = '';
+  let installedLoaderVersion = '';
+  let installedVersionId = '';
+  try {
+    if (normLoader !== 'vanilla' && packMcVersion) {
+      emitProgress(82, `Lade ${normLoader} ${requestedLoaderVersion || ''}…`);
+      const loaderPercent = { metadata: 84, base: 86, installer: 88, profile: 90, inputs: 92, processors: 94, done: 96 };
+      shellLog.info('install-modpack: installing loader', { loader: normLoader, mcVersion: packMcVersion, requestedLoaderVersion });
+      const loaderResult = await installLoaderViaCore(
+        normLoader,
+        packMcVersion,
+        requestedLoaderVersion,
+        (progress) => emitProgress(loaderPercent[progress.phase] || 88, progress.message),
+      );
+      installedLoaderVersion = loaderResult.loaderVersion;
+      installedVersionId = loaderResult.versionId;
+      loaderInstalled = true;
+      shellLog.info('install-modpack: loader installed', { loader: normLoader, mcVersion: packMcVersion, installedLoaderVersion, installedVersionId });
     }
-    return { success: true, modCount, index };
+  } catch (e) {
+    loaderError = e.message;
+    shellLog.warn('install-modpack: loader installation failed', { error: e.message });
+  }
+  if (loaderError) {
+    return { success: false, error: `Loader-Installation fehlgeschlagen: ${loaderError}`, modCount, index, loaderInstalled };
+  }
+  emitProgress(100, 'Modpack fertig');
+  return {
+    success: true,
+    modCount,
+    index,
+    loaderInstalled,
+    loader: normLoader,
+    mcVersion: packMcVersion,
+    loaderVersion: installedLoaderVersion,
+    versionId: installedVersionId,
+    folderName: profileFolder,
+    overrideFiles: overrideCheck.present,
+  };
   } catch (err) {
-    console.error('[Modpack] Fehler:', err.message);
+    shellLog.error('install-modpack failed', { error: err.message });
     return { success: false, error: err.message };
   } finally {
-    // Temp-Verzeichnis löschen
-    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (error) { shellLog.debug('install-modpack: temp cleanup failed', { error: error.message }); }
   }
 });
 
-function copyRecursiveSync(src, dest) {
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
-      copyRecursiveSync(srcPath, destPath);
-    } else {
-      if (!fs.existsSync(destPath)) fs.copyFileSync(srcPath, destPath);
-    }
+ipc.handle('download-mod', async (event, payload) => {
+  const modsBridge = getLegacyModsBridge();
+  if (modsBridge && typeof modsBridge.installLegacyMod === 'function') {
+    return modsBridge.installLegacyMod(payload, {
+      curseforgeApiKey: readCurseForgeApiKey(),
+      onBackgroundTask: (progress) => {
+        try {
+          event.sender.send('background-task-progress', progress);
+        } catch (error) {
+          shellLog.debug('download-mod: progress could not be sent', { error: error.message });
+        }
+      },
+    });
   }
-}
-
-// Overwrite-variant: ersetzt IMMER existierende Dateien (wichtig für Modpack-Updates)
-function copyRecursiveOverwriteSync(src, dest) {
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
-      copyRecursiveOverwriteSync(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
+  const { folderName, versionId, downloadUrl, filename, itemType } = payload || {};
+  if (itemType === 'world' || itemType === 'worlds') {
+    // Without the core there is no way to extract a world into saves/, and placing
+    // the archive in a content folder is exactly the misrouting this must not do.
+    throw new Error('Welten können nur über den Launcher-Core installiert werden');
   }
-}
-
-ipcMain.handle('download-mod', async (_event, { folderName, versionId, downloadUrl, filename, itemType }) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+  const rootPath = gameRoot();
   const gameDir = path.join(rootPath, 'profiles', folderName);
-  const subDir = itemType === 'resourcepack' ? 'resourcepacks' : itemType === 'shader' ? 'shaderpacks' : 'mods';
+  const subDir = downloadFolder(itemType);
   const destDir = path.join(gameDir, subDir);
   if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
   const destPath = path.join(destDir, filename);
   
-  // Always delete existing file first so the update flow works correctly
   if (fs.existsSync(destPath)) {
     try {
       fs.unlinkSync(destPath);
-      console.log('[download-mod] Vorhandene Datei gelöscht vor Download:', destPath);
     } catch (e) {
-      console.warn('[download-mod] Konnte vorhandene Datei nicht löschen:', e.message);
+      shellLog.debug('download-mod: existing file could not be removed', { path: destPath, error: e.message });
     }
   }
   
@@ -2915,7 +2249,6 @@ ipcMain.handle('download-mod', async (_event, { folderName, versionId, downloadU
   
   fs.writeFileSync(destPath, Buffer.from(buf));
   
-  // Verify file was written correctly
   const stats = fs.statSync(destPath);
   if (stats.size === 0) {
     fs.unlinkSync(destPath);
@@ -2925,24 +2258,14 @@ ipcMain.handle('download-mod', async (_event, { folderName, versionId, downloadU
   return { success: true, path: destPath, size: stats.size };
 });
 
-ipcMain.handle('read-latest-log', async (_event, folderName) => {
-  const logPath = path.join('C:\\BambooLaufwerk', 'profiles', folderName, 'logs', 'latest.log');
-  if (fs.existsSync(logPath)) return fs.readFileSync(logPath, 'utf8');
-  return "Keine latest.log gefunden.";
-});
-
-ipcMain.handle('get-screenshots', async (_event, folderName) => {
-  const ssPath = path.join('C:\\BambooLaufwerk', 'profiles', folderName, 'screenshots');
+ipc.handle('get-screenshots', async (_event, folderName) => {
+  const ssPath = path.join(gameRoot(), 'profiles', folderName, 'screenshots');
   if (!fs.existsSync(ssPath)) return [];
   return fs.readdirSync(ssPath).filter(f => f.endsWith('.png')).map(f => path.join(ssPath, f));
 });
 
-// ===== Unified Screenshots Collection =====
-// Scans ALL instances + ALL worlds/saves and consolidates screenshots into a single
-// global folder (C:\BambooLaufwerk\screenshots\). Returns lightweight metadata;
-// images are loaded via the existing bamboo-file:// protocol to avoid base64 bloat.
-ipcMain.handle('collect-all-screenshots', async () => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('collect-all-screenshots', async () => {
+  const rootPath = gameRoot();
   const profilesDir = path.join(rootPath, 'profiles');
   const globalDir = path.join(rootPath, 'screenshots');
   if (!fs.existsSync(globalDir)) fs.mkdirSync(globalDir, { recursive: true });
@@ -2968,10 +2291,14 @@ ipcMain.handle('collect-all-screenshots', async () => {
       if (origExt === 'png' && stat.size >= 24) {
         const fd = fs.openSync(dest, 'r');
         const buf = Buffer.alloc(24);
-        try { fs.readSync(fd, buf, 0, 24, 0); } catch (_) {}
+        try { fs.readSync(fd, buf, 0, 24, 0); } catch (error) {
+          shellLog.debug('screenshot: header could not be read', { dest, error: error.message });
+        }
         fs.closeSync(fd);
         if (buf[0] === 0x89 && buf[1] === 0x50) {
-          try { w = buf.readUInt32BE(16); h = buf.readUInt32BE(20); } catch (_) {}
+          try { w = buf.readUInt32BE(16); h = buf.readUInt32BE(20); } catch (error) {
+            shellLog.debug('screenshot: dimensions could not be parsed', { dest, error: error.message });
+          }
         }
       }
       list.push({
@@ -2989,7 +2316,9 @@ ipcMain.handle('collect-all-screenshots', async () => {
         absolutePath: dest,
         sourceAbsolutePath: src,
       });
-    } catch (_) {}
+    } catch (error) {
+      shellLog.debug('screenshot: file could not be collected', { src, error: error.message });
+    }
   };
 
   const scanDir = (folder, instanceName, worldName) => {
@@ -3002,7 +2331,9 @@ ipcMain.handle('collect-all-screenshots', async () => {
         const src = path.join(folder, f);
         if (!fs.statSync(src).isFile()) continue;
         copyAndRegister(src, instanceName, worldName);
-      } catch (_) {}
+      } catch (error) {
+        shellLog.debug('screenshot: folder entry skipped', { folder, error: error.message });
+      }
     }
   };
 
@@ -3027,424 +2358,302 @@ ipcMain.handle('collect-all-screenshots', async () => {
   return list;
 });
 
-ipcMain.handle('delete-screenshot-file', async (_event, payload) => {
+ipc.handle('delete-screenshot-file', async (_event, payload) => {
   if (!payload || typeof payload !== 'object') return false;
   const { absolutePath, sourceAbsolutePath } = payload;
   if (!absolutePath || typeof absolutePath !== 'string') return false;
-  const rootPath = 'C:\\BambooLaufwerk';
-  const profilesDir = path.resolve(rootPath, 'profiles');
-  const globalDir = path.resolve(rootPath, 'screenshots');
-  const isUnder = (parent, child) => child === parent || child.startsWith(parent + path.sep);
-  const target = path.resolve(absolutePath);
-  if (!isUnder(globalDir, target)) return false;
-  let deleted = false;
-  if (fs.existsSync(target) && fs.statSync(target).isFile()) {
-    try { fs.unlinkSync(target); deleted = true; } catch (_) {}
-  }
-  // Also remove the original source file so it doesn't reappear on the next refresh.
-  if (sourceAbsolutePath && typeof sourceAbsolutePath === 'string' && sourceAbsolutePath !== absolutePath) {
-    const srcResolved = path.resolve(sourceAbsolutePath);
-    if (isUnder(profilesDir, srcResolved) && fs.existsSync(srcResolved) && fs.statSync(srcResolved).isFile()) {
-      try { fs.unlinkSync(srcResolved); } catch (_) {}
-    }
-  }
-  return deleted;
+  return deleteScreenshotFile(
+    {
+      rootPath: gameRoot(),
+      absolutePath,
+      ...(typeof sourceAbsolutePath === 'string' ? { sourceAbsolutePath } : {}),
+    },
+    shellLog,
+  );
 });
 
-ipcMain.handle('open-screenshots-folder', async () => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('open-screenshots-folder', async () => {
+  const rootPath = gameRoot();
   const ssDir = path.join(rootPath, 'screenshots');
   if (!fs.existsSync(ssDir)) fs.mkdirSync(ssDir, { recursive: true });
   shell.openPath(ssDir);
 });
 
-// --- Microsoft Auth Flow ---
-ipcMain.on('microsoft-login-device-code', async (event) => {
-  try {
-    const clientId = 'd5b2e079-2c2c-4ade-9dab-1c1eb204162a';
-    const deviceRes = await fetch('https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode', {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: clientId, scope: 'XboxLive.signin XboxLive.offline_access openid' })
-    });
-    const deviceData = await deviceRes.json();
-    if (!deviceData.user_code) throw new Error("Konnte Device-Code nicht abrufen.");
+ipc.on('copy-to-clipboard', (_e, text) => clipboard.writeText(text));
+ipc.on('open-external-url', (_e, url) => shell.openExternal(url));
 
-    event.reply('ms-device-code', { userCode: deviceData.user_code, verificationUri: deviceData.verification_uri });
-
-    let tokenData = null;
-    const interval = (deviceData.interval || 5) * 1000;
-    const expiresAt = Date.now() + (deviceData.expires_in * 1000);
-
-    while (Date.now() < expiresAt) {
-      await new Promise(resolve => setTimeout(resolve, interval));
-      const pollRes = await fetch('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', {
-        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:device_code', client_id: clientId, device_code: deviceData.device_code })
+ipc.on('launch-game', async (event, args) => {
+  const { folderName, profileName, version, modLoader, loaderVersion: rawLoaderVersion, javaPath: profileJavaPath, gameOptions } = args;
+  let normalizedLoader = String(modLoader || 'vanilla').toLowerCase();
+  let loaderVersion = String(rawLoaderVersion || '');
+  const emitLaunchFailed = (message) => event.reply('launch-failed', { folderName, profileName, message });
+  const emitLaunchProgress = (percent, label) => {
+    try {
+      event.reply('launch-progress', {
+        folderName,
+        profileName,
+        percent: Math.max(0, Math.min(100, Math.round(percent))),
+        label: String(label || ''),
       });
-      const pollJson = await pollRes.json();
-      if (pollJson.access_token) { tokenData = pollJson; break; }
-      else if (pollJson.error !== 'authorization_pending') throw new Error(`Auth-Fehler: ${pollJson.error}`);
+    } catch (error) {
+      shellLog.debug('launch-game: progress could not be sent', { error: error.message });
     }
-    if (!tokenData) throw new Error("Zeitüberschreitung.");
-
-    event.reply('ms-login-step', 'Xbox Live wird authentifiziert...');
-    const xblRes = await fetch('https://user.auth.xboxlive.com/user/authenticate', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ Properties: { AuthMethod: 'RPS', SiteName: 'user.auth.xboxlive.com', RpsTicket: `d=${tokenData.access_token}` }, RelyingParty: 'http://auth.xboxlive.com', TokenType: 'JWT' })
-    });
-    const xblData = await xblRes.json();
-    const uhs = xblData.DisplayClaims.xui[0].uhs;
-
-    event.reply('ms-login-step', 'XSTS Token wird generiert...');
-    const xstsRes = await fetch('https://xsts.auth.xboxlive.com/xsts/authorize', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ Properties: { SandboxId: 'RETAIL', UserTokens: [xblData.Token] }, RelyingParty: 'rp://api.minecraftservices.com/', TokenType: 'JWT' })
-    });
-    const xstsData = await xstsRes.json();
-
-    event.reply('ms-login-step', 'Minecraft API wird verbunden...');
-    const mcLoginRes = await fetch('https://api.minecraftservices.com/authentication/login_with_xbox', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identityToken: `XBL3.0 x=${uhs};${xstsData.Token}` })
-    });
-    const mcLoginData = await mcLoginRes.json();
-
-    const profileRes = await fetch('https://api.minecraftservices.com/minecraft/profile', {
-      headers: { 'Authorization': `Bearer ${mcLoginData.access_token}` }
-    });
-    const profileData = await profileRes.json();
-
-    if (profileData.id) {
-      event.reply('ms-login-result', { success: true, name: profileData.name, uuid: profileData.id, token: mcLoginData.access_token, refreshToken: tokenData.refresh_token });
-    } else throw new Error("Kein Minecraft Java-Profil gefunden.");
-  } catch (err) { event.reply('ms-login-result', { success: false, error: err.message }); }
-});
-
-ipcMain.on('copy-to-clipboard', (_e, text) => clipboard.writeText(text));
-ipcMain.on('open-external-url', (_e, url) => shell.openExternal(url));
-
-// --- Launch Game ---
-ipcMain.on('launch-game', async (event, args) => {
-  const { folderName, profileName, version, ram, modLoader, loaderVersion, javaPath: profileJavaPath, authData, gameOptions } = args;
-  const normalizedLoader = String(modLoader || 'vanilla').toLowerCase();
+  };
 
   if (ACTIVE_LAUNCHES.size >= MAX_CONCURRENT_LAUNCHES) {
     event.reply('launch-status', 'Es läuft bereits die maximale Anzahl an Minecraft-Instanzen (4).');
+    emitLaunchFailed('Es läuft bereits die maximale Anzahl an Minecraft-Instanzen (4).');
     return;
   }
   if (ACTIVE_LAUNCHES.has(folderName)) {
     event.reply('launch-status', `"${profileName}" wird bereits gestartet oder läuft bereits.`);
+    emitLaunchFailed(`"${profileName}" wird bereits gestartet oder läuft bereits.`);
     return;
   }
   launchCounter++;
   const launchId = profileName + '-' + Date.now() + '-' + launchCounter;
   ACTIVE_LAUNCHES.set(folderName, launchId);
 
-  console.log("[launch-game] Starte Launch-Vorgang für Profil:", profileName, "folder:", folderName);
-  const rootPath = 'C:\\BambooLaufwerk';
-  const gameDir = path.join(rootPath, 'profiles', folderName);
-  if (!fs.existsSync(gameDir)) fs.mkdirSync(gameDir, { recursive: true });
-
-  // options.txt NUR beim ersten Start schreiben (wenn sie noch nicht existiert)
-  // Danach übernimmt Minecraft die Verwaltung, damit In-Game-Änderungen erhalten bleiben
-  const optionsTxtPath = path.join(gameDir, 'options.txt');
-  if (gameOptions && !fs.existsSync(optionsTxtPath)) {
-    const content = buildOptionsTxt(gameOptions);
-    fs.writeFileSync(optionsTxtPath, content, 'utf8');
-    console.log("[launch-game] options.txt (erster Start) geschrieben nach:", optionsTxtPath);
+  shellLog.info('launch-game: starting', { profileName, folderName, loader: normalizedLoader, version });
+  const rootPath = await resolveGameRoot();
+  const legacyDirectory = path.join(rootPath, 'profiles', folderName);
+  const packDependencies = (() => {
+    try {
+      const indexFile = path.join(legacyDirectory, 'modrinth.index.json');
+      if (!fs.existsSync(indexFile)) return {};
+      const parsed = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
+      return parsed && typeof parsed.dependencies === 'object' && parsed.dependencies ? parsed.dependencies : {};
+    } catch (error) {
+      shellLog.debug('launch-game: modpack index unreadable', { folderName, error: error.message });
+      return {};
+    }
+  })();
+  const packLoader = [
+    ['fabric-loader', 'fabric'],
+    ['quilt-loader', 'quilt'],
+    ['neoforge', 'neoforge'],
+    ['forge', 'forge'],
+  ].find(([key]) => typeof packDependencies[key] === 'string' && packDependencies[key]);
+  if (packLoader) {
+    // The installed .mrpack is the source of truth. This also repairs profiles
+    // whose visible loader label was wrong (e.g. a Quilt pack saved as Fabric).
+    normalizedLoader = packLoader[1];
+    loaderVersion = String(packDependencies[packLoader[0]] || '');
   }
+  const launchVersion = String(packDependencies.minecraft || version || '');
+  shellLog.info('launch-game: resolved pack', {
+    folderName,
+    loader: normalizedLoader,
+    loaderVersion,
+    version: launchVersion,
+  });
+  emitLaunchProgress(3, 'Start wird vorbereitet…');
 
-  const javaPath = profileJavaPath || await findJavaPath();
-  if (!javaPath) {
-    event.reply('launch-status', 'Fehler: Java nicht gefunden. Bitte installiere Java 17 oder höher.');
-    return;
-  }
+  const prepareLaunchTarget = async ({ directory }) => {
+    if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
 
-  // Issue 14: Defer heavy launch to prevent main process blocking during MCLC init
+    const seeded = writeFirstRunOptions(directory, gameOptions);
+    if (seeded.created) {
+      shellLog.debug('launch-game: options.txt seeded', { path: seeded.path });
+    } else {
+      const applied = applyLauncherGameOptions(directory, gameOptions);
+      if (applied.length > 0) shellLog.debug('launch-game: options.txt merged', { applied });
+    }
+  };
+
   event.reply('launch-status', 'Starte Minecraft...');
   setImmediate(async () => {
-    let finalVersionId = version;
+    let finalVersionId = launchVersion;
+    let activeHandle = null;
+    let gameReadySent = false;
 
     try {
       event.reply('launch-status', 'Profil wird vorbereitet...');
+    emitLaunchProgress(8, 'Profil wird vorbereitet…');
 
-    if (normalizedLoader !== 'vanilla' && loaderVersion) {
-      event.reply('launch-status', `${modLoader} ${loaderVersion} wird vorbereitet...`);
-      if (normalizedLoader === 'forge') {
-        finalVersionId = await installForgeLoader(rootPath, javaPath, version, loaderVersion);
-      } else if (normalizedLoader === 'neoforge') {
-        finalVersionId = await installNeoforgeLoader(rootPath, javaPath, version, loaderVersion);
-      } else if (normalizedLoader === 'fabric') {
-        await installModloader(rootPath, version, normalizedLoader, loaderVersion);
-        finalVersionId = `fabric-loader-${loaderVersion}-${version}`;
-      }
-    }
-
-    let userAuth = authData && authData.type === 'microsoft' 
-      ? { access_token: authData.token, client_token: 'client_token', uuid: authData.uuid, name: authData.name, user_properties: '{}' }
-      : Authenticator.getAuth(authData?.name || "BambooPlayer");
-
-    // LÖSUNG FÜR 26er VERSIONEN: Automatische Erkennung ob Snapshot
-    const isSnapshot = version.includes('w') || version.toLowerCase().includes('pre') || version.toLowerCase().includes('rc');
-
-    let opts = {
-      clientPackage: null, authorization: userAuth, root: rootPath,
-      version: { 
-        number: version, 
-        type: isSnapshot ? "snapshot" : "release"
-      },
-      memory: { max: `${ram}G`, min: "2G" },
-      overrides: { gameDirectory: gameDir, windowsHide: false },
-      javaPath: javaPath,
-    };
-
-    // ===== VERBESSERTE Java-Auswahl basierend auf Minecraft-Version =====
-    if (!profileJavaPath) {
-      // Wenn kein profil-spezifischer Pfad gesetzt, automatisch beste Java-Version auswählen
-      const bestJava = await selectBestJavaForMcVersion(version);
-      if (bestJava) {
-        opts.javaPath = bestJava.path;
-        const recVersion = getRecommendedJavaVersionForMc(version);
-        console.log(`[Java-Auto] MC ${version} → Java ${recVersion} empfohlen. Verwende: Java ${bestJava.version} von ${bestJava.path}`);
-      } else {
-        console.warn(`[Java-Auto] Keine kompatible Java für MC ${version} gefunden, verwende fallback`);
-      }
-    } else {
-      console.log(`[Java-Auto] Profil-spezifische Java-Einstellung verwendet: ${profileJavaPath}`);
-    }
-
-    if (normalizedLoader !== 'vanilla' && finalVersionId !== version) {
-      opts.version.custom = finalVersionId;
-    }
-
-    // JVM Flags für Forge/NeoForge: --add-opens öffnet Java-Module für Reflection
-    const jvmFlags = [];
-    if (normalizedLoader === 'forge' || normalizedLoader === 'neoforge') {
-      jvmFlags.push(
-        '--add-opens', 'java.base/java.lang.invoke=ALL-UNNAMED',
-        '--add-opens', 'java.base/java.util=ALL-UNNAMED',
-        '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
-        '--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED',
-        '--add-opens', 'java.base/java.io=ALL-UNNAMED',
-        '--add-opens', 'java.base/java.util.stream=ALL-UNNAMED',
-        '--add-opens', 'java.base/java.net=ALL-UNNAMED',
-        '--add-exports', 'java.base/sun.security.util=ALL-UNNAMED',
-        '--add-exports', 'jdk.naming.dns/com.sun.jndi.dns=java.naming',
+    if (normalizedLoader !== 'vanilla') {
+      const loaderLabel = loaderVersion ? `${normalizedLoader} ${loaderVersion}` : `Neueste ${normalizedLoader}-Version`;
+      event.reply('launch-status', `${loaderLabel} wird vorbereitet...`);
+      emitLaunchProgress(15, `${loaderLabel} wird vorbereitet…`);
+      const loaderPercent = { metadata: 20, base: 28, installer: 38, profile: 46, inputs: 52, processors: 58, done: 62 };
+      const loaderResult = await installLoaderViaCore(
+        normalizedLoader,
+        launchVersion,
+        loaderVersion,
+        (progress) => {
+          event.reply('launch-status', progress.message);
+          emitLaunchProgress(loaderPercent[progress.phase] || 30, progress.message);
+        },
       );
-    }
-    if (jvmFlags.length > 0) {
-      opts.customArgs = jvmFlags;
-      console.log('MCLC customArgs vorbereitet:', jvmFlags.join(' '));
+      finalVersionId = loaderResult.versionId;
+      if (loaderResult.loaderVersion) loaderVersion = loaderResult.loaderVersion;
     }
 
-    // Server auto-connect: Nutze quickPlay (modern MCLC API)
-    if (gameOptions && gameOptions.joinServer) {
-      opts.quickPlay = {
-        type: 'multiplayer',
-        identifier: `${gameOptions.joinServer}:${gameOptions.joinPort || 25565}`
-      };
-      console.log(`[launch-game] Auto-Connect via quickPlay: ${opts.quickPlay.identifier}`);
-    }
+    const core = await getBambooCore();
+    if (!core) throw new Error('Launcher-Core (dist-electron) nicht verfügbar');
+    emitLaunchProgress(66, 'Startdateien werden geprüft…');
 
-    if (normalizedLoader === 'neoforge') ensureClientJarForNeoForge(rootPath, version);
+    const { launchLegacyInstance } = require('./dist-electron/launch/legacy.js');
+    const server = gameOptions && gameOptions.joinServer
+      ? { host: gameOptions.joinServer, port: Number(gameOptions.joinPort) || 25565 }
+      : undefined;
 
-    // Bamboo-Client-Mod für Fabric 26.2+ prüfen und ggf. herunterladen
-    if (normalizedLoader === 'fabric' && version.startsWith('26')) {
-      await ensureBambooClientMod(gameDir, version);
-    }
-
-    console.log("Starte Launcher mit Optionen:", JSON.stringify(opts, null, 2));
-    const launcher = new Client();
-    let gameReadySent = false;
-
-    launcher.on('debug', (e) => console.log('DEBUG:', e));
-    launcher.on('data', (e) => console.log('DATA:', e));
-    launcher.on('error', (e) => {
-      console.log('LAUNCHER ERROR:', e);
-      ACTIVE_LAUNCHES.delete(folderName);
-      updateDiscordPresence('back');
-      event.reply('launch-status', `Fehler: ${e.message || e}`);
-      event.reply('game-closed', { code: -1, profileName, folderName });
-    });
-    
-    launcher.on('progress', e => {
-        const pct = e.total > 0 ? Math.round((e.task / e.total) * 100) : 100;
-        event.reply('launch-status', `Download: ${e.type} (${pct}%)`);
-        if (!gameReadySent && e.task >= e.total) {
-          gameReadySent = true;
-          event.reply('game-ready', profileName);
-          const inGameText = `${version}${normalizedLoader !== 'vanilla' ? ` - ${normalizedLoader}` : ''}`;
-          updateDiscordPresence('inGame', profileName, inGameText);
-        }
-    });
-    launcher.on('close', code => {
-      ACTIVE_LAUNCHES.delete(folderName);
-      updateDiscordPresence('back');
-      if (!gameReadySent) {
-        event.reply('game-ready', profileName);
-      }
-      event.reply('game-closed', { code, profileName, folderName });
-    });
     updateDiscordPresence('starting', profileName);
     event.reply('launch-status', 'Minecraft wird gestartet...');
-
-    // --- HOLZHAMMER-FIX START ---
-    if (normalizedLoader === 'neoforge') {
-      const libDir = path.join(opts.root, 'libraries');
-      opts.customArgs.push(`-DlibraryDirectory=${libDir}`);
-      opts.customArgs.push(`-Dfml.libraryDirectory=${libDir}`);
-      opts.customArgs.push(`-Dnet.neoforged.loader.libraryDirectory=${libDir}`);
-      console.log("[launch-game] HOLZHAMMER-ARGS:", opts.customArgs);
-    }
-    // --- HOLZHAMMER-FIX ENDE ---
-
-    console.log("[launch-game] Finale MCLC opts.customArgs:", opts.customArgs);
-    launcher.launch(opts);
-    startProgressTracking(folderName, gameDir, event);
+    emitLaunchProgress(80, 'Minecraft wird gestartet…');
+    activeHandle = await launchLegacyInstance(core, {
+      folderName,
+      directory: legacyDirectory,
+      name: profileName,
+      minecraftVersion: launchVersion,
+      versionId: finalVersionId,
+      loader: normalizedLoader,
+      loaderVersion: String(loaderVersion || ''),
+      // Always send the choice: an empty string means automatic and must be
+      // able to replace a stale migrated javaPath.
+      javaPath: String(profileJavaPath || ''),
+      ...(server ? { server } : {}),
+    }, (ev) => {
+        if (ev.type === 'status') {
+          event.reply('launch-status', ev.message);
+          emitLaunchProgress(88, ev.message);
+        } else if (ev.type === 'ready') {
+          if (!gameReadySent) {
+            gameReadySent = true;
+            emitLaunchProgress(100, 'Minecraft ist bereit');
+            event.reply('game-ready', profileName);
+            const inGameText = `${launchVersion}${normalizedLoader !== 'vanilla' ? ` - ${normalizedLoader}` : ''}`;
+            updateDiscordPresence('inGame', profileName, inGameText);
+          }
+        } else if (ev.type === 'crash-report') {
+          event.reply('launch-status', `Crash-Report: ${ev.path}`);
+        } else if (ev.type === 'exit') {
+          ACTIVE_LAUNCHES.delete(folderName);
+          updateDiscordPresence('back');
+          event.reply('game-closed', { code: ev.code, profileName, folderName });
+        }
+    }, { beforeLaunch: prepareLaunchTarget });
+    ACTIVE_LAUNCHES.set(folderName, { launchId: activeHandle.launchId, handle: activeHandle });
+    emitLaunchProgress(94, 'Minecraft lädt…');
+    shellLog.debug('launch-game: start command', { command: activeHandle.plan.displayCommand.join(' ') });
   } catch (error) {
     ACTIVE_LAUNCHES.delete(folderName);
-    console.error("FATALER FEHLER BEIM LAUNCH:", error);
+    shellLog.error('launch-game failed', { profileName, folderName, error: error.message });
     event.reply('launch-status', `Fehler: ${error.message}`);
+    emitLaunchFailed(error.message);
   }
   });
 });
 
-// ===== Cosmetics Progress Tracking (live from Minecraft stats) =====
-const PROGRESS_INTERVALS = new Map();
-
-function readMinecraftStats(gameDir) {
-  try {
-    var statsDir = gameDir + '/stats';
-    if (!fs.existsSync(statsDir)) return null;
-    var files = fs.readdirSync(statsDir).filter(function(f) { return f.endsWith('.json'); });
-    if (files.length === 0) return null;
-    var raw = JSON.parse(fs.readFileSync(statsDir + '/' + files[0], 'utf8'));
-    var s = raw.stats || {};
-    function sum(obj) { if (!obj) return 0; return Object.values(obj).reduce(function(a,b){return a+b;}, 0); }
-    return {
-      playtimeHours: Math.round(((s['minecraft:play_time'] || 0) / 72000) * 10) / 10,
-      blocksMined: sum(s['minecraft:mined']),
-      mobsKilled: sum(s['minecraft:killed']),
-      playerKills: sum(s['minecraft:killed_by']),
-      distanceTraveled: Math.round(((s['minecraft:walk_one_cm'] || 0) + (s['minecraft:sprint_one_cm'] || 0)) / 100),
-      achievements: Object.keys(s['minecraft:achievement'] || {}),
-    };
-  } catch (e) {
-    console.log('[cosmetic-progress] Stats not available yet:', e.message);
-    return null;
-  }
-}
-
-function startProgressTracking(folderName, gameDir, event) {
-  if (PROGRESS_INTERVALS.has(folderName)) return;
-  var data = readMinecraftStats(gameDir);
-  if (data) try { event.sender.send('cosmetic-progress', data); } catch(e){}
-  var intervalId = setInterval(function() {
-    var d = readMinecraftStats(gameDir);
-    if (d) try { event.sender.send('cosmetic-progress', d); } catch(e){}
-  }, 30000);
-  PROGRESS_INTERVALS.set(folderName, intervalId);
-  console.log('[cosmetic-progress] Tracking started for:', folderName);
-}
-
-function stopProgressTracking(folderName) {
-  if (PROGRESS_INTERVALS.has(folderName)) {
-    clearInterval(PROGRESS_INTERVALS.get(folderName));
-    PROGRESS_INTERVALS.delete(folderName);
-    console.log('[cosmetic-progress] Tracking stopped for:', folderName);
-  }
-}
-
-// --- Server Hosting ---
-const HOSTED_SERVERS = new Map();
-
-ipcMain.handle('get-active-launches', async () => {
+ipc.handle('get-active-launches', async () => {
   return Array.from(ACTIVE_LAUNCHES.keys());
 });
 
-ipcMain.handle('detect-lan-server', async (_event, folderName) => {
-  try {
-    const logPath = path.join('C:\\BambooLaufwerk', 'profiles', folderName, 'logs', 'latest.log');
-    if (!fs.existsSync(logPath)) return null;
-    const log = fs.readFileSync(logPath, 'utf8');
-    const lines = log.split('\n').reverse();
-    for (const line of lines) {
-      const match = line.match(/Published (?:a )?LAN server on port (\d+)/i);
-      if (match) {
-        const port = parseInt(match[1], 10);
-        HOSTED_SERVERS.set(folderName, { port, address: `0.0.0.0:${port}`, discoveredAt: Date.now() });
-        return { port, address: `0.0.0.0:${port}` };
-      }
-    }
-    return null;
-  } catch { return null; }
+ipc.handle('kill-game', async (_event, folderName) => {
+  const entry = ACTIVE_LAUNCHES.get(folderName);
+  if (!entry || !entry.handle || entry.handle.killed) return false;
+  await entry.handle.kill();
+  return true;
 });
 
-// ===== Delete individual content files (mods, resourcepacks, shaderpacks) =====
-ipcMain.handle('delete-content-file', async (_event, { folderName, fileName, type }) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+ipc.handle('delete-content-file', async (_event, payload) => {
+  const modsBridge = getLegacyModsBridge();
+  if (modsBridge && typeof modsBridge.removeLegacyContent === 'function') {
+    return modsBridge.removeLegacyContent(payload);
+  }
+  const { folderName, fileName, type } = payload || {};
+  const rootPath = gameRoot();
   const profilesDir = path.join(rootPath, 'profiles');
   
   if (!folderName || !fileName) {
-    console.warn('[delete-content-file] folderName oder fileName fehlt');
+    shellLog.warn('delete-content-file: missing folderName or fileName');
     return false;
   }
   
-  const typeDir = type === 'resourcepacks' ? 'resourcepacks'
-    : type === 'shaderpacks' ? 'shaderpacks'
-    : type === 'datapacks' ? 'datapacks'
-    : 'mods';
-  
+  const typeDir = downloadFolder(type);
+
   const target = path.join(profilesDir, folderName, typeDir, fileName);
   
-  // Security check: ensure target is within profiles directory
   const resolved = path.resolve(target);
   if (!resolved.startsWith(path.resolve(profilesDir))) {
-    console.warn('[delete-content-file] Sicherheitsverletzung: Pfad ausserhalb profiles:', resolved);
+    shellLog.warn('delete-content-file: path escapes profiles directory', { resolved });
     return false;
   }
-  
+
   if (!fs.existsSync(resolved)) {
-    // Don't throw if file doesn't exist - the update flow may have already deleted it
-    console.log('[delete-content-file] Datei nicht gefunden (bereits gelöscht?):', resolved);
+    shellLog.debug('delete-content-file: file already absent', { resolved });
     return true;
   }
-  
+
   try {
     fs.unlinkSync(resolved);
-    console.log('[delete-content-file] Erfolgreich gelöscht:', resolved);
-    
-    // Auch die übergeordneten Ordner aufräumen, falls leer
+    shellLog.debug('delete-content-file: deleted', { resolved });
+
     const parentDir = path.dirname(resolved);
     if (fs.existsSync(parentDir) && fs.readdirSync(parentDir).length === 0) {
-      fs.rmdirSync(parentDir);
-      console.log('[delete-content-file] Leeren Ordner entfernt:', parentDir);
+      try {
+        fs.rmdirSync(parentDir);
+        shellLog.debug('delete-content-file: empty folder removed', { parentDir });
+      } catch (e) {
+        shellLog.debug('delete-content-file: empty folder could not be removed', { parentDir, error: e.message });
+      }
     }
-    
+
     return true;
   } catch (e) {
-    console.error('[delete-content-file] Fehler beim Löschen:', e.message);
+    shellLog.error('delete-content-file failed', { resolved, error: e.message });
     return false;
   }
 });
 
-// List all content files in a profile subdirectory (for full package reload and robust delete)
-ipcMain.handle('list-content-files', async (_event, { folderName, type }) => {
-  const rootPath = 'C:\\BambooLaufwerk';
+function hashFileSha1(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = require('crypto').createHash('sha1');
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+ipc.handle('hash-content-files', async (_event, payload = {}) => {
+  const { folderName, files } = payload || {};
+  const profilesDir = path.resolve(gameRoot(), 'profiles');
+  const profileDir = path.resolve(profilesDir, String(folderName || ''));
+  if (!folderName || !profileDir.startsWith(profilesDir) || !Array.isArray(files)) return {};
+  const result = {};
+  const entries = files
+    .filter((file) => file && typeof file.fileName === 'string' && file.fileName.length > 0)
+    .slice(0, 500);
+  for (let index = 0; index < entries.length; index += 4) {
+    const batch = entries.slice(index, index + 4);
+    await Promise.all(batch.map(async (file) => {
+      try {
+        const dir = path.resolve(profileDir, downloadFolder(file.type));
+        if (!dir.startsWith(profileDir)) return;
+        const filePath = path.resolve(dir, path.basename(file.fileName));
+        if (!filePath.startsWith(dir) || !fs.existsSync(filePath)) return;
+        result[file.fileName] = await hashFileSha1(filePath);
+      } catch (error) {
+        shellLog.debug('hash-content-files: file could not be hashed', { file: file.fileName, error: error.message });
+      }
+    }));
+  }
+  return result;
+});
+
+ipc.handle('list-content-files', async (_event, { folderName, type }) => {
+  const rootPath = gameRoot();
   const profilesDir = path.join(rootPath, 'profiles');
   if (!folderName) {
-    console.warn('[list-content-files] folderName fehlt');
+    shellLog.warn('list-content-files: missing folderName');
     return [];
   }
-  const typeDir = type === 'resourcepacks' ? 'resourcepacks'
-    : type === 'shaderpacks' ? 'shaderpacks'
-    : type === 'datapacks' ? 'datapacks'
-    : 'mods';
+  const typeDir = downloadFolder(type);
   const dir = path.resolve(profilesDir, folderName, typeDir);
   
-  // Sicherheitscheck: Pfad muss innerhalb profiles/ bleiben
   if (!dir.startsWith(path.resolve(profilesDir))) {
-    console.warn('[list-content-files] Sicherheitsverletzung: Pfad ausserhalb profiles:', dir);
+    shellLog.warn('list-content-files: path escapes profiles directory', { dir });
     return [];
   }
   
@@ -3456,18 +2665,394 @@ ipcMain.handle('list-content-files', async (_event, { folderName, type }) => {
     const files = entries
       .filter(e => e.isFile() && !e.name.startsWith('.'))
       .map(e => e.name);
-    console.log('[list-content-files] Found in', dir, ':', files);
+    shellLog.debug('list-content-files: listed', { dir, count: files.length });
     return files;
   } catch (e) {
-    console.error('[list-content-files] Error:', e.message);
+    shellLog.error('list-content-files failed', { dir, error: e.message });
     return [];
   }
 });
 
-ipcMain.handle('get-hosted-servers', async () => {
-  const result = {};
-  for (const [folderName, info] of HOSTED_SERVERS) {
-    result[folderName] = info;
+ipc.handle('list-instance-worlds', async (_event, folderName) => {
+  const rootPath = gameRoot();
+  const profilesDir = path.resolve(rootPath, 'profiles');
+  if (!folderName) {
+    shellLog.warn('list-instance-worlds: missing folderName');
+    return [];
+  }
+  const savesDir = path.resolve(profilesDir, String(folderName), 'saves');
+  if (!savesDir.startsWith(profilesDir)) {
+    shellLog.warn('list-instance-worlds: path escapes profiles directory', { savesDir });
+    return [];
+  }
+  try {
+    const { listInstanceWorlds } = require('./dist-electron/instances/worlds.js');
+    const worlds = listInstanceWorlds(savesDir);
+    shellLog.debug('list-instance-worlds: listed', { folderName, count: worlds.length, savesDir });
+    return worlds;
+  } catch (e) {
+    shellLog.error('list-instance-worlds failed', { folderName, error: e.message });
+    return [];
+  }
+});
+
+function parseJarMetadata(jarPath) {
+  const result = { modName: null, modVersion: null, modLoader: null, mcVersion: null, iconBase64: null, description: '', authors: '' };
+  try {
+    const zip = new AdmZip(jarPath);
+    const entries = zip.getEntries();
+    const fabricEntry = entries.find(function(e) { return e.entryName === 'fabric.mod.json'; });
+    if (fabricEntry) {
+      try {
+        const meta = JSON.parse(fabricEntry.getData().toString('utf8'));
+        if (meta.name) result.modName = meta.name;
+        if (meta.version) result.modVersion = meta.version;
+        if (meta.description) result.description = meta.description;
+        if (meta.authors) result.authors = Array.isArray(meta.authors) ? meta.authors.join(', ') : String(meta.authors);
+        if (meta.icon) {
+          const iconEntry = entries.find(function(e) { return e.entryName === meta.icon; });
+          if (iconEntry) result.iconBase64 = 'data:image/png;base64,' + iconEntry.getData().toString('base64');
+        }
+      } catch (e) {
+        shellLog.debug('jar metadata: Fabric manifest unreadable', { jarPath, error: e.message });
+      }
+    }
+    if (!fabricEntry) {
+      const forgeEntry = entries.find(function(e) { return e.entryName === 'META-INF/mods.toml'; });
+      if (forgeEntry) {
+        const raw = forgeEntry.getData().toString('utf8');
+        const dm = raw.match(/^\s*displayName\s*=\s*"([^"]+)"/m);
+        const vm = raw.match(/^\s*version\s*=\s*"([^"]+)"/m);
+        const desc = raw.match(/^\s*description\s*=\s*"([^"]+)"/m);
+        const nm = raw.match(/^\s*modId\s*=\s*"([^"]+)"/m);
+        if (dm) result.modName = dm[1]; else if (nm) result.modName = nm[1];
+        if (vm) result.modVersion = vm[1];
+        if (desc) result.description = desc[1];
+        result.modLoader = 'forge';
+        const logoEntry = entries.find(function(e) { return e.entryName === 'logo.png'; });
+        if (logoEntry) result.iconBase64 = 'data:image/png;base64,' + logoEntry.getData().toString('base64');
+      }
+      const neoEntry = entries.find(function(e) { return e.entryName === 'META-INF/neoforge.mods.toml'; });
+      if (neoEntry) {
+        const raw = neoEntry.getData().toString('utf8');
+        const dm = raw.match(/^\s*displayName\s*=\s*"([^"]+)"/m);
+        const vm = raw.match(/^\s*version\s*=\s*"([^"]+)"/m);
+        const nm = raw.match(/^\s*modId\s*=\s*"([^"]+)"/m);
+        if (dm) result.modName = dm[1]; else if (nm) result.modName = nm[1];
+        if (vm) result.modVersion = vm[1];
+        result.modLoader = 'neoforge';
+        const logoEntry = entries.find(function(e) { return e.entryName === 'logo.png'; });
+        if (logoEntry) result.iconBase64 = 'data:image/png;base64,' + logoEntry.getData().toString('base64');
+      }
+    }
+    if (!result.iconBase64) {
+      var iconPaths = ['icon.png', 'assets/icon.png', 'logo.png', 'pack.png'];
+      for (var pi = 0; pi < iconPaths.length; pi++) {
+        const ie = entries.find(function(e) { return e.entryName === iconPaths[pi]; });
+        if (ie) { result.iconBase64 = 'data:image/png;base64,' + ie.getData().toString('base64'); break; }
+      }
+    }
+  } catch (e) {
+    shellLog.debug('jar metadata: archive unreadable', { jarPath, error: e.message });
   }
   return result;
+}
+
+ipc.handle('upload-local-mod', async (event, { folderName, filePath, itemType, taskId }) => {
+  const rootPath = gameRoot();
+  const instanceDir = path.join(rootPath, 'profiles', folderName);
+  const emitTaskProgress = (percent, label) => {
+    if (!taskId) return;
+    try {
+      event.sender.send('background-task-progress', {
+        id: taskId,
+        percent: typeof percent === 'number' ? Math.max(0, Math.min(100, Math.round(percent))) : null,
+        label: String(label || ''),
+      });
+    } catch (error) {
+      shellLog.debug('upload-local-mod: progress could not be sent', { error: error.message });
+    }
+  };
+  // A world archive is not content: it is extracted into saves/<world>, which is
+  // exactly where the game reads it and where the Worlds tab detects it.
+  if (itemType === 'world' || itemType === 'worlds') {
+    try {
+      const { installWorldArchive } = require('./dist-electron/instances/world-install.js');
+      const fileName = path.basename(filePath);
+      const preferredName = fileName.replace(/\.(zip|mcworld)$/i, '');
+      emitTaskProgress(2, `Welt wird entpackt: ${fileName}`);
+      const result = await installWorldArchive({
+        instanceDir,
+        archivePath: filePath,
+        preferredName,
+        onProgress: ({ done, total }) => {
+          emitTaskProgress(
+            total > 0 ? 4 + (done / total) * 92 : null,
+            `Welt wird installiert: ${done}/${total || '?'} Dateien`,
+          );
+        },
+      });
+      const worlds = result.worlds.map((world) => ({
+        folderName: world.folderName,
+        path: world.path,
+        renamed: world.renamed,
+        files: world.files,
+      }));
+      emitTaskProgress(100, `Welt installiert: ${worlds[0]?.folderName || fileName}`);
+      shellLog.info('upload-local-mod: world installed', { folderName, worlds });
+      return {
+        success: true,
+        fileName,
+        destPath: worlds[0] ? worlds[0].path : instanceDir,
+        itemType: 'saves',
+        worlds,
+      };
+    } catch (e) {
+      shellLog.error('upload-local-mod failed', { folderName, itemType, error: e.message });
+      return { success: false, fileName: filePath ? path.basename(filePath) : '', error: e.message };
+    }
+  }
+  // Every pack type uses the shared mapping, so "shader"/"resourcepack"/
+  // "datapack" never become literal folder names.
+  const subDir = downloadFolder(itemType);
+  try {
+    const fileName = path.basename(filePath);
+    const destDir = path.join(instanceDir, subDir);
+    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+    const destPath = path.join(destDir, fileName);
+    fs.copyFileSync(filePath, destPath);
+    let modName = fileName.replace(/\.(jar|zip|disabled)$/i, '').replace(/-\d+\.\d+[^\/]*$/i, '');
+    let modVersion = (fileName.match(/-([\d.]+)/) || [])[1] || 'unknown';
+    let modLoader = 'unknown';
+    let mcVersion = null;
+    let iconBase64 = null;
+    if (fileName.endsWith('.jar')) {
+      try {
+        const meta = parseJarMetadata(filePath);
+        if (meta.modName) modName = meta.modName;
+        if (meta.modVersion) modVersion = meta.modVersion;
+        if (meta.modLoader) modLoader = meta.modLoader;
+        if (meta.iconBase64) iconBase64 = meta.iconBase64;
+      } catch (e) {
+        shellLog.debug('upload-local-mod: metadata unreadable', { destPath, error: e.message });
+      }
+    }
+    if (modLoader === 'unknown') {
+      if (fileName.includes('-fabric')) modLoader = 'fabric';
+      else if (fileName.includes('-forge')) modLoader = 'forge';
+      else if (fileName.includes('-neoforge')) modLoader = 'neoforge';
+    }
+    emitTaskProgress(100, `Datei installiert: ${fileName}`);
+    return { success: true, fileName: fileName, destPath: destPath, modName: modName, modVersion: modVersion, modLoader: modLoader, mcVersion: mcVersion, iconBase64: iconBase64, itemType: subDir };
+  } catch (e) {
+    return { success: false, fileName: filePath ? path.basename(filePath) : '', error: e.message };
+  }
+});
+
+ipc.handle('rename-instance', async (_event, { oldFolderName, newName }) => {
+  const rootPath = gameRoot();
+  try {
+    const profilesPath = path.join(rootPath, 'profiles.json');
+    if (!fs.existsSync(profilesPath)) return { success: false, error: 'Profiles file not found' };
+    const profiles = readProfilesSync(rootPath);
+    const idx = profiles.findIndex(function(p) { return profileFolderOf(p).toLowerCase() === String(oldFolderName || '').toLowerCase(); });
+    if (idx === -1) return { success: false, error: 'Instance not found' };
+    const currentFolder = profileFolderOf(profiles[idx]);
+    const safeName = profileFolderSlug(newName);
+    // Never fail on a name that already exists: reserve the next free folder.
+    const folderName = uniqueProfileFolder(rootPath, safeName, profiles, currentFolder);
+    const oldDir = path.join(rootPath, 'profiles', currentFolder);
+    const newDir = path.join(rootPath, 'profiles', folderName);
+    if (folderName !== currentFolder && fs.existsSync(oldDir)) {
+      if (fs.existsSync(newDir)) return { success: false, error: 'Folder name already exists' };
+      fs.renameSync(oldDir, newDir);
+    }
+    profiles[idx].name = newName;
+    profiles[idx].folderName = folderName;
+    writeProfilesSync(rootPath, profiles);
+    return { success: true, newFolderName: folderName, profiles: profiles };
+  } catch (e) {
+    shellLog.error('rename-instance failed', { oldFolderName, error: e.message });
+    return { success: false, error: e.message };
+  }
+});
+
+ipc.handle('clone-instance', async (_event, { folderName, newName }) => {
+  const rootPath = gameRoot();
+  try {
+    const profiles = readProfilesSync(rootPath);
+    const sourceIndex = profiles.findIndex(function(p) {
+      return profileFolderOf(p).toLowerCase() === String(folderName || '').toLowerCase();
+    });
+    if (sourceIndex === -1) return { success: false, error: 'Instance not found' };
+    const sourceProfile = profiles[sourceIndex];
+    const name = uniqueProfileName(profiles, newName || `${sourceProfile.name || 'Instanz'} (Kopie)`);
+    const cloneFolder = uniqueProfileFolder(rootPath, profileFolderSlug(name), profiles);
+    const sourceDir = path.join(rootPath, 'profiles', profileFolderOf(sourceProfile));
+    const targetDir = path.join(rootPath, 'profiles', cloneFolder);
+    if (fs.existsSync(sourceDir)) {
+      fs.cpSync(sourceDir, targetDir, { recursive: true, force: false, errorOnExist: true });
+    } else {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    const clone = {
+      ...sourceProfile,
+      id: require('crypto').randomUUID(),
+      name,
+      folderName: cloneFolder,
+      playTimeMs: 0,
+      sessionCount: 0,
+      lastPlayedAt: 0,
+      lastPlayed: '',
+      createdAt: Date.now(),
+    };
+    profiles.push(clone);
+    writeProfilesSync(rootPath, profiles);
+    shellLog.info('instance cloned', { from: sourceProfile.name, to: name, folderName: cloneFolder });
+    return { success: true, profile: clone };
+  } catch (e) {
+    shellLog.error('clone-instance failed', { folderName, error: e.message });
+    return { success: false, error: e.message };
+  }
+});
+
+ipc.handle('create-desktop-shortcut', async (_event, { folderName, instanceName }) => {
+  try {
+    if (process.platform !== 'win32') {
+      return { success: false, error: 'Desktop-Verknüpfungen werden derzeit nur unter Windows erstellt.' };
+    }
+    const rootPath = gameRoot();
+    const profiles = readProfilesSync(rootPath);
+    const profile = profiles.find(function(p) {
+      return profileFolderOf(p).toLowerCase() === String(folderName || '').toLowerCase();
+    });
+    if (!profile) return { success: false, error: 'Instanz nicht gefunden' };
+    const safeLabel = String(instanceName || profile.name || 'Minecraft')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .slice(0, 60) || 'Minecraft';
+    // Two instances may share a display name. Include the unique folder in the
+    // shortcut name then, so creating the second shortcut cannot overwrite the first.
+    const sharedName = profiles.some(function(p) {
+      return profileFolderOf(p) !== profileFolderOf(profile) &&
+        String(p.name || '').trim().toLowerCase() === String(profile.name || '').trim().toLowerCase();
+    });
+    const shortcutLabel = sharedName ? `${safeLabel} (${profileFolderOf(profile)})` : safeLabel;
+    const shortcutPath = path.join(app.getPath('desktop'), `${shortcutLabel} - Bamboo Launcher.lnk`);
+    const launchArgs = `--bamboo-instance="${profileFolderOf(profile)}"`;
+    const args = app.isPackaged ? launchArgs : `"${app.getAppPath()}" ${launchArgs}`;
+    const operation = fs.existsSync(shortcutPath) ? 'update' : 'create';
+    const created = shell.writeShortcutLink(shortcutPath, operation, {
+      target: process.execPath,
+      args,
+      description: `${safeLabel} mit Bamboo Launcher starten`,
+      icon: process.execPath,
+      iconIndex: 0,
+    });
+    if (!created) return { success: false, error: 'Verknüpfung konnte nicht erstellt werden.' };
+    shellLog.info('desktop shortcut created', { shortcutPath, folderName });
+    return { success: true, path: shortcutPath };
+  } catch (e) {
+    shellLog.error('create-desktop-shortcut failed', { folderName, error: e.message });
+    return { success: false, error: e.message };
+  }
+});
+
+ipc.handle('scan-local-mods', async (_event, { folderName }) => {
+  const rootPath = gameRoot();
+  const modsDir = path.join(rootPath, 'profiles', folderName, 'mods');
+  if (!fs.existsSync(modsDir)) return [];
+  const files = fs.readdirSync(modsDir).filter(function(f) { return f.endsWith('.jar') && !f.endsWith('.disabled'); });
+  const results = [];
+  for (var fi = 0; fi < files.length; fi++) {
+    const f = files[fi];
+    const fullPath = path.join(modsDir, f);
+    const stat = fs.statSync(fullPath);
+    let modName = f.replace(/\.jar$/i, '').replace(/-\d+\.\d+[^\/]*$/i, '');
+    let modVersion = (f.match(/-([\d.]+)/) || [])[1] || 'unknown';
+    let loader = 'unknown';
+    let mcVersion = null;
+    let iconBase64 = null;
+    let description = '';
+    let authors = '';
+    try {
+      const meta = parseJarMetadata(fullPath);
+      if (meta.modName) modName = meta.modName;
+      if (meta.modVersion) modVersion = meta.modVersion;
+      if (meta.modLoader) loader = meta.modLoader;
+      if (meta.iconBase64) iconBase64 = meta.iconBase64;
+      if (meta.description) description = meta.description;
+      if (meta.authors) authors = meta.authors;
+    } catch (e) {
+      shellLog.debug('list-local-mods: metadata unreadable', { fullPath, error: e.message });
+    }
+    if (loader === 'unknown') {
+      if (f.includes('-fabric')) loader = 'fabric';
+      else if (f.includes('-forge')) loader = 'forge';
+      else if (f.includes('-neoforge')) loader = 'neoforge';
+    }
+    results.push({ fileName: f, fullPath: fullPath, size: stat.size, lastModified: stat.mtimeMs, name: modName, version: modVersion, loader: loader, mcVersion: mcVersion, iconBase64: iconBase64, description: description, authors: authors, source: 'local' });
+  }
+  return results;
+});
+
+ipc.handle('match-local-mod', async (_event, { modName, projectId, source }) => {
+  const results = { curseforge: null, modrinth: null };
+  const cfHeaders = curseForgeHeaders();
+  if (projectId) {
+    if (source === 'curseforge') {
+      if (!cfHeaders) return { ...results, error: 'Kein CurseForge API-Key gesetzt' };
+      try {
+        var url1 = 'https://api.curseforge.com/v1/mods/' + projectId;
+        const res = await curseForgeFetch(url1, { headers: cfHeaders });
+        if (res.ok) results.curseforge = (await res.json()).data;
+      } catch (e) {
+        shellLog.warn('match-local-mod: CurseForge lookup failed', { projectId, error: e.message });
+      }
+      return results;
+    }
+    if (source === 'modrinth') {
+      try {
+        var url2 = 'https://api.modrinth.com/v2/project/' + projectId;
+        const res = await fetch(url2, { headers: { 'User-Agent': 'BambooLauncher/0.2.0' } });
+        if (res.ok) results.modrinth = await res.json();
+      } catch (e) {
+        shellLog.warn('match-local-mod: Modrinth lookup failed', { projectId, error: e.message });
+      }
+      return results;
+    }
+  }
+  if (modName) {
+    const searchName = modName.replace(/[^a-zA-Z0-9 ]/g, '').trim();
+    if (searchName.length >= 2) {
+      if (cfHeaders) {
+        try {
+          var params = new URLSearchParams({ gameId: '432', searchFilter: searchName, pageSize: '5' });
+          var url3 = 'https://api.curseforge.com/v1/mods/search?' + params.toString();
+          const res = await curseForgeFetch(url3, { headers: cfHeaders });
+          if (res.ok) {
+            const data = await res.json();
+            const items = data.data || [];
+            const exact = items.find(function(m) { return m.name === modName; });
+            results.curseforge = exact || items[0] || null;
+          }
+        } catch (e) {
+          shellLog.warn('match-local-mod: CurseForge search failed', { modName, error: e.message });
+        }
+      }
+      try {
+        var encoded = encodeURIComponent(searchName);
+        var url4 = 'https://api.modrinth.com/v2/search?query=' + encoded + '&limit=5&index=relevance';
+        const res = await fetch(url4, { headers: { 'User-Agent': 'BambooLauncher/0.2.0' } });
+        if (res.ok) {
+          const data = await res.json();
+          const hits = data.hits || [];
+          const exact = hits.find(function(h) { return h.title === modName || h.slug === modName.toLowerCase().replace(/[^a-z0-9-]/g, ''); });
+          results.modrinth = exact || hits[0] || null;
+        }
+      } catch (e) {
+        shellLog.warn('match-local-mod: Modrinth search failed', { modName, error: e.message });
+      }
+    }
+  }
+  return results;
 });

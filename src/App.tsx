@@ -1,35 +1,45 @@
-﻿import React, { useState, useEffect, useMemo, Component, ReactNode, Suspense } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+﻿import React, { Component, ReactNode, Suspense, useCallback, useEffect, useRef } from "react";
+import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-motion";
+import { AlertCircle } from "lucide-react";
 import { RunningInstanceBadge } from "./components/RunningInstanceBadge";
+import { BackgroundTaskBar } from "./components/BackgroundTaskBar";
+import { updateBackgroundTask } from "./lib/backgroundTasks";
+import { instanceFolderKeyOf } from "./lib/instanceFolders";
 
 import { ParticleBackground } from "./components/ParticleBackground";
-import { Sidebar, TabType } from "./components/Sidebar";
+import { Sidebar, BottomNav } from "./components/Sidebar";
 import { TopBar, Account } from "./components/TopBar";
-import type { Instance } from "./components/InstancesView";
-import type { ServerItem } from "./components/MultiplayerView";
+import { CommandPalette } from "./components/CommandPalette";
+import { useAccountSession } from "./lib/accountSession";
+import { Dialog } from "./components/Dialog";
+import { dialogButton } from "./components/dialogSupport";
+import { MOTION, EASE } from "./lib/motionTokens";
+import { ToastProvider } from "./components/ToastHost";
+import { useToast } from "./components/Toast";
+import { useAppearance } from "./hooks/useAppearance";
+import { useTheme } from "./hooks/useTheme";
+import { useLauncherSettings } from "./hooks/useLauncherSettings";
+import { useInstances } from "./hooks/useInstances";
+import { useAppNavigation } from "./hooks/useAppNavigation";
+import { useLaunchController } from "./hooks/useLaunchController";
+import { useLogAnalyses } from "./hooks/useLogAnalyses";
+import { useJoinInvites } from "./hooks/useJoinInvites";
+import { useAppOverlays } from "./hooks/useAppOverlays";
+import { useServers } from "./hooks/useServers";
+import { usePersistence } from "./hooks/usePersistence";
+import { useUpdater } from "./hooks/useUpdater";
+import { LAUNCHER_VERSION } from "./lib/version";
 
 const Dashboard = React.lazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
 const InstancesView = React.lazy(() => import("./components/InstancesView").then(m => ({ default: m.InstancesView })));
 const MultiplayerView = React.lazy(() => import("./components/MultiplayerView").then(m => ({ default: m.MultiplayerView })));
-const FriendsView = React.lazy(() => import("./components/FriendsView").then(m => ({ default: m.FriendsView })));
 const ModsView = React.lazy(() => import("./components/ModsView").then(m => ({ default: m.ModsView })));
-const CosmeticsView = React.lazy(() => import("./components/CosmeticsView").then(m => ({ default: m.CosmeticsView })));
 const ScreenshotsView = React.lazy(() => import("./components/ScreenshotsView").then(m => ({ default: m.ScreenshotsView })));
-const NewsEventsView = React.lazy(() => import("./components/NewsEventsView").then(m => ({ default: m.NewsEventsView })));
 const SettingsView = React.lazy(() => import("./components/SettingsView").then(m => ({ default: m.SettingsView })));
-import { LanguageType } from "./lib/translations";
-import { initFriendsSystem, presenceService, friendStore } from "./friends/index";
-import { ToastProvider, useToast } from "./components/Toast";
-import { contentSyncService } from "./services/contentSync";
-import { themeService, type ThemeDefinition as BambooTheme } from "./services/themeService";
-import { assetManager } from "./services/assetManager";
-import { API_BASE } from "./services/api";
 
-// Re-export for backward compatibility
 export type { ThemeDefinition as BambooTheme } from "./services/themeService";
 
-const NO_ACCOUNT: Account = { id: "", username: "", type: "Offline", avatar: "", online: false };
+const NO_ACCOUNT: Account = { id: "", username: "", type: "Offline", avatar: "", online: false, active: false };
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -45,11 +55,11 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   render() {
     if (this.state.hasError) {
       return (
-        <div className="w-screen h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-screen h-screen bg-root flex items-center justify-center">
           <div className="text-center p-8 max-w-md">
-            <h2 className="text-xl font-black text-rose-400 mb-2">Runtime Error</h2>
-            <p className="text-slate-400 text-sm mb-4 font-mono">{this.state.error?.message}</p>
-            <button onClick={() => this.setState({ hasError: false, error: null })} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-200 transition-all cursor-pointer">
+            <h2 className="text-title3 font-semibold text-danger mb-2">Runtime Error</h2>
+            <p className="text-ink-secondary text-regular mb-4 font-mono">{this.state.error?.message}</p>
+            <button onClick={() => this.setState({ hasError: false, error: null })} className="px-4 py-2 bg-raised hover:bg-selected rounded-xl text-small font-medium text-ink transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer">
               Reload
             </button>
           </div>
@@ -60,497 +70,281 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   }
 }
 
-
-
-// Theme definitions: loaded from ThemeService (data-driven, CDN-backed)
-// The BambooTheme interface is now in themeService.ts
-// Built-in fallback themes remain available via themeService.getThemes()
-
 function App() {
-  const [activeTab, setActiveTab] = useState<TabType>("home");
-  const [searchQuery] = useState("");
-const [showExitModal, setShowExitModal] = useState(false);
-
-  // Theme state - loaded from ThemeService (data-driven, CDN-backed)
-  const [themeId, setThemeId] = useState(() => localStorage.getItem("bamboo-theme") || "bamboo");
-  const [availableThemes, setAvailableThemes] = useState<BambooTheme[]>(() => themeService.getThemes());
-
-  // Background / particle toggles — persisted in localStorage
-  const [showBgImage, setShowBgImage] = useState(() => localStorage.getItem('bamboo-showBgImage') !== 'false');
-  const [showParticles, setShowParticles] = useState(() => localStorage.getItem('bamboo-showParticles') !== 'false');
-  const [showCursorGlow, setShowCursorGlow] = useState(() => localStorage.getItem('bamboo-showCursorGlow') !== 'false');
-  const [showGlow, setShowGlow] = useState(() => localStorage.getItem('bamboo-showGlow') !== 'false');
-  const [mainColor, setMainColor] = useState(() => localStorage.getItem('bamboo-mainColor') || "");
-  const [bgBrightness, setBgBrightness] = useState(() => {
-    const saved = localStorage.getItem('bamboo-bgBrightness');
-    return saved !== null ? parseInt(saved) : 35;
-  });
-  const [bgBlur, setBgBlur] = useState(() => {
-    const saved = localStorage.getItem('bamboo-bgBlur');
-    return saved !== null ? parseInt(saved) : 0;
-  });
-  // Persist changes
-  useEffect(() => { localStorage.setItem('bamboo-showBgImage', String(showBgImage)); }, [showBgImage]);
-  useEffect(() => { localStorage.setItem('bamboo-showParticles', String(showParticles)); }, [showParticles]);
-  useEffect(() => { localStorage.setItem('bamboo-showCursorGlow', String(showCursorGlow)); }, [showCursorGlow]);
-  useEffect(() => { localStorage.setItem('bamboo-showGlow', String(showGlow)); }, [showGlow]);
-  useEffect(() => { localStorage.setItem('bamboo-mainColor', mainColor); }, [mainColor]);
-  useEffect(() => { localStorage.setItem('bamboo-bgBrightness', String(bgBrightness)); }, [bgBrightness]);
-  useEffect(() => { localStorage.setItem('bamboo-bgBlur', String(bgBlur)); }, [bgBlur]);
-
-  // Resolve current theme: check ThemeService first, then fallback to built-in
-  const currentTheme = themeService.getTheme(themeId) ||
-    availableThemes.find(t => t.id === themeId) ||
-    themeService.getDefaultTheme();
-  const theme: string = currentTheme.id;
-
-  // Language
-  const [lang, setLang] = useState<LanguageType>("de");
-  // translations removed
-
-  // Instances (loaded from IPC)
-  const [instances, setInstances] = useState<Instance[]>([]);
-  const [activeInstance, setActiveInstance] = useState("");
-
-  // Issue 13: Store the last selected instance ID for back navigation from mod browser
-  const [modBrowserInstanceId, setModBrowserInstanceId] = useState<string | null>(null);
-  const [lastSelectedInstanceId, setLastSelectedInstanceId] = useState<string | null>(null);
-  // Issue 13: Override to auto-select instance detail view when coming back from mod browser
-  const [selectedInstanceOverride, setSelectedInstanceOverride] = useState<string | null>(null);
-
-  // Servers
-  const [servers, setServers] = useState<ServerItem[]>([]);
-
-  // Accounts
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [activeAccount, setActiveAccount] = useState<Account>(NO_ACCOUNT);
-
-  // Issue 22: When clicking sidebar mods tab while in instance mod browser, go to global mode
-  const handleSetActiveTab = (tab: TabType) => {
-    // Locked tabs (friends, multiplayer) are allowed to show their 'not logged in' UI
-    if (tab === 'mods' && activeTab === 'mods' && modBrowserInstanceId) {
-      // Already in mods tab with instance context - go to global
-      setModBrowserInstanceId(null);
-      return;
-    }
-    // Issue 13: When going back to singleplayer from mod browser, restore the selected instance detail view
-    if (tab === 'singleplayer' && activeTab === 'mods' && lastSelectedInstanceId) {
-      const found = instances.find(i => i.id === lastSelectedInstanceId);
-      if (found) {
-        setSelectedInstanceOverride(lastSelectedInstanceId);
-        setLastSelectedInstanceId(null); // Clear after use
-      }
-    }
-    setActiveTab(tab);
-  };
-
-  // Running instances for uptime
-  const [runningInstances, setRunningInstances] = useState<{ name: string; startedAt: number }[]>([]);
-  const [isLaunching, setIsLaunching] = useState(false);
+  const reduceMotion = useReducedMotion();
   const { addToast } = useToast();
-  const [launchStep, setLaunchStep] = useState("");
+  const accountSession = useAccountSession();
+  const activeAccount = accountSession.account ?? NO_ACCOUNT;
 
-  // ===== LOAD PROFILES FROM IPC =====
+  const appearance = useAppearance();
+  const themeState = useTheme();
+  const settingsState = useLauncherSettings({ setThemeId: themeState.setThemeId });
+  const instancesState = useInstances();
+  const navigation = useAppNavigation({ instances: instancesState.instances });
+  const logAnalyses = useLogAnalyses();
+  const serversState = useServers();
+  const updater = useUpdater();
+  const overlays = useAppOverlays();
+  const joinInvites = useJoinInvites({
+    setActiveTab: navigation.setActiveTab,
+    lang: settingsState.lang,
+    addToast,
+  });
+  const launch = useLaunchController({
+    instances: instancesState.instances,
+    setInstances: instancesState.setInstances,
+    setActiveInstance: instancesState.setActiveInstance,
+    activeAccount,
+    preferences: settingsState.preferences,
+    lang: settingsState.lang,
+    addToast,
+    clearAnalyses: logAnalyses.clear,
+  });
+  // One app-wide listener keeps the footer honest even after the view that
+  // started an install has been unmounted.
   useEffect(() => {
-    const load = async () => {
-      try {
-        const profiles = await window.electronAPI?.getProfiles?.();
-        if (profiles && profiles.length > 0) {
-const mapped: Instance[] = (profiles as IpcProfile[]).map(mapProfileToInstance);
-          setInstances(mapped);
-          setActiveInstance(mapped[0]?.name || "");
-        }
-      } catch { console.warn("[Bamboo] Failed to load profiles"); }
-    };
-    load();
-  }, []);
-
-  // ===== SAVE PROFILES TO IPC =====
-  useEffect(() => {
-    if (instances.length === 0) return;
-    const profiles = instances.map(i => ({
-      id: i.id,
-      name: i.name,
-      version: i.minecraftVersion,
-      loader: i.modloader,
-      loaderVersion: i.modloaderVersion || "",
-      lastPlayed: i.lastPlayed,
-      size: i.size,
-      // Issue 21: Compute modCount from content array to avoid drift from stale counter
-      mods: (i.content || []).filter(c => c.type === 'mods').length,
-      desc: i.desc,
-      thumbnail: i.thumbnail,
-      javaPath: i.javaVersion || "Automatisch",
-      installedMods: i.installedMods || [],
-      content: i.content || [],
-      ram: i.ram,
-      // Issue 10: Modpack fields
-      isModpack: i.isModpack || false,
-      ownContentManagement: i.ownContentManagement || false,
-      modpackProjectId: i.modpackProjectId || undefined,
-      modpackSource: i.modpackSource || undefined,
-      modpackVersion: i.modpackVersion || undefined,
-    }));
-    const timer = setTimeout(() => {
-      window.electronAPI?.saveProfiles?.(profiles);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [instances]);
-
-  // ===== LOAD SETTINGS/ACCOUNTS =====
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const settings = await window.electronAPI?.getSettings?.();
-        if (settings) {
-          if (settings.accounts && settings.accounts.length > 0) {
-            const mapped: Account[] = (settings.accounts as IpcAccount[]).map(mapAccountFromSettings);
-            // Filter out accounts without a real username (no placeholder "Spieler" accounts)
-            const valid = mapped.filter(a => a.username && a.username !== "Spieler" && a.username !== "BambooPlayer");
-            if (valid.length > 0) {
-              setAccounts(valid);
-              setActiveAccount(valid[0]);
-            }
-          }
-          // No accounts? Keep empty state with NO_ACCOUNT
-          if (typeof settings.currentTheme === 'string') {
-            // Always accept the theme ID - ThemeService handles validation
-            setThemeId(settings.currentTheme);
-          }
-          if (typeof settings.lang === 'string' && (settings.lang === 'de' || settings.lang === 'en')) {
-            setLang(settings.lang);
-          }
-        }
-      } catch { console.warn("[Bamboo] Failed to load settings"); }
-    };
-    load();
-  }, []);
-
-  // ===== PERSIST THEME =====
-  useEffect(() => {
-    localStorage.setItem("bamboo-theme", themeId);
-    const root = document.documentElement;
-    root.style.setProperty("--theme-accent", currentTheme.accent);
-    // Derive lighter/darker variants from the single accent color
-    root.style.setProperty("--theme-accent-light", currentTheme.accent + '99');
-    root.style.setProperty("--theme-accent-dark", currentTheme.accent);
-    root.style.setProperty("--theme-glow", currentTheme.accent + '66');
-  }, [themeId, currentTheme.accent]);
-
-  // ===== LAUNCH GAME =====
-  const handleLaunchGame = (instanceId?: string) => {
-    const inst = instanceId ? instances.find(i => i.id === instanceId) : null;
-    const target = inst || instances[0];
-    if (!target || isLaunching) return;
-
-    // Block launch if no account selected
-    if (!activeAccount.id) {
-      addToast({
-        type: "warning",
-        message: lang === "de" ? "Kein Account ausgewählt – Account in den Einstellungen hinzufügen" : "No account selected – add an account in Settings",
+    const offModpack = window.electronAPI?.mods.onModpackProgress?.((data) => {
+      if (!data || typeof data.folderName !== "string") return;
+      updateBackgroundTask(`modpack:${data.folderName}`, {
+        percent: data.percent,
+        detail: data.label,
       });
+    });
+    const offTask = window.electronAPI?.tasks.onProgress?.((data) => {
+      if (!data || typeof data.id !== "string") return;
+      updateBackgroundTask(data.id, {
+        percent: data.percent ?? null,
+        detail: data.label,
+      });
+    });
+    return () => {
+      offModpack?.();
+      offTask?.();
+    };
+  }, []);
+
+  const shortcutInstances = instancesState.instances;
+  const setShortcutActiveInstance = instancesState.setActiveInstance;
+  const shortcutRequestRef = useRef<{ instances: typeof shortcutInstances; launch: typeof launch; navigation: typeof navigation }>({
+    instances: shortcutInstances,
+    launch,
+    navigation,
+  });
+  useEffect(() => {
+    shortcutRequestRef.current = { instances: shortcutInstances, launch, navigation };
+  }, [shortcutInstances, launch, navigation]);
+  const pendingShortcutRef = useRef("");
+
+  const launchFromShortcut = useCallback((folderName: string) => {
+    const state = shortcutRequestRef.current;
+    const target = state.instances.find((instance) => instanceFolderKeyOf(instance) === folderName);
+    if (!target) {
+      // Profiles may still be loading when the shortcut arrives; keep it until
+      // the list is available instead of silently dropping the launch.
+      pendingShortcutRef.current = folderName;
       return;
     }
+    pendingShortcutRef.current = "";
+    state.navigation.handleSetActiveTab("singleplayer");
+    setShortcutActiveInstance(target.name);
+    window.setTimeout(() => state.launch.launchGame(target.id), 350);
+  }, [setShortcutActiveInstance]);
 
-    setIsLaunching(true);
-    const folderName = target.name.toLowerCase().replace(/\s+/g, "-");
-    const payload = {
-      folderName,
-      profileName: target.name,
-      version: target.minecraftVersion,
-      ram: target.ram || 4,
-      modLoader: target.modloader === "Vanilla" ? "vanilla" : target.modloader.toLowerCase(),
-      loaderVersion: target.modloaderVersion || "",
-      javaPath: target.javaVersion === "Automatisch" ? "" : (target.javaVersion || ""),
-      authData: { type: activeAccount.type === "Microsoft" ? "microsoft" : "offline", name: activeAccount.username },
-      gameOptions: { renderDistance: 12, fov: 70, fullscreen: false, vsync: true, maxFramerate: 120 },
-    };
-
-    try {
-      window.electronAPI?.launchGame?.(payload);
-      window.electronAPI?.onGameReady?.(() => {
-        setIsLaunching(false);
-        setLaunchStep("");
-      });
-      window.electronAPI?.onLaunchStatus?.((status: string) => setLaunchStep(status));
-    } catch {
-      console.warn("[Bamboo] Launch failed");
-      setIsLaunching(false);
-    }
-
-    setRunningInstances(prev => [...prev, { name: target.name, startedAt: Date.now() }]);
-  };
-
-  // Running uptime timer handled by RunningInstanceBadge sub-component
-
-  // ===== LISTEN FOR GAME CLOSED =====
   useEffect(() => {
-    const unsub = window.electronAPI?.onGameClosed?.((data) => {
-      setRunningInstances(prev => prev.filter(ri => ri.name !== data.profileName));
-    });
-    return () => { unsub?.(); };
-  }, []);
-
-  const handleStopGame = (name: string) => {
-    const folderName = name.toLowerCase().replace(/\s+/g, "-");
-    window.electronAPI?.stopGame?.({ folderName, profileName: name });
-    setRunningInstances(prev => prev.filter(ri => ri.name !== name));
-  };
-
-  // ===== INIT FRIENDS =====
-  useEffect(() => {
-    initFriendsSystem();
-    presenceService.setStatus("online");
-  }, []);
-
-  // ===== SYNC ACTIVE ACCOUNT TO FRIEND PROFILE =====
-  // When a Microsoft account is active, use it as the friend profile (NOT BambooPlayer)
-  useEffect(() => {
-    if (activeAccount && activeAccount.type === "Microsoft") {
-      friendStore.updateMyProfile({
-        id: activeAccount.id,
-        username: activeAccount.username,
-        displayName: activeAccount.username, // Display name is ALWAYS the Minecraft username
-        avatar: activeAccount.avatar || "🎋",
-      });
-    }
-  }, [activeAccount]);
-
-  // ===== INIT CONTENT SYNC (Bamboo Cloud API fallback) =====
-  useEffect(() => {
-    contentSyncService.startAutoSync();
+    const offLaunchRequest = window.electronAPI?.instances.onLaunchRequest?.(launchFromShortcut);
     return () => {
-      contentSyncService.stopAutoSync();
+      offLaunchRequest?.();
     };
-  }, []);
+  }, [launchFromShortcut]);
 
-  // ===== INIT ASSET MANAGER (CDN sync + self-healing) =====
   useEffect(() => {
-    // Start CDN asset sync + self-healing via AssetManager
-    assetManager.startAutoSync();
+    if (pendingShortcutRef.current) launchFromShortcut(pendingShortcutRef.current);
+  }, [shortcutInstances, launchFromShortcut]);
 
-    // Load saved theme FIRST — so it's available INSTANTLY at startup
-    const savedThemeId = localStorage.getItem("bamboo-theme") || "bamboo";
-    const priorityLoad = async () => {
-      const theme = await themeService.loadThemeById(savedThemeId);
-      if (theme) {
-        setAvailableThemes([...themeService.getThemes()]);
-        console.log(`[App] Priority-loaded theme '${savedThemeId}'`);
-      }
-    };
-    priorityLoad();
-
-    // Load ALL themes (CDN + backend) in the background for offline availability
-    const loadAllThemes = async () => {
-      try {
-        // Wait a moment for initial sync to complete
-        await new Promise(r => setTimeout(r, 3000));
-        const [cdnThemes] = await Promise.all([
-          themeService.loadCdnThemes(),
-          themeService.loadBackendThemes(),
-        ]);
-        const all = themeService.getThemes();
-        setAvailableThemes(all);
-        console.log(`[App] Background themes loaded: ${cdnThemes.length} CDN + ${all.length - cdnThemes.length} backend`);
-      } catch {
-        console.warn('[App] Failed to load themes on startup');
-      }
-    };
-    loadAllThemes();
-
-    return () => {
-      assetManager.stopAutoSync();
-    };
-  }, []);
-
-  // Stable cache buster for bgImage — only changes when theme changes
-  const bgTs = useMemo(() => Date.now(), [currentTheme.id, currentTheme.bgImage]);
-
-  // ===== THEME STYLES =====
-  // Theme styles – automatisch via CSS-Variablen
+  const saveAllData = usePersistence({
+    instances: instancesState.instances,
+    themeId: themeState.themeId,
+    lang: settingsState.lang,
+    preferences: settingsState.preferences,
+    settingsLoaded: settingsState.settingsLoaded,
+    profilesLoaded: instancesState.profilesLoaded,
+    legacyCoversDetected: instancesState.legacyCoversDetected,
+    showBgImage: appearance.showBgImage,
+    showParticles: appearance.showParticles,
+    showGlow: appearance.showGlow,
+    mainColor: appearance.mainColor,
+    bgBrightness: appearance.bgBrightness,
+    bgBlur: appearance.bgBlur,
+  });
 
   return (
     <ErrorBoundary>
+    <MotionConfig
+      reducedMotion="user"
+      transition={reduceMotion ? { duration: 0 } : { duration: MOTION.base, ease: EASE.out }}
+    >
     <ToastProvider>
-    <div className="relative w-screen h-screen bg-slate-950 text-slate-100 flex overflow-hidden font-sans select-none">
+    <div className="relative w-screen h-screen bg-root text-ink flex flex-col overflow-hidden font-sans select-none">
       <ParticleBackground
-        accent={currentTheme.accent}
-        bgImage={currentTheme.bgImage ? `https://raw.githubusercontent.com/Borisgamer1/Bamboo-Launcher---Content/main/${currentTheme.bgImage.replace(/\\/g, '/')}?t=${bgTs}` : undefined}
-        particleShapes={currentTheme.particleShapes}
-        particleImage={currentTheme.particleImage ? `https://raw.githubusercontent.com/Borisgamer1/Bamboo-Launcher---Content/main/${currentTheme.particleImage}` : undefined}
-        showGlow={showGlow}
-        glowOverlayColor={mainColor || "#080415"}
-        glowColor={mainColor || "#080415"}
-        showBgImage={showBgImage}
-        showParticles={showParticles}
-        showCursorGlow={showCursorGlow}
-        bgBrightness={bgBrightness}
-        bgBlur={bgBlur}
-        particleSize={currentTheme.particleSize ?? 8}
-        particleFrequency={currentTheme.particleFrequency ?? 40}
-        particleDirection={currentTheme.particleDirection || "bottom"}
+        accent={themeState.currentTheme.accent}
+        bgImage={themeState.currentTheme.bgImage}
+        particleShapes={themeState.currentTheme.particleShapes}
+        particleImage={themeState.currentTheme.particleImage}
+        showGlow={appearance.showGlow}
+        glowOverlayColor={appearance.mainColor || "#080415"}
+        glowColor={appearance.mainColor || "#080415"}
+        showBgImage={appearance.showBgImage}
+        showParticles={appearance.showParticles}
+        bgBrightness={appearance.bgBrightness}
+        bgBlur={appearance.bgBlur}
+        particleSize={themeState.currentTheme.particleSize ?? 8}
+        particleFrequency={themeState.currentTheme.particleFrequency ?? 40}
+        particleDirection={themeState.currentTheme.particleDirection || "bottom"}
       />
-      <Sidebar activeTab={activeTab} setActiveTab={handleSetActiveTab} theme={theme} lang={lang} />
+      <TopBar
+        activeTab={navigation.activeTab}
+        setActiveTab={navigation.setActiveTab}
+        theme={themeState.theme}
+        lang={settingsState.lang}
+        activeAccount={activeAccount}
+        onWindowClose={() => overlays.setShowExitModal(true)}
+      />
 
-      <div className="flex-1 h-full flex flex-col justify-between overflow-hidden z-10 relative">
-<TopBar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          theme={theme}
-          lang={lang}
-          accounts={accounts}
-          activeAccount={activeAccount}
-          setActiveAccount={setActiveAccount}
-          onWindowClose={() => setShowExitModal(true)}
-        />
+      <div className="flex-1 min-h-0 w-full flex overflow-hidden">
+        <Sidebar activeTab={navigation.activeTab} setActiveTab={navigation.handleSetActiveTab} theme={themeState.theme} lang={settingsState.lang} />
 
-        <main className="flex-1 overflow-hidden relative">
-          <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center"><div className="w-6 h-6 border-2 border-slate-600 border-t-slate-300 rounded-full animate-spin" /></div>}>
+        <div className="flex-1 min-w-0 h-full flex flex-col justify-between overflow-hidden z-10 relative">
+
+        <main tabIndex={-1} className="flex-1 overflow-hidden relative">
+          <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center"><div className="w-6 h-6 border-2 border-stroke-strong border-t-stroke-strong rounded-full animate-spin" /></div>}>
           <AnimatePresence mode="wait">
             <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 15, filter: "blur(10px)" }}
-              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              exit={{ opacity: 0, y: -15, filter: "blur(10px)" }}
-              transition={{ duration: 0.35, ease: "easeInOut" }}
+              key={navigation.activeTab}
+              initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={reduceMotion ? { duration: 0 } : { duration: MOTION.base, ease: EASE.out }}
               className="absolute inset-0 flex flex-col"
             >
-              {activeTab === "home" && <Dashboard setActiveTab={setActiveTab} theme={theme} activeAccount={activeAccount} lang={lang} />}
-              {activeTab === "singleplayer" && <InstancesView setActiveTab={setActiveTab} searchQuery={searchQuery} activeInstance={activeInstance} setActiveInstance={setActiveInstance} lang={lang} instances={instances} setInstances={setInstances} openModBrowserForInstance={(id: string) => { setModBrowserInstanceId(id); setLastSelectedInstanceId(id); setActiveTab("mods"); }} onLaunch={handleLaunchGame} runningInstances={runningInstances} onStopGame={handleStopGame} selectedInstanceOverride={selectedInstanceOverride} />}
-              {activeTab === "multiplayer" && <MultiplayerView setActiveTab={setActiveTab} searchQuery={searchQuery} lang={lang} instances={instances} servers={servers} setServers={setServers} onLaunchGame={(name) => setRunningInstances(prev => [...prev, { name, startedAt: Date.now() }])} activeAccount={activeAccount} />}
-              {activeTab === "friends" && <FriendsView lang={lang} activeAccount={activeAccount} setActiveTab={setActiveTab} />}
-              {activeTab === "mods" && <ModsView setActiveTab={setActiveTab} searchQuery={searchQuery} instances={instances} setInstances={setInstances} fromInstanceId={modBrowserInstanceId} theme={theme} onClearInstance={() => setModBrowserInstanceId(null)} lang={lang} />}
-              {activeTab === "cosmetics" && <CosmeticsView setActiveTab={setActiveTab} lang={lang} activeAccount={activeAccount} />}
-              {activeTab === "screenshots" && <ScreenshotsView setActiveTab={setActiveTab} lang={lang} />}
-              {activeTab === "news" && <NewsEventsView theme={theme} lang={lang} />}
-              {activeTab === "settings" && <SettingsView setActiveTab={setActiveTab} theme={theme} themeId={themeId} setTheme={(t: any) => setThemeId(t)} accounts={accounts} setAccounts={setAccounts} activeAccount={activeAccount} setActiveAccount={setActiveAccount} lang={lang} setLang={setLang} showGlow={showGlow} setShowGlow={setShowGlow} glowColor={mainColor} setGlowColor={setMainColor}  showBgImage={showBgImage} setShowBgImage={setShowBgImage} showParticles={showParticles} setShowParticles={setShowParticles} showCursorGlow={showCursorGlow} setShowCursorGlow={setShowCursorGlow} bgBrightness={bgBrightness} setBgBrightness={setBgBrightness} bgBlur={bgBlur} setBgBlur={setBgBlur} />}
+              {navigation.activeTab === "home" && (
+                <Dashboard
+                  setActiveTab={navigation.setActiveTab}
+                  theme={themeState.theme}
+                  activeAccount={activeAccount}
+                  lang={settingsState.lang}
+                  updateStatus={updater.status}
+                  onCheckForUpdates={updater.check}
+                  onInstallUpdate={updater.install}
+                />
+              )}
+              {navigation.activeTab === "singleplayer" && <InstancesView setActiveTab={navigation.setActiveTab} searchQuery={navigation.searchQuery} setActiveInstance={instancesState.setActiveInstance} lang={settingsState.lang} instances={instancesState.instances} setInstances={instancesState.setInstances} openModBrowserForInstance={navigation.openModBrowserForInstance} onLaunch={launch.launchGame} runningInstances={launch.runningInstances} onStopGame={launch.stopGame} launchProgress={launch.launchProgress} selectedInstanceOverride={navigation.selectedInstanceOverride} onClearSelectedInstanceOverride={navigation.clearSelectedInstanceOverride} instancesListToken={navigation.instancesListToken} launching={launch.isLaunching} launchingFolder={launch.launchingFolder} hasAccount={!!activeAccount.id} preferences={settingsState.preferences} setPreferences={settingsState.setPreferences} analyses={logAnalyses.analyses} onReanalyze={logAnalyses.reanalyze} />}
+              {navigation.activeTab === "multiplayer" && <MultiplayerView setActiveTab={navigation.setActiveTab} searchQuery={navigation.searchQuery} lang={settingsState.lang} instances={instancesState.instances} servers={serversState.servers} setServers={serversState.setServers} onLaunchGame={launch.addRunningInstance} activeAccount={activeAccount} joinOffer={joinInvites.offer} onCloseJoin={joinInvites.clear} onJoinLaunched={launch.addRunningInstance} />}
+              {navigation.activeTab === "mods" && <ModsView key={navigation.modBrowserInstanceId ?? "global"} setActiveTab={navigation.handleSetActiveTab} searchQuery={navigation.searchQuery} instances={instancesState.instances} setInstances={instancesState.setInstances} fromInstanceId={navigation.modBrowserInstanceId} onClearInstance={navigation.clearModBrowser} lang={settingsState.lang} />}
+              {navigation.activeTab === "screenshots" && <ScreenshotsView setActiveTab={navigation.setActiveTab} lang={settingsState.lang} />}
+              {navigation.activeTab === "settings" && (
+                <SettingsView
+                  lang={settingsState.lang}
+                  setLang={settingsState.setLang}
+                  themeId={themeState.themeId}
+                  setThemeId={themeState.setThemeId}
+                  themes={themeState.availableThemes}
+                  preferences={settingsState.preferences}
+                  setPreferences={settingsState.setPreferences}
+                  showBgImage={appearance.showBgImage}
+                  setShowBgImage={appearance.setShowBgImage}
+                  showParticles={appearance.showParticles}
+                  setShowParticles={appearance.setShowParticles}
+                  showGlow={appearance.showGlow}
+                  setShowGlow={appearance.setShowGlow}
+                  bgBrightness={appearance.bgBrightness}
+                  setBgBrightness={appearance.setBgBrightness}
+                  bgBlur={appearance.bgBlur}
+                  setBgBlur={appearance.setBgBlur}
+                  totalPlaytimeMs={instancesState.totalPlaytime}
+                  accountSession={accountSession}
+                  updateStatus={updater.status}
+                  onCheckForUpdates={updater.check}
+                  onInstallUpdate={updater.install}
+                />
+              )}
             </motion.div>
           </AnimatePresence>
           </Suspense>
         </main>
 
-        <footer className="h-10 w-full bg-slate-950/45 backdrop-blur-xl border-t border-slate-800/40 px-6 flex items-center justify-between text-slate-400 text-[11px] font-semibold shrink-0 select-none">
-          <div className="flex items-center gap-4">
-            <span className="font-black text-slate-200">Bamboo Launcher</span>
-            <span className={`text-[9px] font-bold ${styles.badgeBg} px-2 py-0.2 rounded`}>v0.1.0</span>
-            <div className="w-px h-3 bg-slate-800" />
-            <div className={`flex items-center gap-1.5 ${styles.accentText}`}>
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Up to date</span>
-            </div>
+        <BottomNav activeTab={navigation.activeTab} setActiveTab={navigation.handleSetActiveTab} lang={settingsState.lang} />
 
+        <footer className="h-10 w-full bg-root border-t border-hairline px-6 flex items-center justify-between text-ink-secondary text-micro font-medium shrink-0 select-none">
+          <div className="flex shrink-0 items-center gap-4">
+            <span className="font-semibold text-ink">Bamboo Launcher</span>
+            <span className={`text-micro font-medium ${styles.badgeBg} px-2 py-0.2 rounded`}>v{LAUNCHER_VERSION}</span>
           </div>
 
+          <div className="flex min-w-0 flex-1 justify-center px-4">
+            <BackgroundTaskBar />
+          </div>
 
-
-          <RunningInstanceBadge instances={runningInstances} />
+          <RunningInstanceBadge instances={launch.runningInstances} />
         </footer>
+        </div>
       </div>
 
-      {/* Exit Modal */}
-      <AnimatePresence>
-        {showExitModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 pointer-events-auto" onClick={() => setShowExitModal(false)}>
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-slate-950 border border-slate-800/80 rounded-3xl max-w-sm w-full p-6 shadow-2xl flex flex-col gap-4 text-left" onClick={e => e.stopPropagation()}>
-              <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-                <AlertCircle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-white tracking-wide">Launcher beenden?</h3>
-                <p className="text-xs text-slate-400 leading-relaxed mt-2">Möchtest du den Launcher wirklich schließen?</p>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowExitModal(false)} className="flex-1 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer">{lang === "de" ? "Abbrechen" : "Cancel"}</button>
-                <button onClick={() => { window.electronAPI?.windowClose?.(); }} className="flex-1 bg-rose-500 hover:bg-rose-400 text-white py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-lg shadow-rose-500/10">{lang === "de" ? "Beenden" : "Quit"}</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <CommandPalette
+        key={overlays.paletteOpen ? "open" : "closed"}
+        open={overlays.paletteOpen}
+        onClose={() => overlays.setPaletteOpen(false)}
+        onNavigate={navigation.handleSetActiveTab}
+        onExit={() => overlays.setShowExitModal(true)}
+        lang={settingsState.lang}
+        instances={instancesState.instances}
+        recentInstance={instancesState.activeInstance}
+        onOpenInstance={(name) => {
+          instancesState.setActiveInstance(name);
+          navigation.handleSetActiveTab("singleplayer");
+        }}
+        onInstanceIntent={(intent) => {
+          sessionStorage.setItem("bamboo-instances-intent", intent);
+          navigation.handleSetActiveTab("singleplayer");
+          window.dispatchEvent(new CustomEvent("bamboo-instances-intent", { detail: intent }));
+        }}
+      />
+
+      <Dialog
+        open={overlays.showExitModal}
+        onClose={() => overlays.setShowExitModal(false)}
+        title="Launcher beenden?"
+        titleId="exit-dialog-title"
+        closeLabel={settingsState.lang === "de" ? "Schließen" : "Close"}
+        icon={<AlertCircle className="h-4 w-4" />}
+        tone="danger"
+        footer={
+          <>
+            <button data-autofocus onClick={() => overlays.setShowExitModal(false)} className={dialogButton.secondary}>
+              {settingsState.lang === "de" ? "Abbrechen" : "Cancel"}
+            </button>
+            <button
+              onClick={() => { Promise.race([saveAllData(), new Promise(r => setTimeout(r, 2000))]).finally(() => window.electronAPI?.window.close?.()); }}
+              className={dialogButton.danger}
+            >
+              {settingsState.lang === "de" ? "Beenden" : "Quit"}
+            </button>
+          </>
+        }
+      >
+        <p>Möchtest du den Launcher wirklich schließen?</p>
+      </Dialog>
 
 </div>
     </ToastProvider>
+    </MotionConfig>
     </ErrorBoundary>
   );
 }
 
-// ===== MODULE-LEVEL CONSTANTS (not recreated on every render) =====
 const styles = {
   accentText: "theme-text",
   badgeBg: "theme-bg-light theme-text theme-border-light",
   glowShadow: "theme-glow",
 };
 
-// ===== TYPE-SAFE IPC DATA HELPERS =====
-interface IpcProfile {
-  id?: string;
-  name?: string;
-  version?: string;
-  loader?: string;
-  loaderVersion?: string;
-  lastPlayed?: string;
-  size?: string;
-  mods?: number;
-  desc?: string;
-  thumbnail?: string;
-  javaPath?: string;
-  installedMods?: string[];
-  content?: Array<{type: string; [key:string]: unknown}>;
-  ram?: number;
-  isModpack?: boolean;
-  ownContentManagement?: boolean;
-  modpackProjectId?: string;
-  modpackSource?: string;
-  modpackVersion?: string;
-}
-
-interface IpcAccount {
-  id?: string;
-  name?: string;
-  type?: string;
-  avatar?: string;
-  uuid?: string;
-}
-
-function mapProfileToInstance(p: IpcProfile, i: number): Instance {
-  return {
-    id: p.id || String(i),
-    name: p.name || "",
-    minecraftVersion: p.version || "1.21",
-    modloader: (p.loader === "vanilla" || p.loader === "Vanilla") ? "Vanilla" as const : (p.loader || "Fabric") as any,
-    modloaderVersion: p.loaderVersion || "",
-    lastPlayed: p.lastPlayed || "Nie",
-    size: p.size || "0 MB",
-    modCount: (p.content || []).filter(c => c.type === 'mods').length || p.mods || 0,
-    desc: p.desc || "",
-    thumbnail: p.thumbnail || "",
-    javaVersion: p.javaPath || "Automatisch",
-    installedMods: p.installedMods || [],
-    content: (p.content || []) as any,
-    ram: p.ram,
-    isModpack: p.isModpack || false,
-    ownContentManagement: p.ownContentManagement || false,
-    modpackProjectId: p.modpackProjectId || undefined,
-    modpackSource: (p.modpackSource as "modrinth" | "curseforge") || undefined,
-    modpackVersion: p.modpackVersion || undefined,
-  };
-}
-
-function mapAccountFromSettings(a: IpcAccount, i: number): Account {
-  return {
-    id: a.id || String(i),
-    username: a.name || "Spieler",
-    type: a.type === "microsoft" ? "Microsoft" : "Offline",
-    avatar: a.avatar || `https://mc-heads.net/avatar/${a.uuid || "Steve"}/32`,
-    online: i === 0,
-    uuid: a.uuid,
-  };
-}
-
 export default App;
-
-
-
-
-
-

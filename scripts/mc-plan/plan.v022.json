@@ -1,0 +1,180 @@
+{
+  "plan": "mc_plan_v0.2.2",
+  "mode": "autopilot",
+  "source": "../BambooLauncher v0.2.2.md",
+  "repo": "C:/AI Games-Apps/Bamboo Launcher/BambooLauncher",
+  "baselineBranch": "autopilot/baseline",
+  "integrationBranch": "autopilot/integration",
+  "worktreeRoot": "C:/AI Games-Apps/Bamboo Launcher/.mc-worktrees",
+  "excludedFromBaseline": [
+    "resources/Instanz Vorlagen/",
+    "mod/"
+  ],
+  "gates": {
+    "job": ["npm run build", "npm run lint"],
+    "integration": ["npm run build", "npm run lint"],
+    "final": ["npm run test:core", "npm run build"]
+  },
+  "jobs": [
+    {
+      "id": "j01-net-share-ping",
+      "branch": "job/j01-net-share-ping",
+      "wave": 1,
+      "items": [1, 2],
+      "dependsOn": [],
+      "title": "Mehrspieler-Share entfernen, Server-Ping neu",
+      "files": [
+        "src/components/MultiplayerView.tsx",
+        "src/App.tsx",
+        "main.js",
+        "preload.js",
+        "src/electron.d.ts",
+        "electron/join/",
+        "src/components/join/JoinSheet.tsx",
+        "src/hooks/useJoinInvites.ts",
+        "tests/join.test.cjs",
+        "tests/join-queue.test.cjs",
+        "tests/preload-contract.test.cjs",
+        "tests/ipc-owner.test.cjs"
+      ],
+      "tests": ["tests/join.test.cjs", "tests/preload-contract.test.cjs", "tests/ipc-owner.test.cjs"],
+      "status": "pending"
+    },
+    {
+      "id": "j02-screenshots-lightbox",
+      "branch": "job/j02-screenshots-lightbox",
+      "wave": 1,
+      "items": [3],
+      "dependsOn": [],
+      "title": "Screenshot-Lightbox-Header nicht mehr abgeschnitten",
+      "files": ["src/components/ScreenshotsView.tsx", "src/index.css"],
+      "tests": [],
+      "status": "pending"
+    },
+    {
+      "id": "j03-topbar-account",
+      "branch": "job/j03-topbar-account",
+      "wave": 1,
+      "items": [9],
+      "dependsOn": [],
+      "title": "Punkt am Skin im Konto-Popover entfernen",
+      "files": ["src/components/TopBar.tsx"],
+      "tests": [],
+      "status": "pending"
+    },
+    {
+      "id": "j04-import-flow",
+      "branch": "job/j04-import-flow",
+      "wave": 1,
+      "items": [12, 13],
+      "dependsOn": [],
+      "title": "Java kein Import-Konflikt, Import schließbar",
+      "files": [
+        "src/services/profileImport.ts",
+        "src/components/ProfileImportModal.tsx",
+        "src/lib/translations.ts"
+      ],
+      "tests": [],
+      "status": "pending"
+    },
+    {
+      "id": "j05-instances-toolbar-sort",
+      "branch": "job/j05-instances-toolbar-sort",
+      "wave": 1,
+      "items": [4, 5],
+      "dependsOn": [],
+      "title": "Instanz-Buttons neu, Listen nach Name",
+      "files": ["src/components/InstancesView.tsx", "src/lib/translations.ts"],
+      "tests": [],
+      "status": "pending"
+    },
+    {
+      "id": "j06-instances-content-ux",
+      "branch": "job/j06-instances-content-ux",
+      "wave": 2,
+      "items": [10, 11, 14, 15, 16],
+      "dependsOn": ["j05-instances-toolbar-sort"],
+      "title": "Mod-Browser-Restore, Versions-Progress, Own-Mods-UX, Mod-Detail",
+      "files": [
+        "src/components/InstancesView.tsx",
+        "src/components/ModsView.tsx",
+        "src/components/instance-settings/InstanceSettingsView.tsx",
+        "src/lib/translations.ts",
+        "src/lib/modVersions.ts"
+      ],
+      "tests": [],
+      "status": "pending"
+    },
+    {
+      "id": "j07-settings-core",
+      "branch": "job/j07-settings-core",
+      "wave": 2,
+      "items": [6],
+      "dependsOn": [],
+      "title": "Settings-Layout, Über/Erweitert, Tabs, Keybinds-Fix",
+      "files": [
+        "src/components/SettingsView.tsx",
+        "src/components/settings/GameOptionsPanel.tsx",
+        "src/components/settings/KeybindsPanel.tsx",
+        "src/lib/launcherPreferences.ts",
+        "src/lib/gameOptions.ts",
+        "src/lib/keybinds.ts",
+        "src/lib/settingsNavigation.ts",
+        "src/lib/translations.ts",
+        "src/components/Dashboard.tsx",
+        "main.js"
+      ],
+      "tests": ["tests/gamesettings.test.cjs", "tests/keybinds-defaults.test.cjs"],
+      "status": "pending"
+    },
+    {
+      "id": "j08-statistics",
+      "branch": "job/j08-statistics",
+      "wave": 3,
+      "items": [8],
+      "dependsOn": ["j07-settings-core"],
+      "title": "Globale Statistiken mit Toggle und Lösch-Persistenz",
+      "files": [
+        "electron/stats.ts",
+        "electron/ipc.ts",
+        "main.js",
+        "preload.js",
+        "src/electron.d.ts",
+        "src/components/SettingsView.tsx",
+        "src/components/settings/StatisticsPanel.tsx",
+        "src/hooks/useLaunchController.ts",
+        "src/hooks/useInstances.ts",
+        "src/lib/translations.ts"
+      ],
+      "tests": [],
+      "status": "pending"
+    },
+    {
+      "id": "j09-themes-custom",
+      "branch": "job/j09-themes-custom",
+      "wave": 4,
+      "items": [7],
+      "dependsOn": ["j08-statistics"],
+      "title": "9 Theme-Presets + Custom-Theme",
+      "files": [
+        "src/data/themes.ts",
+        "src/services/themeService.ts",
+        "src/hooks/useTheme.ts",
+        "src/hooks/useAppearance.ts",
+        "src/components/SettingsView.tsx",
+        "src/components/ParticleBackground.tsx",
+        "src/hooks/usePersistence.ts",
+        "electron/schemas.ts",
+        "src/index.css",
+        "public/images/"
+      ],
+      "tests": [],
+      "status": "pending",
+      "blockedAssets": [
+        "C:/Users/GBT A520M RADEON/Downloads/minecraft-trial-chambers.webp",
+        "C:/Users/GBT A520M RADEON/Downloads/058e8b6d97167ef579238f3e014fe4873d8a22f3_350.webp",
+        "C:/Users/GBT A520M RADEON/Downloads/fnz9c0cbmd6f1.png"
+      ]
+    }
+  ]
+}

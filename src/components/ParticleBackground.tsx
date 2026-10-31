@@ -2,7 +2,8 @@ import React, { useEffect, useRef } from "react";
 
 export type ThemeType = string;
 
-// Helpers to derive colors from a single accent hex
+type TintedSprite = HTMLImageElement & { __tintCanvas?: HTMLCanvasElement };
+
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const match = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
   if (!match) return null;
@@ -56,26 +57,16 @@ interface ParticleBackgroundProps {
   accent: string;
   bgImage?: string;
   particleShapes?: number[][][];
-  /** PNG sprite URL for particle shapes — loaded and tinted with accent color */
   particleImage?: string;
   showBgImage?: boolean;
   showParticles?: boolean;
-  showCursorGlow?: boolean;
-  /** Brightness of background image (0–100, default 35) */
   bgBrightness?: number;
-  /** Blur of background image in px (0–20, default 0) */
   bgBlur?: number;
-  /** Sprite particle size multiplier from theme metadata (default 8) */
   particleSize?: number;
-  /** Number of particles from theme metadata (default 40) */
   particleFrequency?: number;
-  /** Particle flight direction: bottom | top | left | right (default bottom) */
   particleDirection?: string;
-  /** Canvas glow effect toggle */
   showGlow?: boolean;
-  /** Custom color for the canvas glow (default blue) */
   glowColor?: string;
-  /** Overlay color for the glow atmosphere effect (default blue #080415) */
   glowOverlayColor?: string;
 }
 
@@ -86,7 +77,6 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   particleImage,
   showBgImage = true,
   showParticles = true,
-  showCursorGlow = true,
   bgBrightness = 35,
   bgBlur = 0,
   particleSize = 8,
@@ -99,7 +89,6 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const bgRef = useRef<HTMLDivElement>(null);
-  const glowRef = useRef<HTMLDivElement>(null);
 
   const mousePosRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const accentRef = useRef(accent);
@@ -122,7 +111,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
   useEffect(() => { glowColorRef.current = glowColor; }, [glowColor]);
   useEffect(() => { showParticlesRef.current = showParticles; }, [showParticles]);
 
-  // Load particle sprite image with cleanup to prevent stale-image race condition
+  // Cleanup prevents a stale-image race condition.
   useEffect(() => {
     let cancelled = false;
     if (!particleImage) {
@@ -145,7 +134,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
     if (!ctx) return;
 
     let animationFrameId: number;
-    let particles: Particle[] = [];
+    const particles: Particle[] = [];
 
     const resizeCanvas = () => {
       canvas.width = window.innerWidth;
@@ -160,10 +149,6 @@ export const ParticleBackground = React.memo(function ParticleBackground({
         const px = -(e.clientX - window.innerWidth / 2) * 0.012;
         const py = -(e.clientY - window.innerHeight / 2) * 0.012;
         bgRef.current.style.transform = `translate(${px}px, ${py}px) scale(1.03)`;
-      }
-      if (glowRef.current) {
-        glowRef.current.style.left = `${e.clientX}px`;
-        glowRef.current.style.top = `${e.clientY}px`;
       }
     };
     window.addEventListener("mousemove", handleMouseMove);
@@ -182,7 +167,6 @@ export const ParticleBackground = React.memo(function ParticleBackground({
         stretchY = 0.6 + Math.random() * 0.8;
       }
 
-      // Position and speed based on direction
       let x: number, y: number, speedX: number, speedY: number;
       const pad = 20;
       switch (dir) {
@@ -240,21 +224,20 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       const currentAccent = accentRef.current;
       const rgb = hexToRgb(currentAccent);
 
-      // Canvas glow — separate from particles, controlled by showGlowRef
       if (showGlowRef.current) {
         const glowRgb = hexToRgb(glowColorRef.current);
         const grad = ctx.createRadialGradient(mPos.x, mPos.y, 10, mPos.x, mPos.y, 600);
         if (glowRgb) grad.addColorStop(0, `rgba(${glowRgb.r}, ${glowRgb.g}, ${glowRgb.b}, 0.35)`);
-        else grad.addColorStop(0, "rgba(30, 64, 175, 0.12)");
-        grad.addColorStop(0.4, "rgba(15, 23, 42, 0.03)");
-        grad.addColorStop(1, "rgba(2, 6, 23, 0.85)");
+        else grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.12)`);
+        grad.addColorStop(0.4, "rgba(9, 9, 10, 0.03)");
+        grad.addColorStop(1, "rgba(9, 9, 10, 0.85)");
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       } else {
         const grad = ctx.createRadialGradient(mPos.x, mPos.y, 10, mPos.x, mPos.y, 600);
-        grad.addColorStop(0, "rgba(15, 23, 42, 0.04)");
-        grad.addColorStop(0.4, "rgba(15, 23, 42, 0.02)");
-        grad.addColorStop(1, "rgba(2, 6, 23, 0.85)");
+        grad.addColorStop(0, "rgba(9, 9, 10, 0.04)");
+        grad.addColorStop(0.4, "rgba(9, 9, 10, 0.02)");
+        grad.addColorStop(1, "rgba(9, 9, 10, 0.85)");
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
@@ -269,7 +252,6 @@ export const ParticleBackground = React.memo(function ParticleBackground({
         p.x += p.speedX;
         p.angle += p.spin;
 
-        // Subtle mouse drift
         const dx = mPos.x - p.x;
         const dy = mPos.y - p.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -289,8 +271,6 @@ export const ParticleBackground = React.memo(function ParticleBackground({
           ctx.shadowBlur = p.size * 1.2;
         };
         if (p.type === "shape" && useSprite) {
-          // === SPRITE PARTICLE: draw on temp canvas for clean tinting ===
-          // (no composite ops on main canvas - they would clip ALL particles)
           const baseSize = p.size * 5;
           const sizeFactor = Math.min(spriteSizeRef.current, 32) / 8;
           const s = baseSize * sizeFactor + 4;
@@ -301,12 +281,13 @@ export const ParticleBackground = React.memo(function ParticleBackground({
           const drawH = s / ratio * p.stretchY;
 
           if (drawW > 0 && drawH > 0 && isFinite(drawW) && isFinite(drawH)) {
-            let tCanvas = (sprite as any).__tintCanvas;
+            const tintSprite = sprite as TintedSprite;
+            let tCanvas = tintSprite.__tintCanvas;
             if (!tCanvas || tCanvas.width < drawW || tCanvas.height < drawH) {
               tCanvas = document.createElement("canvas");
               tCanvas.width = Math.ceil(drawW);
               tCanvas.height = Math.ceil(drawH);
-              (sprite as any).__tintCanvas = tCanvas;
+              tintSprite.__tintCanvas = tCanvas;
             }
             const tc = tCanvas.getContext("2d");
             tc.clearRect(0, 0, tCanvas.width, tCanvas.height);
@@ -326,7 +307,8 @@ export const ParticleBackground = React.memo(function ParticleBackground({
               const [nx, ny] = polygon[i];
               const px = (nx - 0.5) * s * p.stretchX;
               const py = (ny - 0.5) * s * p.stretchY;
-              i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+              if (i === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
             }
             ctx.closePath();
           } else {
@@ -383,16 +365,16 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       {showBgImage && (
         <div
           ref={bgRef}
-          className="absolute inset-[-40px] bg-cover bg-center transition-all duration-1000 ease-out scale-105"
+          className="absolute inset-[-40px] bg-cover bg-center transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] duration-[var(--t-out)] ease-[var(--ease-out)] scale-105"
           style={{
             backgroundImage: bgImage ? `url('${bgImage}')` : undefined,
-            backgroundColor: bgImage ? undefined : "rgba(2, 6, 23, 1)",
+            backgroundColor: bgImage ? undefined : "var(--bg-base)",
             transform: "translate(0px, 0px) scale(1.03)",
             filter: bgImage ? `brightness(${bgBrightness}%) blur(${bgBlur}px) contrast(1.08)` : undefined,
           }}
         />
       )}
-      {!showBgImage && <div className="absolute inset-0 bg-slate-950" />}
+      {!showBgImage && <div className="absolute inset-0 bg-root" />}
       {showGlow && (
         <div className="absolute inset-0 pointer-events-none" style={{
           background: `linear-gradient(to top right, ${glowOverlayColor}dd, ${glowOverlayColor}55, transparent)`,
@@ -405,19 +387,6 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       )}
 
       <canvas ref={canvasRef} className={`absolute inset-0 pointer-events-none ${(showParticles || showGlow) ? 'mix-blend-screen' : 'hidden'}`} />
-
-      {showCursorGlow && (
-        <div
-          ref={glowRef}
-          className="fixed w-[400px] h-[400px] rounded-full pointer-events-none z-10 -translate-x-1/2 -translate-y-1/2 will-change-transform"
-          style={{
-            left: `${window.innerWidth / 2}px`,
-            top: `${window.innerHeight / 2}px`,
-            background: `radial-gradient(circle, ${accent}22 0%, transparent 70%)`,
-            filter: "blur(80px)",
-          }}
-        />
-      )}
     </div>
   );
 });

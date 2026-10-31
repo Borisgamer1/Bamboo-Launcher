@@ -1,146 +1,202 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
-// Icons werden synchron aus main.js geladen (kein require('fs') nötig!)
+const report = (level, message, data) => {
+  try {
+    ipcRenderer.send('renderer-log', { level, message, data })
+  } catch {
+    // Logging is best effort while the preload bridge is still booting.
+  }
+};
+
 let iconCache = {};
 try {
   iconCache = ipcRenderer.sendSync('get-icons');
-} catch (e) {
-  console.error('[preload] icon-fehler (nicht kritisch):', e);
+} catch (error) {
+  report('warn', 'preload: icon cache unavailable', { error: error.message });
+}
+
+// P12: keep a flushed join payload until a renderer listener exists. This is
+// the cold-start race the old pendingDeepLink logic lost; the main-process
+// queue is already gone by the time this buffer is needed.
+const deepLinkCallbacks = new Set()
+const pendingDeepLinks = []
+ipcRenderer.on('deep-link-invite', (_event, payload) => {
+  if (deepLinkCallbacks.size === 0) {
+    pendingDeepLinks.push(payload)
+    if (pendingDeepLinks.length > 5) pendingDeepLinks.shift()
+    return
+  }
+  for (const callback of deepLinkCallbacks) {
+    try {
+      callback(payload)
+    } catch (error) {
+      report('error', 'preload: deep-link listener failed', { error: error.message });
+    }
+  }
+})
+
+const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args)
+const send = (channel, ...args) => ipcRenderer.send(channel, ...args)
+const subscribe = (channel, callback) => {
+  const listener = (_event, ...args) => callback(...args)
+  ipcRenderer.on(channel, listener)
+  return () => ipcRenderer.removeListener(channel, listener)
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  iconCache,
-  launchGame: (payload) => {
-    ipcRenderer.send('launch-game', payload)
+  icons: iconCache,
+
+  launch: {
+    start: (payload) => send('launch-game', payload),
+    stop: (data) => invoke('kill-game', data.folderName),
+    onStatus: (callback) => subscribe('launch-status', callback),
+    onClosed: (callback) => subscribe('game-closed', callback),
+    onReady: (callback) => subscribe('game-ready', callback),
+    onFailed: (callback) => subscribe('launch-failed', callback),
+    onProgress: (callback) => subscribe('launch-progress', callback),
   },
-  onLaunchStatus: (callback) => {
-    const listener = (_event, status) => callback(status)
-    ipcRenderer.on('launch-status', listener)
-    return () => ipcRenderer.removeListener('launch-status', listener)
+
+  logs: {
+    onAnalysis: (callback) => subscribe('bamboo:logs:analysis', callback),
+    analyze: (instanceId, launchId) =>
+      invoke('bamboo:logs:analyze', instanceId, launchId),
+    applyFix: (analysisId, actionId) =>
+      invoke('bamboo:logs:apply-fix', analysisId, actionId),
+    undoFix: (undoToken) => invoke('bamboo:logs:undo', undoToken),
+    readLatest: (folderName) => invoke('read-latest-log', folderName),
+    createSupportBundle: (destination) => invoke('bamboo:support:bundle', destination),
   },
-  onGameClosed: (callback) => {
-    const listener = (_event, code) => callback(code)
-    ipcRenderer.on('game-closed', listener)
-    return () => ipcRenderer.removeListener('game-closed', listener)
+
+  settings: {
+    get: () => invoke('get-settings'),
+    save: (settings) => invoke('save-settings', settings),
+    // Main asks for a final settings flush before it lets the window close.
+    onFlushBeforeClose: (callback) => subscribe('app:flush-before-close', callback),
+    flushBeforeCloseComplete: () => send('app:flush-before-close-done'),
   },
-  onGameReady: (callback) => {
-    const listener = (_event, profileName) => callback(profileName)
-    ipcRenderer.on('game-ready', listener)
-    return () => ipcRenderer.removeListener('game-ready', listener)
+
+  instances: {
+    list: () => invoke('bamboo:instances:list'),
+    create: (data) => invoke('create-instance', data),
+    rename: (data) => invoke('rename-instance', data),
+    clone: (data) => invoke('clone-instance', data),
+    createShortcut: (data) => invoke('create-desktop-shortcut', data),
+    deleteFiles: (folderName) => invoke('delete-profile-files', folderName),
+    openFolder: (folderName) => invoke('open-instance-folder', folderName),
+    openProfileFolder: (name) => invoke('open-profile-folder', name),
+    listWorlds: (folderName) => invoke('list-instance-worlds', folderName),
+    repair: (data) => invoke('repair-profile', data),
+    updateLaunchSettings: (folderName, patch) =>
+      invoke('bamboo:instances:update-launch', folderName, patch),
+    getProfiles: () => invoke('get-profiles'),
+    saveProfiles: (profiles) => invoke('save-profiles', profiles),
+    onLaunchRequest: (callback) => subscribe('bamboo:launch-instance-request', callback),
   },
-  startMicrosoftLogin: () => {
-    ipcRenderer.send('microsoft-login-device-code')
+
+  mods: {
+    curseforgeSearch: (data) => invoke('curseforge-search', data),
+    curseforgeProject: (modId) => invoke('curseforge-project', modId),
+    curseforgeFiles: (modId, gameVersion, modLoaderType) =>
+      invoke('curseforge-files', modId, gameVersion, modLoaderType),
+    download: (data) => invoke('download-mod', data),
+    installModpack: (data) => invoke('install-modpack-mrpack', data),
+    uploadLocal: (data) => invoke('upload-local-mod', data),
+    listContentFiles: (data) => invoke('list-content-files', data),
+    hashContentFiles: (data) => invoke('hash-content-files', data),
+    deleteContentFile: (data) => invoke('delete-content-file', data),
+    onUploadProgress: (callback) => subscribe('upload-progress', callback),
+    onModpackProgress: (callback) => subscribe('modpack-install-progress', callback),
   },
-  onMsDeviceCode: (callback) => {
-    const listener = (_event, data) => callback(data)
-    ipcRenderer.on('ms-device-code', listener)
-    return () => ipcRenderer.removeListener('ms-device-code', listener)
+
+  dialogs: {
+    open: (options) => invoke('show-open-dialog', options),
+    save: (options) => invoke('show-save-dialog', options),
+    showItem: (filePath) => invoke('show-item-in-folder', filePath),
+    readImage: (filePath) => invoke('read-image-file', filePath),
   },
-  onMsLoginStep: (callback) => {
-    const listener = (_event, step) => callback(step)
-    ipcRenderer.on('ms-login-step', listener)
-    return () => ipcRenderer.removeListener('ms-login-step', listener)
+
+  profiles: {
+    export: (data) => invoke('export-profile', data),
+    importPreview: (filePath) => invoke('import-preview', filePath),
+    import: (data) => invoke('import-profile', data),
   },
-  onMsLoginResult: (callback) => {
-    const listener = (_event, result) => callback(result)
-    ipcRenderer.on('ms-login-result', listener)
-    return () => ipcRenderer.removeListener('ms-login-result', listener)
+
+  auth: {
+    // Microsoft account auth (OAuth loopback flow). Replies carry account
+    // metadata only - tokens stay in the OS secret store of the main process.
+    status: () => invoke('bamboo:auth:status'),
+    login: () => invoke('bamboo:auth:login'),
+    cancel: () => invoke('bamboo:auth:cancel'),
+    refresh: (accountId) => invoke('bamboo:auth:refresh', accountId),
+    signOut: (accountId) => invoke('bamboo:auth:sign-out', accountId),
+    identity: () => invoke('get-player-identity'),
+    // Push from main when it dropped a session in the background (restore or a
+    // launch-path refresh). Sanitized status only - never a token.
+    onStatus: (callback) => subscribe('bamboo:auth:changed', callback),
   },
-  copyToClipboard: (text) => {
-    ipcRenderer.send('copy-to-clipboard', text)
+
+  join: {
+    buildLink: (payload) => invoke('build-invite-link', payload),
+    prepare: (payload) => invoke('bamboo:join:prepare', payload),
+    confirm: (offerId) => invoke('bamboo:join:confirm', offerId),
+    onInvite: (callback) => {
+      deepLinkCallbacks.add(callback)
+      while (pendingDeepLinks.length > 0) {
+        try {
+          callback(pendingDeepLinks.shift())
+        } catch (error) {
+          report('error', 'preload: buffered deep-link listener failed', { error: error.message });
+        }
+      }
+      return () => deepLinkCallbacks.delete(callback)
+    },
   },
-  openExternal: (url) => {
-    ipcRenderer.send('open-external-url', url)
+
+  window: {
+    minimize: () => send('window-minimize'),
+    focus: () => send('window-focus'),
+    close: () => send('window-close'),
   },
-  writeOptionsTxt: (data) => ipcRenderer.invoke('write-options-txt', data),
-  findJava: () => ipcRenderer.invoke('find-java'),
-  getJavaVersions: (forceRescan) => ipcRenderer.invoke('get-java-versions', forceRescan),
-  // Unified screenshots collection
-  collectAllScreenshots: () => ipcRenderer.invoke('collect-all-screenshots'),
-  deleteScreenshotFile: (absolutePath) => ipcRenderer.invoke('delete-screenshot-file', absolutePath),
-  openScreenshotsFolder: () => ipcRenderer.invoke('open-screenshots-folder'),
-  getProfiles: () => ipcRenderer.invoke('get-profiles'),
-  saveProfiles: (profiles) => ipcRenderer.invoke('save-profiles', profiles),
-  getCollections: () => ipcRenderer.invoke('get-collections'),
-  saveCollections: (collections) => ipcRenderer.invoke('save-collections', collections),
-  openProfileFolder: (name) => ipcRenderer.invoke('open-profile-folder', name),
-  openInstanceFolder: (folderName) => ipcRenderer.invoke('open-instance-folder', folderName),
-  downloadMod: (data) => ipcRenderer.invoke('download-mod', data),
-  installModpackMrpack: (data) => ipcRenderer.invoke('install-modpack-mrpack', data),
-  getForgeVersions: () => ipcRenderer.invoke('get-forge-versions'),
-  getNeoforgeVersions: () => ipcRenderer.invoke('get-neoforge-versions'),
-  getSettings: () => ipcRenderer.invoke('get-settings'),
-  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
-  getPlayerIdentity: () => ipcRenderer.invoke('get-player-identity'),
-  curseforgeSearch: (data) => ipcRenderer.invoke('curseforge-search', data),
-  curseforgeProject: (modId) => ipcRenderer.invoke('curseforge-project', modId),
-  curseforgeFiles: (modId, gameVersion, modLoaderType) => ipcRenderer.invoke('curseforge-files', modId, gameVersion, modLoaderType),
-  deleteProfileFiles: (folderName) => ipcRenderer.invoke('delete-profile-files', folderName),
-  deleteContentFile: (data) => ipcRenderer.invoke('delete-content-file', data),
-  listContentFiles: (data) => ipcRenderer.invoke('list-content-files', data),
-  repairProfile: (data) => ipcRenderer.invoke('repair-profile', data),
-  onRepairProgress: (callback) => {
-    const listener = (_event, status) => callback(status)
-    ipcRenderer.on('repair-progress', listener)
-    return () => ipcRenderer.removeListener('repair-progress', listener)
+
+  java: {
+    versions: (forceRescan) => invoke('get-java-versions', forceRescan),
   },
-  completeReinstall: (profiles) => ipcRenderer.invoke('complete-reinstall', profiles),
-  onReinstallProgress: (callback) => {
-    const listener = (_event, status) => callback(status)
-    ipcRenderer.on('reinstall-progress', listener)
-    return () => ipcRenderer.removeListener('reinstall-progress', listener)
+
+  loaders: {
+    forgeVersions: () => invoke('get-forge-versions'),
+    neoforgeVersions: () => invoke('get-neoforge-versions'),
   },
-  showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
-  showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
-  pingServer: (serverIp) => ipcRenderer.invoke('ping-server', serverIp),
-  readImageFile: (filePath) => ipcRenderer.invoke('read-image-file', filePath),
-  exportProfile: (data) => ipcRenderer.invoke('export-profile', data),
-  importPreview: (data) => ipcRenderer.invoke('import-preview', data),
-  importProfile: (data) => ipcRenderer.invoke('import-profile', data),
-  readFileAsBase64: (filePath) => ipcRenderer.invoke('read-file-as-base64', filePath),
-  saveTempFile: (data) => ipcRenderer.invoke('save-temp-file', data),
-  showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
-  windowMinimize: () => ipcRenderer.send('window-minimize'),
-  windowClose: () => ipcRenderer.send('window-close'),
-  // ===== Cosmetics Filesystem Operations =====
-  saveCosmeticFiles: (data) => ipcRenderer.invoke('save-cosmetic-files', data),
-  readCosmeticFile: (filePath) => ipcRenderer.invoke('read-cosmetic-file', filePath),
-  // ===== Cosmetics Progress (live from Minecraft client) =====
-  onCosmeticProgress: (callback) => {
-    const listener = (_event, data) => callback(data);
-    ipcRenderer.on('cosmetic-progress', listener);
-    return () => ipcRenderer.removeListener('cosmetic-progress', listener);
+
+  servers: {
+    ping: (serverIp) => invoke('ping-server', serverIp),
   },
-  // Friends API
-  getFriendsStore: () => ipcRenderer.invoke('get-friends-store'),
-  saveFriendsStore: (data) => ipcRenderer.invoke('save-friends-store', data),
-  searchUsers: (query) => ipcRenderer.invoke('search-users', query),
-  sendFriendRequest: (userId) => ipcRenderer.invoke('send-friend-request', userId),
-  acceptFriendRequest: (userId) => ipcRenderer.invoke('accept-friend-request', userId),
-  declineFriendRequest: (userId) => ipcRenderer.invoke('decline-friend-request', userId),
-  blockUser: (userId) => ipcRenderer.invoke('block-user', userId),
-  removeFriend: (userId) => ipcRenderer.invoke('remove-friend', userId),
-  updateFriendStatus: (status) => ipcRenderer.invoke('update-friend-status', status),
-  updateFriendActivity: (activity) => ipcRenderer.invoke('update-friend-activity', activity),
-  buildInviteLink: (payload) => ipcRenderer.invoke('build-invite-link', payload),
-  sendFriendInvitation: (data) => ipcRenderer.invoke('send-friend-invitation', data),
-  acceptFriendInvitation: (notificationId) => ipcRenderer.invoke('accept-friend-invitation', notificationId),
-  declineFriendInvitation: (notificationId) => ipcRenderer.invoke('decline-friend-invitation', notificationId),
-  saveFriendAvatar: (filePath) => ipcRenderer.invoke('save-friend-avatar', filePath),
-  saveFriendBanner: (filePath) => ipcRenderer.invoke('save-friend-banner', filePath),
-  onDeepLinkInvite: (callback) => {
-    const listener = (_event, payload) => callback(payload);
-    ipcRenderer.on('deep-link-invite', listener);
-    return () => ipcRenderer.removeListener('deep-link-invite', listener);
+
+  screenshots: {
+    collect: () => invoke('collect-all-screenshots'),
+    delete: (payload) => invoke('delete-screenshot-file', payload),
+    openFolder: () => invoke('open-screenshots-folder'),
   },
-  getActiveLaunches: () => ipcRenderer.invoke('get-active-launches'),
-  detectLanServer: (folderName) => ipcRenderer.invoke('detect-lan-server', folderName),
-  getHostedServers: () => ipcRenderer.invoke('get-hosted-servers'),
-  // Issue 24: Custom version upload
-  uploadLocalMod: (data) => ipcRenderer.invoke('upload-local-mod', data),
-  onUploadProgress: (callback) => {
-    const listener = (_event, data) => callback(data);
-    ipcRenderer.on('upload-progress', listener);
-    return () => ipcRenderer.removeListener('upload-progress', listener);
+
+  // Long-running work reports here so the footer bar survives navigation.
+  tasks: {
+    onProgress: (callback) => subscribe('background-task-progress', callback),
+  },
+
+  updates: {
+    state: () => invoke('bamboo:updates:state'),
+    check: () => invoke('bamboo:updates:check'),
+    install: () => invoke('bamboo:updates:install'),
+    onStatus: (callback) => subscribe('bamboo:updates:status', callback),
+  },
+
+  system: {
+    copy: (text) => send('copy-to-clipboard', text),
+    openExternal: (url) => send('open-external-url', url),
   },
 })
+
+window.addEventListener('load', () => {
+  requestAnimationFrame(() => {
+    ipcRenderer.invoke('bamboo:ui:ready').catch(() => {})
+  })
+}, { once: true })

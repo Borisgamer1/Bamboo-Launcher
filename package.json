@@ -1,0 +1,105 @@
+{
+  "name": "bamboo-launcher",
+  "version": "0.2.1",
+  "description": "Modern Minecraft Launcher",
+  "author": "Boris",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:core && tsc -b && vite build",
+    "electron": "npm run build:core && electron .",
+    "dist": "electron-builder",
+    "release": "npm run build && electron-builder",
+    "release:publish": "npm run build && electron-builder --win nsis --publish always",
+    "build:core": "tsc -p tsconfig.electron.json",
+    "test:core": "npm run build:core && node --test tests/core.test.cjs tests/wiring.test.cjs tests/startup-order.test.cjs tests/auth.test.cjs tests/java.test.cjs tests/version.test.cjs tests/download.test.cjs tests/launch.test.cjs tests/gamesettings.test.cjs tests/keybinds-defaults.test.cjs tests/loaders.test.cjs tests/instances.test.cjs tests/mods.test.cjs tests/mods-provider.test.cjs tests/mods-resolver.test.cjs tests/mods-updates.test.cjs tests/mods-store.test.cjs tests/mods-curseforge-parity.test.cjs tests/mods-fuzz.test.cjs tests/mods-telemetry.test.cjs tests/download-stream.test.cjs tests/modpack-handlers.test.cjs tests/background-tasks.test.cjs tests/mod-handlers.test.cjs tests/curseforge-search.test.cjs tests/mmc-lock.test.cjs tests/telemetry-support.test.cjs tests/resilience.test.cjs tests/secrets.test.cjs tests/palette.test.cjs tests/dialogFocus.test.cjs tests/format.test.cjs tests/p9-foundation.test.cjs tests/p10-java-resolver.test.cjs tests/jvm.test.cjs tests/logs.test.cjs tests/join.test.cjs tests/join-queue.test.cjs tests/p14-cleanup.test.cjs tests/description-html.test.cjs tests/ipc-owner.test.cjs tests/preload-contract.test.cjs tests/screenshots.test.cjs",
+    "bench:mods": "npm run build:core && node --expose-gc bench/mods-bench.cjs",
+    "lint": "eslint . --max-warnings 0",
+    "launch:dryrun": "npm run build:core && node scripts/launch-dryrun.cjs",
+    "test:offline": "npm run build:core && node scripts/offline-guard.cjs",
+    "support:e2e": "npm run build:core && node scripts/support-bundle-e2e.cjs"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.2",
+    "@types/three": "^0.185.1",
+    "@xhayper/discord-rpc": "^1.3.4",
+    "adm-zip": "^0.4.16",
+    "dompurify": "^3.4.17",
+    "electron-updater": "^6.8.11",
+    "framer-motion": "^12.42.2",
+    "lucide-react": "0.475.0",
+    "marked": "^18.1.2",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "skinview3d": "^3.4.2",
+    "tailwindcss": "^4.3.2",
+    "three": "^0.156.0",
+    "unzipper": "^0.12.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^30.0.0",
+    "electron-builder": "^26.0.12",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "jsdom": "^30.1.3",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.12"
+  },
+  "build": {
+    "appId": "de.bamboo.launcher.app",
+    "productName": "Bamboo Launcher",
+    "copyright": "Copyright © 2026 Boris",
+    "artifactName": "Bamboo-Launcher-Setup-${version}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Borisgamer1",
+        "repo": "Bamboo-Launcher",
+        "releaseType": "release"
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "main.js",
+      "preload.js",
+      "package.json",
+      "assets/**/*",
+      "src/*.js",
+      "resources/**/*",
+      "!resources/Instanz Vorlagen/**"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Bamboo Launcher"
+    }
+  }
+}
