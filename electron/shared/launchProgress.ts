@@ -7,14 +7,13 @@
  */
 export const LAUNCH_PROGRESS_CAP = 97;
 
-// Much more exponential: stays very low for a long time, rises very late
-const EXPONENTIAL_K = 4.5;
+// Below 1 so the bar stays calm early and accelerates: at 30% real progress it
+// shows 11, at 80% it shows 68. The display never reaches 100 before ready.
+const CURVE_EXPONENT = 1.8;
 
 export function launchDisplayPercent(realPercent: number): number {
   if (!Number.isFinite(realPercent) || realPercent <= 0) return 0;
   if (realPercent >= 100) return 100;
   const ratio = Math.min(1, Math.max(0, realPercent / 100));
-  // Normalized exponential curve: (e^(k*r) - 1) / (e^k - 1)
-  const exponentialValue = (Math.exp(EXPONENTIAL_K * ratio) - 1) / (Math.exp(EXPONENTIAL_K) - 1);
-  return Math.min(LAUNCH_PROGRESS_CAP, 100 * exponentialValue);
+  return Math.min(LAUNCH_PROGRESS_CAP, 100 * Math.pow(ratio, CURVE_EXPONENT));
 }

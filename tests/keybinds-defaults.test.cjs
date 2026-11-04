@@ -14,6 +14,9 @@ const path = require('node:path')
 const { test } = require('node:test')
 
 const ROOT = path.join(__dirname, '..')
+// main.js writes the options.txt sync marker through these two globals.
+const shellLog = { debug() {}, info() {}, warn() {}, error() {} }
+const crypto = require('node:crypto')
 
 function loadOptionsWriter() {
   const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
@@ -24,10 +27,12 @@ function loadOptionsWriter() {
     'fs',
     'path',
     'console',
+    'shellLog',
+    'crypto',
     `${source.slice(start, end)}; return { buildOptionsTxt, writeFirstRunOptions, normalizeKeyBindings };`,
   )
   const silent = { log() {}, warn() {}, error() {} }
-  return factory(fs, path, silent)
+  return factory(fs, path, silent, shellLog, crypto)
 }
 
 const DEFAULTS = {
@@ -50,12 +55,14 @@ function loadOptionsApplier() {
     'path',
     'console',
     'require',
+    'shellLog',
+    'crypto',
     `${source.slice(writerStart, writerEnd)}\n${source.slice(start, end)};\n` +
       'return { buildOptionsTxt, writeFirstRunOptions, applyLauncherGameOptions };',
   )
   const silent = { log() {}, warn() {}, error() {} }
   const shim = (id) => require(id.startsWith('./') ? path.join(ROOT, id.slice(2)) : id)
-  return factory(fs, path, silent, shim)
+  return factory(fs, path, silent, shim, shellLog, crypto)
 }
 
 test('a new instance gets the launcher keybind defaults in its options.txt', (context) => {

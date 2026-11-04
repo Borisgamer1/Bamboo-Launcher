@@ -421,9 +421,11 @@ function normalizeKeyBindings(bindings) {
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
-// The launcher may only rewrite options.txt while the file still matches the
-// version it wrote itself. Minecraft rewrites the file on exit, and from then
-// on it belongs to the player: their in-game changes are never reset.
+// The launcher remembers the values it wrote. Minecraft rewrites options.txt on
+// exit, so a whole-file hash would block every later launch and a launcher
+// setting would only ever land once. Per value instead: the launcher rewrites a
+// line only while it still holds the launcher's own value, so an in-game edit the
+// user made is never reset.
 const OPTIONS_SYNC_FILE = '.bamboo-options-sync.json';
 
 function optionsFileHash(text) {
@@ -433,17 +435,21 @@ function optionsFileHash(text) {
 function readOptionsSyncState(gameDir) {
   try {
     const parsed = JSON.parse(fs.readFileSync(path.join(gameDir, OPTIONS_SYNC_FILE), 'utf8'));
-    return parsed && typeof parsed.hash === 'string' ? parsed : null;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      hash: typeof parsed.hash === 'string' ? parsed.hash : null,
+      values: parsed.values && typeof parsed.values === 'object' ? parsed.values : {},
+    };
   } catch {
     return null;
   }
 }
 
-function writeOptionsSyncState(gameDir, text) {
+function writeOptionsSyncState(gameDir, text, values) {
   try {
     fs.writeFileSync(
       path.join(gameDir, OPTIONS_SYNC_FILE),
-      JSON.stringify({ hash: optionsFileHash(text), updatedAt: Date.now() }, null, 2),
+      JSON.stringify({ hash: optionsFileHash(text), values: values || {}, updatedAt: Date.now() }, null, 2),
       'utf8',
     );
   } catch (error) {
@@ -730,12 +736,9 @@ function applyLauncherGameOptions(gameDir, options) {
   if (!fs.existsSync(optionsPath)) return [];
 
   const original = fs.readFileSync(optionsPath, 'utf8');
-  const syncState = readOptionsSyncState(gameDir);
-  // No marker (older profile) or a different hash means the file changed
-  // outside the launcher. Keep the player's settings instead of resetting them.
-  if (!syncState || syncState.hash !== optionsFileHash(original)) {
-    return [];
-  }
+  // An older profile has no marker; its values are simply applied once.
+  const written = readOptionsSyncState(gameDir)?.values ?? {};
+  const wrote = {};
   const eol = original.includes('\r\n') ? '\r\n' : '\n';
   const lines = original.split(/\r?\n/);
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
@@ -746,10 +749,16 @@ function applyLauncherGameOptions(gameDir, options) {
   let changed = false;
 
   const setOption = (key, value, reportKey) => {
-    const line = key + ':' + value;
+    const desired = String(value);
+    const line = key + ':' + desired;
     const index = lines.findIndex((entry) => entry.startsWith(key + ':'));
+    const current = index >= 0 ? lines[index].slice(key.length + 1) : undefined;
+    // The launcher rewrote this value last time and the file no longer has it:
+    // the player changed it in game, so it stays theirs.
+    if (index >= 0 && current !== desired && written[key] === desired) return;
+    wrote[key] = desired;
     if (index >= 0) {
-      if (lines[index] === line) return;
+      if (current === desired) return;
       lines[index] = line;
     } else {
       lines.push(line);
@@ -798,7 +807,7 @@ function applyLauncherGameOptions(gameDir, options) {
   if (!changed) return [];
   const next = lines.join(eol) + eol;
   fs.writeFileSync(optionsPath, next, 'utf8');
-  writeOptionsSyncState(gameDir, next);
+  writeOptionsSyncState(gameDir, next, { ...written, ...wrote });
   return applied;
 }
 

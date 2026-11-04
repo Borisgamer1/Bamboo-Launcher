@@ -93,8 +93,9 @@ async function releaseSource(cacheDir: string): Promise<ModSource | null> {
     const assets = (release.assets ?? []).filter(
       (asset) => typeof asset.name === 'string' && /^bamboo-cosmetics-.*\.jar$/i.test(asset.name),
     )
-    const asset = assets.find((entry) => /26\.3/i.test(entry.name!)) ?? assets[0]
-    if (!release.tag_name || !asset?.browser_download_url) throw new Error('release has no jar')
+    // A release for another Minecraft version must never land in a 26.3 instance.
+    const asset = assets.find((entry) => entry.name!.includes(`-${SUPPORTED_MINECRAFT}-`))
+    if (!release.tag_name || !asset?.browser_download_url) throw new Error(`release has no ${SUPPORTED_MINECRAFT} jar`)
 
     if (cached && state!.tag === release.tag_name && cachedSize !== null) {
       await writeState(stateFile, { ...state!, checkedAt: Date.now() })
