@@ -7,6 +7,36 @@ version, so every release needs a block here in **both** languages.
 Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 `New` / `Better` / `Fixed` / `Removed` for English.
 
+## 0.2.4 - 2026-11-04
+
+### Neu
+
+- Die Bamboo-Cosmetics-Mod wird vor jedem Start automatisch in die Instanz gelegt, auf Wunsch in der neuesten Version direkt aus dem Release.
+- Der Kosmetik-Shop zeigt Vorschaubilder direkt im Tab.
+
+### Besser
+
+- Einstellungen aus dem Launcher landen auch nach dem ersten Spielstart wieder in `options.txt`.
+
+### Behoben
+
+- Grafik- und Steuerungseinstellungen wurden nach dem ersten Minecraft-Start stillschweigend ignoriert.
+- Eine Release-Jar für eine andere Minecraft-Version konnte in einer 26.3-Instanz landen.
+
+### New
+
+- The Bamboo Cosmetics mod is placed into the instance before every start, in the newest release build when one is available.
+- The cosmetics shop shows preview images right in the tab.
+
+### Better
+
+- Launcher settings reach `options.txt` again after the first game start.
+
+### Fixed
+
+- Graphics and control settings were silently ignored after the first Minecraft start.
+- A release jar for a different Minecraft version could land in a 26.3 instance.
+
 ## 0.2.3 - 2026-11-01
 
 ### Neu

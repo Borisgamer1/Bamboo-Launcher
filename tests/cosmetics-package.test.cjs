@@ -106,6 +106,9 @@ test('bundled catalog points at artwork that exists', () => {
 })
 
 test('shop entries expose resolved artwork instead of a filesystem path', async () => {
+  // The remote catalog is tried first on purpose; the offline guard must not
+  // count this test's deliberate request as a hidden dependency.
+  process.env.BAMBOO_OFFLINE_EXPECT = 'raw.githubusercontent.com'
   const { loadShop } = require('../dist-electron/cosmetics/shop.js')
   const catalog = await loadShop()
   assert.ok(catalog.items.length > 0)

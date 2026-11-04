@@ -43,9 +43,13 @@ try {
 }
 fs.rmSync(logFile, { force: true })
 
-if (blocked.length > 0) {
-  console.error(`Offline guard: ${blocked.length} blocked network attempt(s)`)
-  for (const entry of blocked) {
+const unexpected = blocked.filter((entry) => !entry.expected)
+for (const entry of blocked) {
+  if (entry.expected) console.log(`Offline guard: expected block, ${entry.kind} -> ${entry.host}`)
+}
+if (unexpected.length > 0) {
+  console.error(`Offline guard: ${unexpected.length} unexpected network attempt(s)`)
+  for (const entry of unexpected) {
     console.error(`- ${entry.kind} -> ${entry.host}`)
   }
 }
@@ -53,5 +57,5 @@ if (result.status !== 0) {
   console.error(`Offline guard: tests failed (exit ${result.status})`)
   process.exit(result.status ?? 1)
 }
-if (blocked.length > 0) process.exit(1)
+if (unexpected.length > 0) process.exit(1)
 console.log(`Offline guard: ${tests.length} test files, 0 external network attempts`)

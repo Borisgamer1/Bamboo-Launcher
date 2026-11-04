@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 /**
@@ -48,6 +48,11 @@ export interface EnsureBambooModOptions {
 
 /** One lookup per app run and per cache directory. */
 const SOURCES = new Map<string, ModSource | null>()
+
+/** Read and write, not copyFile: the shipped jar lives inside app.asar. */
+async function copyJar(source: string, target: string): Promise<void> {
+  await writeFile(target, await readFile(source))
+}
 
 async function sizeOf(target: string): Promise<number | null> {
   try {
@@ -164,12 +169,12 @@ export async function ensureBambooMod(
   const target = join(mods, source.name)
   const targetSize = await sizeOf(target)
   if (targetSize === null) {
-    await copyFile(source.path, target)
+    await copyJar(source.path, target)
     return 'installed'
   }
   // Same name and same size is taken as the same build; a release changes the file.
   if (targetSize !== sourceSize) {
-    await copyFile(source.path, target)
+    await copyJar(source.path, target)
     return 'updated'
   }
   return 'present'

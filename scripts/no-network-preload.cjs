@@ -11,6 +11,17 @@ const net = require('node:net')
 
 const blocked = []
 const logFile = process.env.BAMBOO_OFFLINE_LOG
+// A test that proves the offline fallback expects its blocked host; anything
+// else is a hidden dependency and fails the run. Read per call, so the test
+// can declare its expectation right before it triggers the request.
+function expectedHosts() {
+  return new Set(
+    String(process.env.BAMBOO_OFFLINE_EXPECT ?? '')
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
 
 function isLoopback(hostname) {
   const host = String(hostname ?? '').replace(/^\[|\]$/g, '').toLowerCase()
@@ -19,7 +30,12 @@ function isLoopback(hostname) {
 
 function block(kind, host) {
   const message = `offline-guard blocked ${kind} to ${host}`
-  const entry = { kind, host, stack: new Error(message).stack }
+  const entry = {
+    kind,
+    host,
+    expected: expectedHosts().has(String(host ?? '').toLowerCase()),
+    stack: new Error(message).stack,
+  }
   blocked.push(entry)
   // Append immediately: the guard runs every test file in its own process, so
   // writing the whole array on exit lets the last process overwrite the rest.
@@ -86,5 +102,5 @@ net.connect = net.createConnection = function guardedConnect(...args) {
 }
 
 process.on('exit', () => {
-  if (blocked.length > 0) process.exitCode = 99
+  if (blocked.some((entry) => !entry.expected)) process.exitCode = 99
 })
