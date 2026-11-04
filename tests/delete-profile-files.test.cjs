@@ -51,10 +51,11 @@ test('the delete handler refuses an invalid name before touching anything', () =
 // Every handler that touches an instance directory reaches it through the same
 // guard. A raw path.join(rootPath, 'profiles', folderName) let ".." through in
 // seven of them before this test existed.
+// save-profiles builds no path at all since sizes moved off the save path; its
+// folder names are only written into profiles.json.
 const GUARDED_HANDLERS = [
   'open-profile-folder',
   'open-instance-folder',
-  'save-profiles',
   'export-profile',
   'get-screenshots',
   'launch-game',

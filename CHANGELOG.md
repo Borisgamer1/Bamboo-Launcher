@@ -7,6 +7,26 @@ version, so every release needs a block here in **both** languages.
 Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 `New` / `Better` / `Fixed` / `Removed` for English.
 
+## 0.2.6 - 2026-11-04
+
+### Behoben
+
+- Die Instanzliste wird atomar gespeichert. Eine unlesbare `profiles.json` wird als Kopie gesichert statt beim nächsten Speichern durch eine leere Liste ersetzt.
+- Die Instanzgrößen werden im Hintergrund ermittelt, statt beim Speichern jede Datei jeder Instanz zu zählen.
+- Nach einem fehlgeschlagenen Start zeigt Discord wieder den Launcher statt dauerhaft „Starting…“.
+- Eine laufende Instanz lässt sich nicht mehr löschen; der Fehler erscheint als Hinweis, statt die Instanz halb zu entfernen.
+- Wird eine laufende Instanz umbenannt, ziehen Start-Registry und Core-Register mit.
+- Die Pfadprüfung beim Hashen von Inhaltsdateien vergleicht mit Pfadtrenner, nicht mit einer rohen Zeichenkette.
+
+### Fixed
+
+- The instance list is written atomically. An unreadable `profiles.json` is kept as a copy instead of being replaced by an empty list on the next save.
+- Instance sizes are measured in the background instead of counting every file on every save.
+- After a failed launch Discord shows the launcher again instead of staying on "Starting…".
+- A running instance can no longer be deleted; the error is shown instead of removing it halfway.
+- Renaming a running instance moves the launch registry and the core register along.
+- Content-file hashing checks the path with a separator instead of a raw prefix.
+
 ## 0.2.5 - 2026-11-04
 
 ### Behoben

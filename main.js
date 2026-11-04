@@ -128,6 +128,18 @@ function profileFolderOf(profile) {
   return profileFolderSlug(profile?.name || profile?.id || 'instance');
 }
 
+// An unreadable profiles.json is the only copy of the instance list, so it is
+// copied aside before any caller can overwrite it with an empty list.
+function quarantineProfilesFile(profilesPath) {
+  const backup = `${profilesPath}.corrupt-${Date.now()}`;
+  try {
+    fs.copyFileSync(profilesPath, backup);
+    shellLog.warn('profiles.json quarantined', { backup });
+  } catch (error) {
+    shellLog.error('profiles.json could not be quarantined', { profilesPath, error: error.message });
+  }
+}
+
 function readProfilesSync(rootPath) {
   const profilesPath = path.join(rootPath, 'profiles.json');
   if (!fs.existsSync(profilesPath)) return [];
@@ -136,13 +148,26 @@ function readProfilesSync(rootPath) {
     return Array.isArray(parsed) ? parsed : [];
   } catch (error) {
     shellLog.warn('profiles.json is unreadable', { path: profilesPath, error: error.message });
+    quarantineProfilesFile(profilesPath);
     return [];
   }
 }
 
+// Same rule as electron/atomic.ts: write a sibling temp file, then rename, so a
+// crash mid-write cannot leave a truncated instance list behind.
 function writeProfilesSync(rootPath, profiles) {
   fs.mkdirSync(rootPath, { recursive: true });
-  fs.writeFileSync(path.join(rootPath, 'profiles.json'), JSON.stringify(profiles, null, 2));
+  const target = path.join(rootPath, 'profiles.json');
+  const temp = `${target}.tmp-${process.pid}`;
+  fs.writeFileSync(temp, JSON.stringify(profiles, null, 2));
+  fs.renameSync(temp, target);
+}
+
+// Directory containment with a separator, so "profiles-x" never counts as
+// inside "profiles".
+function isInsideDirectory(parent, child) {
+  const relative = path.relative(path.resolve(parent), path.resolve(child));
+  return relative.length > 0 && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 function nextFreeProfileFolder(rootPath, base, used) {
@@ -917,6 +942,12 @@ ipc.handle('delete-profile-files', async (_event, folderName) => {
     shellLog.warn('delete-profile-files: rejected folder name', { folderName });
     return { success: false, error: 'Ungültiger Instanzordner.' };
   }
+  // A running game holds files open; a recursive delete would stop halfway and
+  // leave a broken instance behind.
+  if (ACTIVE_LAUNCHES.has(folderName)) {
+    shellLog.warn('delete-profile-files: instance is running', { folderName });
+    return { success: false, error: 'Die Instanz läuft noch. Beende das Spiel, dann löschen.' };
+  }
   let deleted = false;
   try {
     if (fs.existsSync(gameDir)) {
@@ -928,6 +959,8 @@ ipc.handle('delete-profile-files', async (_event, folderName) => {
     shellLog.error('profile folder could not be deleted', { gameDir, error: error.message });
     return { success: false, error: error.message };
   }
+  instanceSizeCache.delete(String(folderName).toLowerCase());
+  instanceSizeDirty.delete(String(folderName).toLowerCase());
   const screenshotsDir = path.join(rootPath, 'screenshots');
   let screenshots = 0;
   if (fs.existsSync(screenshotsDir)) {
@@ -1497,19 +1530,70 @@ ipc.handle('get-profiles', async () => {
   return withStableInstanceFolders(profiles ?? []);
 });
 
-function getFolderSize(dirPath) {
-  if (!fs.existsSync(dirPath)) return 0;
+// Instance sizes are measured off the save path: writing the instance list must
+// not walk every folder (a modpack has tens of thousands of files). The cache is
+// filled by a background pass that rewrites profiles.json only when a size
+// actually moved, so the UI never shows a stale number for long.
+const instanceSizeCache = new Map();
+const instanceSizeDirty = new Set();
+let instanceSizeRefresh = null;
+
+function markInstanceSizeDirty(folderName) {
+  const key = String(folderName || '').toLowerCase();
+  if (key) instanceSizeDirty.add(key);
+}
+
+async function measureFolderBytes(dirPath) {
+  const entries = await fs.promises.readdir(dirPath, { withFileTypes: true }).catch(() => null);
+  if (!entries) return 0;
   let total = 0;
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dirPath, entry.name);
     if (entry.isDirectory()) {
-      total += getFolderSize(fullPath);
+      total += await measureFolderBytes(fullPath);
     } else {
-      total += fs.statSync(fullPath).size;
+      total += (await fs.promises.stat(fullPath).catch(() => ({ size: 0 }))).size;
     }
   }
   return total;
+}
+
+async function refreshInstanceSizes(rootPath) {
+  const profiles = readProfilesSync(rootPath);
+  if (profiles.length === 0) return;
+  let changed = false;
+  const next = [];
+  for (const profile of profiles) {
+    if (!profile || typeof profile !== 'object') {
+      // Never drop an entry here: this pass only rewrites size strings.
+      next.push(profile);
+      continue;
+    }
+    const folderName = profileFolderOf(profile);
+    const key = folderName.toLowerCase();
+    const dirPath = profileDirOrNull(rootPath, folderName);
+    if (!dirPath || !instanceSizeDirty.has(key)) {
+      next.push({ ...profile, folderName });
+      continue;
+    }
+    const bytes = await measureFolderBytes(dirPath);
+    instanceSizeCache.set(key, bytes);
+    instanceSizeDirty.delete(key);
+    next.push({ ...profile, folderName, size: formatSize(bytes) || '0 B' });
+    changed = true;
+  }
+  if (changed) writeProfilesSync(rootPath, next);
+}
+
+function scheduleInstanceSizeRefresh(rootPath) {
+  if (instanceSizeRefresh) return;
+  instanceSizeRefresh = new Promise((resolve) => setTimeout(resolve, 250))
+    .then(() => refreshInstanceSizes(rootPath))
+    .catch((error) => shellLog.debug('instance size refresh failed', { error: error.message }))
+    .finally(() => {
+      instanceSizeRefresh = null;
+      if (instanceSizeDirty.size > 0) scheduleInstanceSizeRefresh(rootPath);
+    });
 }
 
 function formatSize(bytes) {
@@ -1525,11 +1609,17 @@ ipc.handle('save-profiles', async (_event, profiles) => {
   if (!fs.existsSync(rootPath)) fs.mkdirSync(rootPath, { recursive: true });
   const enriched = profiles.map(p => {
     const folderName = profileFolderOf(p);
-    const dirPath = profileDirOrNull(rootPath, folderName);
-    const bytes = dirPath ? getFolderSize(dirPath) : 0;
-    return { ...p, folderName, size: formatSize(bytes) || '0 B' };
+    const key = folderName.toLowerCase();
+    const cached = instanceSizeCache.get(key);
+    // No measured size yet: keep what the renderer had and queue the folder.
+    if (cached === undefined) instanceSizeDirty.add(key);
+    const size = cached === undefined
+      ? (typeof p.size === 'string' && p.size ? p.size : '0 B')
+      : (formatSize(cached) || '0 B');
+    return { ...p, folderName, size };
   });
-  fs.writeFileSync(path.join(rootPath, 'profiles.json'), JSON.stringify(enriched, null, 2));
+  writeProfilesSync(rootPath, enriched);
+  scheduleInstanceSizeRefresh(rootPath);
   return true;
 });
 
@@ -2469,6 +2559,7 @@ ipc.handle('install-modpack-mrpack', async (event, { folderName, mcVersion, load
     return { success: false, error: `Loader-Installation fehlgeschlagen: ${loaderError}`, modCount, index, loaderInstalled };
   }
   emitProgress(100, 'Modpack fertig');
+  markInstanceSizeDirty(profileFolder);
   return {
     success: true,
     modCount,
@@ -2492,7 +2583,7 @@ ipc.handle('install-modpack-mrpack', async (event, { folderName, mcVersion, load
 ipc.handle('download-mod', async (event, payload) => {
   const modsBridge = getLegacyModsBridge();
   if (modsBridge && typeof modsBridge.installLegacyMod === 'function') {
-    return modsBridge.installLegacyMod(payload, {
+    const result = await modsBridge.installLegacyMod(payload, {
       curseforgeApiKey: readCurseForgeApiKey(),
       onBackgroundTask: (progress) => {
         try {
@@ -2502,6 +2593,8 @@ ipc.handle('download-mod', async (event, payload) => {
         }
       },
     });
+    if (result && result.success !== false) markInstanceSizeDirty(payload?.folderName);
+    return result;
   }
   // The core bridge owns the download and its path validation. A second copy
   // here wrote path.join(destDir, filename) with an API-supplied name.
@@ -2801,6 +2894,9 @@ ipc.on('launch-game', async (event, args) => {
     shellLog.debug('launch-game: start command', { command: activeHandle.plan.displayCommand.join(' ') });
   } catch (error) {
     ACTIVE_LAUNCHES.delete(folderName);
+    // The presence was switched to "Starting" right before the spawn; without
+    // this reset a failed launch leaves it there forever.
+    updateDiscordPresence('back');
     shellLog.error('launch-game failed', { profileName, folderName, error: error.message });
     event.reply('launch-status', `Fehler: ${error.message}`);
     emitLaunchFailed(error.message);
@@ -2820,53 +2916,16 @@ ipc.handle('kill-game', async (_event, folderName) => {
 });
 
 ipc.handle('delete-content-file', async (_event, payload) => {
+  // The core owns content removal (containment check + empty-folder cleanup).
+  // The legacy copy here used a raw prefix test and shipped in the app image
+  // anyway, so two implementations of one delete existed.
   const modsBridge = getLegacyModsBridge();
-  if (modsBridge && typeof modsBridge.removeLegacyContent === 'function') {
-    return modsBridge.removeLegacyContent(payload);
-  }
-  const { folderName, fileName, type } = payload || {};
-  const rootPath = gameRoot();
-  const profilesDir = path.join(rootPath, 'profiles');
-  
-  if (!folderName || !fileName) {
-    shellLog.warn('delete-content-file: missing folderName or fileName');
+  if (!modsBridge || typeof modsBridge.removeLegacyContent !== 'function') {
     return false;
   }
-  
-  const typeDir = downloadFolder(type);
-
-  const target = path.join(profilesDir, folderName, typeDir, fileName);
-  
-  const resolved = path.resolve(target);
-  if (!resolved.startsWith(path.resolve(profilesDir))) {
-    shellLog.warn('delete-content-file: path escapes profiles directory', { resolved });
-    return false;
-  }
-
-  if (!fs.existsSync(resolved)) {
-    shellLog.debug('delete-content-file: file already absent', { resolved });
-    return true;
-  }
-
-  try {
-    fs.unlinkSync(resolved);
-    shellLog.debug('delete-content-file: deleted', { resolved });
-
-    const parentDir = path.dirname(resolved);
-    if (fs.existsSync(parentDir) && fs.readdirSync(parentDir).length === 0) {
-      try {
-        fs.rmdirSync(parentDir);
-        shellLog.debug('delete-content-file: empty folder removed', { parentDir });
-      } catch (e) {
-        shellLog.debug('delete-content-file: empty folder could not be removed', { parentDir, error: e.message });
-      }
-    }
-
-    return true;
-  } catch (e) {
-    shellLog.error('delete-content-file failed', { resolved, error: e.message });
-    return false;
-  }
+  const result = await modsBridge.removeLegacyContent(payload);
+  if (result) markInstanceSizeDirty(payload?.folderName);
+  return result;
 });
 
 function hashFileSha1(filePath) {
@@ -2883,7 +2942,7 @@ ipc.handle('hash-content-files', async (_event, payload = {}) => {
   const { folderName, files } = payload || {};
   const profilesDir = path.resolve(gameRoot(), 'profiles');
   const profileDir = path.resolve(profilesDir, String(folderName || ''));
-  if (!folderName || !profileDir.startsWith(profilesDir) || !Array.isArray(files)) return {};
+  if (!folderName || !isInsideDirectory(profilesDir, profileDir) || !Array.isArray(files)) return {};
   const result = {};
   const entries = files
     .filter((file) => file && typeof file.fileName === 'string' && file.fileName.length > 0)
@@ -2893,9 +2952,9 @@ ipc.handle('hash-content-files', async (_event, payload = {}) => {
     await Promise.all(batch.map(async (file) => {
       try {
         const dir = path.resolve(profileDir, downloadFolder(file.type));
-        if (!dir.startsWith(profileDir)) return;
+        if (!isInsideDirectory(profileDir, dir)) return;
         const filePath = path.resolve(dir, path.basename(file.fileName));
-        if (!filePath.startsWith(dir) || !fs.existsSync(filePath)) return;
+        if (!isInsideDirectory(dir, filePath) || !fs.existsSync(filePath)) return;
         result[file.fileName] = await hashFileSha1(filePath);
       } catch (error) {
         shellLog.debug('hash-content-files: file could not be hashed', { file: file.fileName, error: error.message });
@@ -2913,7 +2972,7 @@ ipc.handle('identify-content-files', async (_event, payload = {}) => {
   const { folderName, files } = payload || {};
   const profilesDir = path.resolve(gameRoot(), 'profiles');
   const profileDir = path.resolve(profilesDir, String(folderName || ''));
-  if (!folderName || !profileDir.startsWith(profilesDir) || !Array.isArray(files)) return {};
+  if (!folderName || !isInsideDirectory(profilesDir, profileDir) || !Array.isArray(files)) return {};
   const { curseForgeFingerprint } = require('./dist-electron/mods/fingerprint.js');
   const entries = files
     .filter((file) => file && typeof file.fileName === 'string' && file.fileName.length > 0)
@@ -2924,9 +2983,9 @@ ipc.handle('identify-content-files', async (_event, payload = {}) => {
   for (const entry of entries) {
     try {
       const dir = path.resolve(profileDir, downloadFolder(entry.type));
-      if (!dir.startsWith(profileDir)) continue;
+      if (!isInsideDirectory(profileDir, dir)) continue;
       const filePath = path.resolve(dir, path.basename(entry.fileName));
-      if (!filePath.startsWith(dir) || !fs.existsSync(filePath)) continue;
+      if (!isInsideDirectory(dir, filePath) || !fs.existsSync(filePath)) continue;
       const buffer = fs.readFileSync(filePath);
       sha1ByFile.set(entry.fileName, crypto.createHash('sha1').update(buffer).digest('hex'));
       fingerprintByFile.set(entry.fileName, curseForgeFingerprint(buffer) >>> 0);
@@ -3244,6 +3303,7 @@ ipc.handle('upload-local-mod', async (event, { folderName, filePath, itemType, t
       else if (fileName.includes('-neoforge')) modLoader = 'neoforge';
     }
     emitTaskProgress(100, `Datei installiert: ${fileName}`);
+    markInstanceSizeDirty(folderName);
     return { success: true, fileName: fileName, destPath: destPath, modName: modName, modVersion: modVersion, modLoader: modLoader, mcVersion: mcVersion, iconBase64: iconBase64, itemType: subDir };
   } catch (e) {
     return { success: false, fileName: filePath ? path.basename(filePath) : '', error: e.message };
@@ -3269,9 +3329,42 @@ ipc.handle('rename-instance', async (_event, { oldFolderName, newName }) => {
       if (fs.existsSync(newDir)) return { success: false, error: 'Folder name already exists' };
       fs.renameSync(oldDir, newDir);
     }
+    // The launch registry is keyed by folder name, so a running instance keeps
+    // its handle under the new key.
+    const activeLaunch = ACTIVE_LAUNCHES.get(currentFolder);
+    if (activeLaunch !== undefined && folderName !== currentFolder) {
+      ACTIVE_LAUNCHES.delete(currentFolder);
+      ACTIVE_LAUNCHES.set(folderName, activeLaunch);
+    }
+    const oldSizeKey = currentFolder.toLowerCase();
+    const newSizeKey = folderName.toLowerCase();
+    if (oldSizeKey !== newSizeKey) {
+      const cachedSize = instanceSizeCache.get(oldSizeKey);
+      if (cachedSize !== undefined) instanceSizeCache.set(newSizeKey, cachedSize);
+      instanceSizeCache.delete(oldSizeKey);
+      instanceSizeDirty.delete(oldSizeKey);
+    }
     profiles[idx].name = newName;
     profiles[idx].folderName = folderName;
     writeProfilesSync(rootPath, profiles);
+    // The core keeps its own instance register; a stale path there would point
+    // every core-side write at the old folder.
+    try {
+      const core = await getBambooCore();
+      if (core) {
+        const found = await core.instanceManager.findByFolder(currentFolder);
+        if (found) {
+          await core.instances.upsert({
+            id: found.instance.id,
+            folderName,
+            path: newDir,
+            updatedAt: Date.now(),
+          });
+        }
+      }
+    } catch (error) {
+      shellLog.warn('rename-instance: core register not updated', { folderName, error: error.message });
+    }
     return { success: true, newFolderName: folderName, profiles: profiles };
   } catch (e) {
     shellLog.error('rename-instance failed', { oldFolderName, error: e.message });

@@ -8,7 +8,7 @@ import { mergeJvmArgumentLayers } from './jvm'
 import type { LaunchPreparation } from './types'
 
 export const LAUNCHER_NAME = 'Bamboo Launcher'
-export const LAUNCHER_VERSION = '0.2.5'
+export const LAUNCHER_VERSION = '0.2.6'
 export const LAUNCH_CLIENT_ID = 'bamboo-launcher'
 
 export type PlaceholderValues = Record<string, string | number>
