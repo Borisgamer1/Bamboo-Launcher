@@ -8,6 +8,9 @@ import { SkinTab } from "./SkinTab";
 
 type CustomizeTab = "cosmetics" | "skin";
 
+const REFRESH_BUTTON =
+  "inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-tertiary transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] hover:bg-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
+
 interface CustomizeViewProps {
   lang: LanguageType;
   /** True while an instance is starting or running. */
@@ -17,14 +20,10 @@ interface CustomizeViewProps {
   instances?: Array<{ folderName?: string; name: string }>;
 }
 
-const REFRESH_BUTTON =
-  "inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-tertiary transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] hover:bg-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
-
 export const CustomizeView: React.FC<CustomizeViewProps> = ({
   lang,
   locked = false,
   onOpenAccounts,
-  instances = [],
 }) => {
   const { addToast } = useToast();
   const api = window.electronAPI?.skins;
@@ -136,15 +135,19 @@ export const CustomizeView: React.FC<CustomizeViewProps> = ({
                 );
               })}
             </div>
-            <button
-              type="button"
-              className={REFRESH_BUTTON}
-              onClick={() => void refresh()}
-              aria-label={de ? "Aktualisieren" : "Refresh"}
-              title={de ? "Aktualisieren" : "Refresh"}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden />
-            </button>
+            {/* Cosmetics carries its own reload next to the package counts. */}
+            {tab === "skin" ? (
+              <button
+                type="button"
+                className={REFRESH_BUTTON}
+                onClick={() => void refresh()}
+                disabled={loading}
+                aria-label={de ? "Aktualisieren" : "Refresh"}
+                title={de ? "Aktualisieren" : "Refresh"}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden />
+              </button>
+            ) : null}
           </div>
         </header>
 
@@ -192,7 +195,7 @@ export const CustomizeView: React.FC<CustomizeViewProps> = ({
                 onOpenAccounts={onOpenAccounts}
               />
             ) : (
-              <CosmeticsTab snapshot={snapshot} lang={lang} instances={instances} />
+              <CosmeticsTab snapshot={snapshot} lang={lang} onRefresh={refresh} />
             )}
           </fieldset>
         )}

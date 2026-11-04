@@ -299,7 +299,6 @@ function App() {
                 <CustomizeView
                   lang={settingsState.lang}
                   locked={launch.isLaunching || launch.runningInstances.length > 0}
-                  instances={instancesState.instances}
                   onOpenAccounts={() => {
                     requestSettingsTarget("accounts");
                     navigation.handleSetActiveTab("settings");

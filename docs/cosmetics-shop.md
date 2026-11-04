@@ -5,13 +5,18 @@ in game: the wardrobe reads the packages and the player picks what to wear.
 
 ## Where the files live
 
+Cosmetics belong to the account, not to one instance. The library is the truth:
+
 ```
-<instance>/bamboo/cosmetics/<name>.cosmiq
+<launcher appData>/cosmetics/<name>.cosmiq     # library
+<instance>/bamboo/cosmetics/<name>.cosmiq      # mirror the game reads
 ```
 
-The game owns this folder and reads it directly, so the launcher never writes a
-second manifest. `Anpassen → Cosmetics` shows exactly the files of the selected
-instance and targets that folder for install and delete.
+The game only reads the instance folder, so every instance gets a copy. Install
+writes the library and all instances, delete removes both, and a start re-syncs
+so an instance created later still sees everything. Packages that exist only in
+an instance folder (hand-exported from the editor) are adopted into the library
+instead of being deleted, and a modified copy is never overwritten.
 
 ## Reading a package
 
@@ -66,6 +71,10 @@ Shape of `catalog.json`:
   the in-game body slot comes from the package itself.
 - Card text comes from the catalog; installing and previewing always re-read the
   package, so a wrong catalog entry cannot change what is written.
+
+Card artwork: add `"image": "./previews/<id>.png"` to an entry. Bundled
+thumbnails are read as data URLs (the renderer cannot touch files), remote ones
+load from raw GitHub.
 
 The launcher requests the public catalog first:
 

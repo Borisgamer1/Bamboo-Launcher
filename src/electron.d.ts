@@ -660,7 +660,24 @@ export interface InstancesApi {
   onLaunchRequest(callback: (folderName: string) => void): Unsubscribe
 }
 
+export interface InstanceModUpdate {
+  /** Installed file name in `mods/`; the row is matched by it. */
+  file: string
+  projectId: string
+  versionId: string
+  versionNumber: string
+  fileName: string
+  url: string
+}
+
+export interface InstanceModUpdateResult {
+  /** Jars Modrinth knows, with or without a newer build. */
+  resolved: string[]
+  updates: InstanceModUpdate[]
+}
+
 export interface ModsApi {
+  checkUpdates(data: { folderName: string }): Promise<InstanceModUpdateResult>
   curseforgeSearch(data: {
     query: string
     sortBy: string
@@ -848,6 +865,8 @@ export interface ShopItem {
   rarity: string
   slots: CosmeticSlot[]
   file: string
+  /** Preview image: data URL from the bundle, https URL from GitHub. */
+  image: string | null
   remote: boolean
 }
 
@@ -858,12 +877,21 @@ export interface ShopCatalog {
 }
 
 export interface CosmeticsApi {
-  list(folderName: string): Promise<InstalledCosmetic[] | undefined>
-  preview(payload: { folderName: string; file: string }): Promise<CosmeticPreview | undefined>
-  remove(payload: { folderName: string; file: string }): Promise<InstalledCosmetic[] | undefined>
+  /** Account-wide library, mirrored into every instance. */
+  list(): Promise<InstalledCosmetic[] | undefined>
+  preview(payload: { file: string }): Promise<CosmeticPreview | undefined>
+  remove(payload: { file: string }): Promise<InstalledCosmetic[] | undefined>
   shop(): Promise<ShopCatalog | undefined>
   shopPreview(id: string): Promise<CosmeticPreview | undefined>
-  install(payload: { folderName: string; id: string }): Promise<InstalledCosmetic[] | undefined>
+  install(payload: { id: string }): Promise<InstalledCosmetic[] | undefined>
+  /** Reachability of the mod's relay; the launcher itself never publishes. */
+  syncStatus(): Promise<CosmeticSyncStatus | undefined>
+}
+
+export interface CosmeticSyncStatus {
+  relay: string
+  online: boolean
+  error?: string
 }
 
 export interface BambooApi {

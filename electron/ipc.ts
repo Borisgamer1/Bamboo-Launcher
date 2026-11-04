@@ -4,6 +4,7 @@ import { createIpcRegistrar, eventless } from './ipc-registry'
 import { createSkinsService, type SkinsService } from './skins/service'
 import { parseCosmiq } from './cosmetics/cosmiq'
 import { loadShop, shopPackageById } from './cosmetics/shop'
+import { syncStatus } from './cosmetics/sync'
 import {
   installPackage,
   listInstalled,
@@ -12,6 +13,9 @@ import {
 } from './cosmetics/store'
 import type { IpcMainLike } from './ipc-registry'
 import { toLegacyJavaVersion, toLegacyJavaVersions, usableJavaRecords } from './java/legacy'
+import { checkInstanceModUpdates } from './mods/instance-updates'
+import { ModrinthClient } from './mods/modrinth'
+import type { ModLoader } from './mods/types'
 import { readLanPort, readLogTail } from './logs/tail'
 import { InstanceLaunchPatchSchema } from './schemas'
 import type { InstanceFile } from './schemas'
@@ -28,15 +32,6 @@ function javaRecordsReader(core: LauncherCore) {
     }
     return usableJavaRecords(records)
   }
-}
-
-async function instanceDirectory(core: LauncherCore, folderName: unknown): Promise<string> {
-  if (typeof folderName !== 'string' || folderName.trim().length === 0) {
-    throw new Error('Keine Instanz ausgewählt')
-  }
-  const found = await core.instanceManager.findByFolder(folderName.trim())
-  if (!found) throw new Error('Instanz nicht gefunden')
-  return found.directory
 }
 
 async function instanceLogFile(core: LauncherCore, folderName: string): Promise<string> {
@@ -255,20 +250,23 @@ export function registerIpc(ipcMain: IpcMainLike, core: LauncherCore): void {
     skinsService().selectCape(capeId === null ? null : String(capeId)),
   ))
   ipc.handle('bamboo:skins:refresh', eventless(() => skinsService().refresh()))
-  ipc.handle('bamboo:cosmetics:list', eventless(async (folderName: unknown) =>
-    listInstalled(await instanceDirectory(core, folderName)),
+  // Cosmetics live on the account: one library, mirrored into every instance.
+  // Resolved per call: registering the channels must not require a fully formed core.
+  const cosmeticsLibrary = () => join(core.paths.appData, 'cosmetics')
+  const cosmeticTargets = async (): Promise<string[]> =>
+    (await core.instanceManager.list()).map((entry) => entry.directory)
+  ipc.handle('bamboo:cosmetics:list', eventless(async () =>
+    listInstalled(cosmeticsLibrary(), await cosmeticTargets()),
   ))
   ipc.handle('bamboo:cosmetics:preview', eventless(async (payload: unknown) => {
-    const record = (payload ?? {}) as { folderName?: unknown; file?: unknown }
-    return previewInstalled(
-      await instanceDirectory(core, record.folderName),
-      String(record.file ?? ''),
-    )
+    const record = (payload ?? {}) as { file?: unknown }
+    return previewInstalled(cosmeticsLibrary(), String(record.file ?? ''))
   }))
   ipc.handle('bamboo:cosmetics:remove', eventless(async (payload: unknown) => {
-    const record = (payload ?? {}) as { folderName?: unknown; file?: unknown }
+    const record = (payload ?? {}) as { file?: unknown }
     return removeInstalled(
-      await instanceDirectory(core, record.folderName),
+      cosmeticsLibrary(),
+      await cosmeticTargets(),
       String(record.file ?? ''),
     )
   }))
@@ -277,10 +275,25 @@ export function registerIpc(ipcMain: IpcMainLike, core: LauncherCore): void {
     const { item, bytes } = await shopPackageById(String(id ?? ''))
     return parseCosmiq(bytes, item.id)
   }))
+  ipc.handle('bamboo:cosmetics:sync', eventless(() => syncStatus()))
+  // One batched request for the whole mods folder; the per-mod lookups stay for the rest.
+  ipc.handle('bamboo:mods:check-updates', eventless(async (payload: unknown) => {
+    const folderName = String(((payload ?? {}) as { folderName?: unknown }).folderName ?? '')
+    const found = folderName ? await core.instanceManager.findByFolder(folderName) : undefined
+    if (!found) return []
+    const loader = found.instance.loader.toLowerCase() as ModLoader
+    return checkInstanceModUpdates({
+      instanceDir: found.directory,
+      minecraftVersion: found.instance.version,
+      ...(loader === 'fabric' || loader === 'quilt' || loader === 'forge' || loader === 'neoforge'
+        ? { loader }
+        : {}),
+      client: new ModrinthClient({ logger: core.logger.child('mods') }),
+    })
+  }))
   ipc.handle('bamboo:cosmetics:install', eventless(async (payload: unknown) => {
-    const record = (payload ?? {}) as { folderName?: unknown; id?: unknown }
-    const directory = await instanceDirectory(core, record.folderName)
+    const record = (payload ?? {}) as { id?: unknown }
     const { item, bytes } = await shopPackageById(String(record.id ?? ''))
-    return installPackage(directory, bytes, item.name)
+    return installPackage(cosmeticsLibrary(), await cosmeticTargets(), bytes, item.name)
   }))
 }

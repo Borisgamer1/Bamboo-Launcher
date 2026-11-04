@@ -63,7 +63,7 @@ export const CosmeticStage: React.FC<CosmeticStageProps> = ({
   }, [capeUrl])
 
   return (
-    <div ref={hostRef} className="relative h-[320px] w-full overflow-hidden bg-root">
+    <div ref={hostRef} className="relative h-[400px] w-full overflow-hidden bg-root">
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,transparent,rgba(0,0,0,0.28))]"
         aria-hidden

@@ -16,6 +16,7 @@ import { LaunchHandle as LaunchTrackerHandle, LaunchStartInfo, LaunchTracker } f
 import { JavaManager } from './java'
 import { javaMemoRelativePath, resolveJavaMemo } from './java/memo'
 import { LaunchService } from './launch'
+import { reconcile } from './cosmetics/store'
 import { isModernMsAccount } from './launch/args'
 import { resolveJvmPreferences } from './launch/jvm'
 import type {
@@ -38,6 +39,7 @@ import { DISTANCE_KEYS, collectInstanceGameStats, emptyDistanceStats } from './i
 import { createSupportBundle, type SupportBundleResult } from './support-bundle'
 import type { FetchLike } from './download/http'
 import type { FixDeps } from './logs/types'
+import { ensureBambooMod } from './cosmetics/mod'
 import { ModrinthClient } from './mods/modrinth'
 import { installModrinthProject } from './mods/installer'
 import type { ModLoader } from './mods/types'
@@ -509,6 +511,23 @@ export class LauncherCore {
     const found = await this.instanceManager.get(parsed.instanceId)
     const file = await this.instanceManager.readFile(parsed.instanceId)
     await hooks?.beforeLaunch?.({ instanceId: parsed.instanceId, directory: found.directory, file })
+    // Cosmetics are account-wide: a freshly created instance gets its mirror here.
+    try {
+      await reconcile(
+        join(this.paths.appData, 'cosmetics'),
+        (await this.instanceManager.list()).map((entry) => entry.directory),
+      )
+    } catch {
+      // Cosmetics must never block a start.
+    }
+    try {
+      const mod = await ensureBambooMod(found.directory, file.version, file.loader, {
+        cacheDir: this.paths.cacheDir,
+      })
+      this.logger.child('cosmetics').debug('bamboo mod state', { result: mod, instance: file.name })
+    } catch {
+      // A missing mod copy must never block a start either.
+    }
     const settings = await this.settings.get()
     const account = await this.getLaunchIdentity()
     if (!account) throw new Error('Kein Account gewählt')

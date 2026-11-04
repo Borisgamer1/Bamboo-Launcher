@@ -112,7 +112,7 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
   api.window.minimize()
   await api.auth.status()
   await api.skins.snapshot()
-  await api.cosmetics.list('demo')
+  await api.cosmetics.list()
   await api.cosmetics.shop()
   api.system.copy('hello')
   await api.screenshots.collect()
@@ -174,7 +174,7 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
     { mode: 'send', channel: 'window-minimize', args: [] },
     { mode: 'invoke', channel: 'bamboo:auth:status', args: [] },
     { mode: 'invoke', channel: 'bamboo:skins:snapshot', args: [] },
-    { mode: 'invoke', channel: 'bamboo:cosmetics:list', args: ['demo'] },
+    { mode: 'invoke', channel: 'bamboo:cosmetics:list', args: [] },
     { mode: 'invoke', channel: 'bamboo:cosmetics:shop', args: [] },
     { mode: 'send', channel: 'copy-to-clipboard', args: ['hello'] },
     { mode: 'invoke', channel: 'collect-all-screenshots', args: [] },

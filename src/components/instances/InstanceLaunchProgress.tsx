@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { LaunchProgress } from "../../electron";
 import type { LanguageType } from "../../lib/translations";
-import { launchDisplayPercent } from "../../../electron/shared/launchProgress";
 
 interface InstanceLaunchProgressProps {
   progress?: LaunchProgress;

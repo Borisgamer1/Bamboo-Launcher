@@ -39,6 +39,7 @@ export class CosmeticViewer {
   #yaw = 0
   #pitch = 0.04
   #distance = 5.2
+  #lookY = 0.02
   #dragging = false
   #pointerId: number | null = null
   #lastX = 0
@@ -98,6 +99,7 @@ export class CosmeticViewer {
     this.#player = player
     if (this.#skinTexture) player.setSkin(this.#skinTexture)
     if (this.#capeTexture) player.setCape(this.#capeTexture)
+    this.#fitCamera()
   }
 
   async setSkin(url: string | null): Promise<void> {
@@ -192,6 +194,8 @@ export class CosmeticViewer {
         })
         .catch((error) => console.warn(`[cosmetics] texture failed for ${preview.id}`, error))
     })
+    this.#fitCamera()
+    this.#updateCamera()
   }
 
   #clearAttachments(): void {
@@ -212,8 +216,25 @@ export class CosmeticViewer {
   resetCamera(): void {
     this.#yaw = this.#view === 'front' ? Math.PI : 0
     this.#pitch = 0.04
-    this.#distance = 5.2
+    this.#fitCamera()
     this.#updateCamera()
+  }
+
+  /** Fits the camera to the player plus whatever the package adds above it. */
+  #fitCamera(): void {
+    if (!this.#player) return
+    const box = new THREE.Box3().setFromObject(this.#pivot)
+    if (box.isEmpty()) return
+    const center = box.getCenter(new THREE.Vector3())
+    const size = box.getSize(new THREE.Vector3())
+    const vertical = THREE.MathUtils.degToRad(this.#camera.fov / 2)
+    const horizontal = Math.atan(Math.tan(vertical) * this.#camera.aspect)
+    this.#lookY = center.y
+    this.#distance = THREE.MathUtils.clamp(
+      Math.max(size.y / 2 / Math.tan(vertical), size.x / 2 / Math.tan(horizontal)) * 1.26,
+      MIN_DISTANCE,
+      MAX_DISTANCE,
+    )
   }
 
   dispose(): void {
@@ -280,6 +301,7 @@ export class CosmeticViewer {
     this.#renderer.setSize(width, height, false)
     this.#camera.aspect = width / height
     this.#camera.updateProjectionMatrix()
+    this.#fitCamera()
     this.#updateCamera()
   }
 
@@ -287,10 +309,10 @@ export class CosmeticViewer {
     const horizontal = Math.cos(this.#pitch) * this.#distance
     this.#camera.position.set(
       Math.sin(this.#yaw) * horizontal,
-      0.1 + Math.sin(this.#pitch) * this.#distance,
+      this.#lookY + Math.sin(this.#pitch) * this.#distance,
       Math.cos(this.#yaw) * horizontal,
     )
-    this.#camera.lookAt(0, 0.02, 0)
+    this.#camera.lookAt(0, this.#lookY, 0)
   }
 
   #loop = (): void => {

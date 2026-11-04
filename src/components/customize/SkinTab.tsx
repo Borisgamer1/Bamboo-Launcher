@@ -377,18 +377,15 @@ export const SkinTab: React.FC<SkinTabProps> = ({ snapshot, lang, busy, mutate, 
 
   return (
     <>
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[288px_minmax(0,1fr)]">
+      <div className="mt-6 grid items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="min-w-0 self-start lg:sticky lg:top-6">
-          <section className="overflow-hidden rounded-[14px] border border-hairline bg-surface">
+          <section className="overflow-hidden rounded-[16px] border border-hairline bg-surface">
             <SkinStage snapshot={snapshot} lang={lang} onOpenAccounts={onOpenAccounts} />
           </section>
-          <p className="m-0 mt-2.5 px-1 text-center text-micro text-ink-quaternary">
-            {de ? "Ziehen · Zoomen" : "Drag · zoom"}
-          </p>
         </aside>
 
         <section
-          className="relative min-w-0 rounded-[14px] border border-hairline bg-surface p-5"
+          className="relative min-w-0 rounded-[16px] border border-hairline bg-surface p-5"
           onDragOver={(event) => {
             event.preventDefault();
             setDragging(true);
@@ -647,13 +644,13 @@ export const SkinTab: React.FC<SkinTabProps> = ({ snapshot, lang, busy, mutate, 
                       onClick={() => void selectCape(cape.id)}
                       disabled={busy !== null && !loading}
                       aria-pressed={active}
-                      className={`flex items-center gap-2 rounded-[10px] border p-1.5 pr-2.5 text-left transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`flex items-center gap-2 rounded-[10px] border p-1.5 pr-3 text-left transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50 ${
                         active
                           ? "border-accent/45 bg-accent/[0.06]"
                           : "border-hairline bg-root/40 hover:border-stroke hover:bg-raised/60"
                       }`}
                     >
-                      <span className="flex h-8 w-[52px] items-center justify-center overflow-hidden rounded-[6px] border border-hairline bg-root/60">
+                      <span className="flex h-8 w-12 items-center justify-center overflow-hidden rounded-[6px] border border-hairline bg-root/60">
                         <img
                           src={cape.url}
                           alt=""
@@ -662,13 +659,8 @@ export const SkinTab: React.FC<SkinTabProps> = ({ snapshot, lang, busy, mutate, 
                           style={{ imageRendering: "pixelated" }}
                         />
                       </span>
-                      <span className="min-w-0">
-                        <span className="block max-w-[120px] truncate text-micro text-ink">
-                          {cape.name}
-                        </span>
-                        <span className="block text-micro text-ink-quaternary">
-                          {active ? (de ? "Getragen" : "Worn") : de ? "Wählen" : "Choose"}
-                        </span>
+                      <span className="block max-w-[136px] truncate text-micro text-ink">
+                        {cape.name}
                       </span>
                       {loading ? (
                         <Loader2 className="h-3 w-3 animate-spin text-ink-tertiary" aria-hidden />

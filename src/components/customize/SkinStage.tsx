@@ -63,7 +63,7 @@ export const SkinStage: React.FC<SkinStageProps> = ({
     const idle = new IdleAnimation();
     idle.speed = 0.32;
     viewer.animation = idle;
-    viewer.zoom = 0.78;
+    viewer.zoom = 0.72;
     viewer.resetCameraPose();
     viewer.playerWrapper.rotation.y = defaultRotation;
 
@@ -117,13 +117,13 @@ export const SkinStage: React.FC<SkinStageProps> = ({
   const resetCamera = () => {
     const viewer = viewerRef.current;
     if (!viewer) return;
-    viewer.zoom = 0.78;
+    viewer.zoom = 0.72;
     viewer.resetCameraPose();
     viewer.playerWrapper.rotation.y = defaultRotation;
   };
 
   return (
-    <div ref={hostRef} className="relative h-[228px] w-full overflow-hidden bg-root">
+    <div ref={hostRef} className="relative h-[320px] w-full overflow-hidden bg-root">
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(180deg,transparent,rgba(0,0,0,0.2))]"
         aria-hidden
@@ -170,6 +170,12 @@ export const SkinStage: React.FC<SkinStageProps> = ({
       {loadState === "error" ? (
         <p className="absolute inset-x-6 bottom-12 z-20 m-0 text-center text-micro leading-4 text-danger">
           {de ? "Der Skin konnte nicht geladen werden." : "The skin could not be loaded."}
+        </p>
+      ) : null}
+
+      {skinUrl ? (
+        <p className="absolute bottom-4 left-3 z-20 m-0 text-micro leading-4 text-ink-quaternary">
+          {de ? "Ziehen · Drehen" : "Drag · turn"}
         </p>
       ) : null}
 

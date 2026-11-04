@@ -7,7 +7,9 @@
       "creator": "Bamboo Launcher",
       "description": "2 X shaped Bamboo Sticks",
       "rarity": "Legendary",
-      "slots": ["back"],
+      "slots": [
+        "back"
+      ],
       "file": "./bamboo-sticks.cosmiq"
     },
     {
@@ -16,8 +18,12 @@
       "creator": "Bamboo Launcher",
       "description": "Cape with Green Bird",
       "rarity": "Legendary",
-      "slots": ["back", "cape"],
-      "file": "./bird-cape.cosmiq"
+      "slots": [
+        "back",
+        "cape"
+      ],
+      "file": "./bird-cape.cosmiq",
+      "image": "./previews/bird-cape.png"
     },
     {
       "id": "furry-ears",
@@ -25,7 +31,9 @@
       "creator": "Bamboo Launcher",
       "description": "Süße Pinke Furry Ohren",
       "rarity": "Legendary",
-      "slots": ["head"],
+      "slots": [
+        "head"
+      ],
       "file": "./furry-ears.cosmiq"
     },
     {
@@ -34,7 +42,9 @@
       "creator": "Bamboo Launcher",
       "description": "Pink Furry Tail",
       "rarity": "Legendary",
-      "slots": ["back"],
+      "slots": [
+        "back"
+      ],
       "file": "./furry-tail.cosmiq"
     },
     {
@@ -43,8 +53,12 @@
       "creator": "Bamboo Launcher",
       "description": "Maxiiiiiiiiiiiiii",
       "rarity": "Legendary",
-      "slots": ["back", "cape"],
-      "file": "./maxi-cape.cosmiq"
+      "slots": [
+        "back",
+        "cape"
+      ],
+      "file": "./maxi-cape.cosmiq",
+      "image": "./previews/maxi-cape.png"
     },
     {
       "id": "strohhut",
@@ -52,8 +66,22 @@
       "creator": "Bamboo Launcher",
       "description": "Ein einfacher Strohut mit rotem Band",
       "rarity": "Legendary",
-      "slots": ["head"],
+      "slots": [
+        "head"
+      ],
       "file": "./strohhut.cosmiq"
+    },
+    {
+      "id": "wagasa",
+      "name": "Wagasa",
+      "creator": "Bamboo Launcher",
+      "description": "Zusammengeklappter Papierschirm auf dem Rücken",
+      "rarity": "Legendary",
+      "slots": [
+        "back"
+      ],
+      "file": "./wagasa.cosmiq",
+      "image": "./previews/wagasa.png"
     }
   ]
 }

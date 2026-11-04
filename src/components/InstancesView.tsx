@@ -45,6 +45,8 @@ import {
   decideUpdate,
   fromModrinthVersion,
   pickVersion,
+  type StoreFile,
+  type StoreVersion,
   type UpdateDecision,
 } from "../lib/modVersions";
 import { mergeKeybinds } from "../lib/keybinds";
@@ -108,6 +110,24 @@ export interface ContentItem {
   versionNumber?: string;
   projectId?: string;
   source?: "modrinth" | "curseforge";
+}
+
+/** The version the last check picked for an item, so an update does not fetch it again. */
+interface UpdateTarget {
+  versionNumber?: string;
+  version: StoreVersion;
+  file: StoreFile;
+}
+
+/** The list is built from disk scans and identity lookups; one file must never render twice. */
+function dedupeContent(items: ContentItem[]): ContentItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.type}:${(item.fileName || item.id).toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export interface Instance {
@@ -1306,12 +1326,15 @@ const ContentListView = ({
   const [localInst, setLocalInst] = useState(initialInst);
   const [selectedContentItem, setSelectedContentItem] = useState<ContentItem | null>(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const updateTargets = useRef(new Map<string, UpdateTarget>());
+  const updatingAll = useRef(false);
+  const [updateAllProgress, setUpdateAllProgress] = useState<{ done: number; total: number } | null>(null);
 
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showOwnModsWarning, setShowOwnModsWarning] = useState(false);
 
-  const contentItems = [...(localInst.content || [])]
+  const contentItems = dedupeContent(localInst.content || [])
     .filter(c => c.type === categoryForTab(detailTab))
     .sort((a, b) => a.name.localeCompare(b.name, lang === 'de' ? 'de' : 'en', { sensitivity: 'base', numeric: true }));
 
@@ -1358,10 +1381,16 @@ const ContentListView = ({
         enabled: !file.endsWith('.disabled'),
         locked: false,
       }));
-      setLocalInst((prev) => ({ ...prev, content: [...(prev.content || []), ...additions] }));
+      const merge = (items: ContentItem[]) => {
+        const present = new Set(items.map((item) => String(item.fileName || "").toLowerCase()));
+        const fresh = additions.filter((item) => !present.has(item.fileName.toLowerCase()));
+        return fresh.length === 0 ? items : [...items, ...fresh];
+      };
+      // Merge into the live list: two scans racing on one stale snapshot used to add the same file twice.
+      setLocalInst((prev) => ({ ...prev, content: merge(prev.content || []) }));
       setInstances((prev) => prev.map((instance) =>
         instance.id === localInst.id
-          ? { ...instance, content: [...(instance.content || []), ...additions] }
+          ? { ...instance, content: merge(instance.content || []) }
           : instance,
       ));
     })();
@@ -1423,7 +1452,9 @@ const ContentListView = ({
     });
 
     const items = currentContent.length > 0 ? currentContent : (localInst.content || []);
-    const updatedItems = [...items];
+    /** id -> result of this run; merged into the live list instead of swapping it. */
+    const checks = new Map<string, { updateAvailable: boolean; versionNumber?: string }>();
+    const renamed = new Map<string, string>();
     // Worlds are user data on disk, not a store file that gets replaced in place;
     // a newer "world" release is a different world, so it is not an update.
     const itemsToCheck = items.filter(
@@ -1447,39 +1478,72 @@ const ContentListView = ({
       for (const st of scanTypes) {
         const diskFiles = await window.electronAPI?.mods.listContentFiles?.({ folderName, type: st.dir });
         if (!diskFiles || diskFiles.length === 0) continue;
-        for (let i = 0; i < updatedItems.length; i++) {
-          const ci = updatedItems[i];
+        for (let i = 0; i < items.length; i++) {
+          const ci = items[i];
           if (ci.type !== st.type) continue;
           const slug = ci.name.toLowerCase().replace(/[^a-z0-9]/g, '');
           const projLower = (ci.projectId || '').toLowerCase();
-          if (ci.fileName) {
-            if (!diskFiles.includes(ci.fileName)) {
-              const match = diskFiles.find((f: string) =>
-                f.toLowerCase().includes(slug) || (projLower && f.toLowerCase().includes(projLower))
-              );
-              if (match) updatedItems[i] = { ...ci, fileName: match };
-            }
-          } else {
-            const match = diskFiles.find((f: string) =>
-              f.toLowerCase().includes(slug) || (projLower && f.toLowerCase().includes(projLower))
-            );
-            if (match) updatedItems[i] = { ...ci, fileName: match };
-          }
+          if (ci.fileName && diskFiles.includes(ci.fileName)) continue;
+          const match = diskFiles.find((f: string) =>
+            f.toLowerCase().includes(slug) || (projLower && f.toLowerCase().includes(projLower))
+          );
+          if (match) renamed.set(ci.id, match);
         }
       }
     } catch (e) {
       console.warn('[Update Check] Fehler beim Scannen der Dateien:', e);
     }
 
-    const batchSize = 5;
+    // One request per 64 jars covers everything Modrinth hosts. Only the rest -
+    // CurseForge content and jars it no longer knows - needs a version list each.
     const counts = { updates: 0, current: 0, incompatible: 0 };
-    for (let i = 0; i < itemsToCheck.length; i += batchSize) {
-      const batch = itemsToCheck.slice(i, i + batchSize);
+    let queue = itemsToCheck;
+    try {
+      const batched = await window.electronAPI?.mods.checkUpdates?.({ folderName });
+      if (batched) {
+        const resolved = new Set(batched.resolved.map((file) => file.toLowerCase()));
+        const updates = new Map(batched.updates.map((entry) => [entry.file.toLowerCase(), entry]));
+        queue = [];
+        for (const item of itemsToCheck) {
+          const file = String(item.fileName || '').toLowerCase();
+          const hit = updates.get(file);
+          if (hit) {
+            counts.updates += 1;
+            updateTargets.current.set(item.id, {
+              versionNumber: item.versionNumber,
+              version: {
+                versionNumber: hit.versionNumber,
+                versionId: hit.versionId,
+                gameVersions: [],
+                loaders: [],
+                files: [{ url: hit.url, filename: hit.fileName }],
+              },
+              file: { url: hit.url, filename: hit.fileName },
+            });
+            checks.set(item.id, { updateAvailable: true, versionNumber: item.versionNumber });
+            continue;
+          }
+          if (resolved.has(file)) {
+            counts.current += 1;
+            updateTargets.current.delete(item.id);
+            checks.set(item.id, { updateAvailable: false, versionNumber: item.versionNumber });
+            continue;
+          }
+          queue.push(item);
+        }
+      }
+    } catch (e) {
+      console.warn('[Update Check] Sammelabfrage fehlgeschlagen, prüfe einzeln:', e);
+    }
+
+    const batchSize = 5;
+    for (let i = 0; i < queue.length; i += batchSize) {
+      const batch = queue.slice(i, i + batchSize);
       const results = await Promise.allSettled(
         batch.map(async (item) => {
           try {
             const decision = await decideForItem(item);
-            return { id: item.id, status: decision.status };
+            return { id: item.id, versionNumber: item.versionNumber, decision };
           } catch (e) {
             console.warn('[Update Check] Fehler beim Prüfen von', item.name, e);
             return null;
@@ -1489,26 +1553,44 @@ const ContentListView = ({
 
       for (const result of results) {
         if (result.status !== 'fulfilled' || !result.value) continue;
-        const { id, status } = result.value;
-        const idx = updatedItems.findIndex(c => c.id === id);
-        if (idx === -1) continue;
-        if (status === 'update-available') {
+        const { id, versionNumber, decision } = result.value;
+        if (decision.status === 'update-available') {
           counts.updates += 1;
-          updatedItems[idx] = { ...updatedItems[idx], updateAvailable: true };
+          if (decision.pick.version && decision.pick.file) {
+            updateTargets.current.set(id, {
+              versionNumber,
+              version: decision.pick.version,
+              file: decision.pick.file,
+            });
+          }
         } else {
-          if (status === 'current') counts.current += 1;
+          if (decision.status === 'current') counts.current += 1;
           else counts.incompatible += 1;
-          updatedItems[idx] = { ...updatedItems[idx], updateAvailable: false };
+          updateTargets.current.delete(id);
         }
+        checks.set(id, { updateAvailable: decision.status === 'update-available', versionNumber });
       }
     }
 
+    // Merge by id into the live list. Swapping in this run's snapshot used to
+    // resurrect the old version of anything updated while the check was running.
+    const mergeCheck = (current: ContentItem[]) => current.map(item => {
+      const check = checks.get(item.id);
+      const newName = renamed.get(item.id);
+      if (!check && !newName) return item;
+      if (check && check.versionNumber !== item.versionNumber) return item;
+      return {
+        ...item,
+        ...(newName ? { fileName: newName } : {}),
+        ...(check ? { updateAvailable: check.updateAvailable } : {}),
+      };
+    });
     setInstances(prev => prev.map(i =>
-      i.id === localInst.id ? { ...i, content: updatedItems } : i
+      i.id === localInst.id ? { ...i, content: mergeCheck(i.content || []) } : i
     ));
-    setLocalInst(prev => ({ ...prev, content: updatedItems }));
+    setLocalInst(prev => ({ ...prev, content: mergeCheck(prev.content || []) }));
     setCheckingUpdates(false);
-    console.log('[Update Check] abgeschlossen.', counts, 'Items:', updatedItems.length);
+    console.log('[Update Check] abgeschlossen.', counts, 'Items:', checks.size);
     if (options.report) {
       addToast({
         type: counts.updates > 0 ? 'success' : 'info',
@@ -1527,6 +1609,7 @@ const ContentListView = ({
       void checkContentUpdatesRef.current();
     }, 1000);
     const interval = setInterval(() => {
+      if (updatingAll.current) return;
       void checkContentUpdatesRef.current();
     }, 5 * 60 * 1000);
     return () => {
@@ -1781,7 +1864,7 @@ const ContentListView = ({
     }));
   };
 
-  const handleUpdate = async (itemId: string) => {
+  const handleUpdate = async (itemId: string, options: { silent?: boolean } = {}) => {
     const item = (localInst.content || []).find(c => c.id === itemId);
     if (!item || !item.projectId || !item.source || !item.versionNumber) {
       updateContent(items => items.map(c => c.id === itemId ? { ...c, updateAvailable: false } : c));
@@ -1790,7 +1873,21 @@ const ContentListView = ({
 
     try {
       const category = itemCategory(item);
-      const decision = await decideForItem(item);
+      // Reuse the version the last check picked: no second request per mod, so
+      // "update all" starts downloading instead of waiting in line.
+      const cached = updateTargets.current.get(itemId);
+      const decision: UpdateDecision = cached && cached.versionNumber === item.versionNumber
+        ? {
+            status: 'update-available',
+            pick: {
+              version: cached.version,
+              file: cached.file,
+              fallback: null,
+              reason: null,
+              stats: { total: 0, mcMatches: 0, loaderMatches: 0 },
+            },
+          }
+        : await decideForItem(item);
 
       if (decision.status === 'current') {
         // Deterministic: the newest fitting version is the one already installed.
@@ -1849,12 +1946,15 @@ const ContentListView = ({
         } catch { console.warn('[Instances] Old content file could not be removed'); }
       }
 
+      updateTargets.current.delete(itemId);
       updateContent(items => items.map(c =>
         c.id === itemId
           ? { ...c, fileName: file.filename, version: localInst.minecraftVersion, versionNumber: next.versionNumber, updateAvailable: false }
           : c
       ));
-      addToast({ type: 'success', message: formatMessage(t.updateSuccess, { name: item.name, version: next.versionNumber }) });
+      if (!options.silent) {
+        addToast({ type: 'success', message: formatMessage(t.updateSuccess, { name: item.name, version: next.versionNumber }) });
+      }
     } catch (e) {
       console.error('[Update] Fehler beim Update von', item?.name, e);
       addToast({ type: 'error', message: formatMessage(t.updateFailed, { error: errorMessage(e) }) });
@@ -1865,10 +1965,23 @@ const ContentListView = ({
 
   const handleUpdateAll = async () => {
     if (modpackContentLocked) return;
-    const updatable = (localInst.content || []).filter(c => c.updateAvailable && !c.locked && c.projectId && c.source);
-    for (const item of updatable) {
-      await handleUpdate(item.id);
+    const updatable = dedupeContent(localInst.content || [])
+      .filter(c => c.updateAvailable && !c.locked && c.projectId && c.source);
+    if (updatable.length === 0) return;
+    updatingAll.current = true;
+    setUpdateAllProgress({ done: 0, total: updatable.length });
+    let done = 0;
+    try {
+      for (const item of updatable) {
+        await handleUpdate(item.id, { silent: true });
+        done += 1;
+        setUpdateAllProgress({ done, total: updatable.length });
+      }
+    } finally {
+      updatingAll.current = false;
+      setUpdateAllProgress(null);
     }
+    addToast({ type: 'success', message: formatMessage(t.updateAllDone, { count: done }) });
   };
 
   const updatedNames = contentItems.filter(c => c.updateAvailable).map(c => c.name);
@@ -2376,7 +2489,7 @@ const ContentListView = ({
           </div>
           <button
             onClick={handleUpdateAll}
-            disabled={modpackContentLocked}
+            disabled={modpackContentLocked || Boolean(updateAllProgress)}
             title={
               modpackContentLocked
                 ? lang === 'de'
@@ -2390,8 +2503,8 @@ const ContentListView = ({
                 : 'theme-bg hover:theme-bg-hover text-accent-contrast cursor-pointer theme-shadow-lg'
             }`}
           >
-            {modpackContentLocked ? <Lock className="w-3.5 h-3.5" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            {t.updateAll}
+            {modpackContentLocked ? <Lock className="w-3.5 h-3.5" /> : <RefreshCw className={`w-3.5 h-3.5 ${updateAllProgress ? "animate-spin" : ""}`} />}
+            {updateAllProgress ? `${updateAllProgress.done}/${updateAllProgress.total}` : t.updateAll}
           </button>
         </div>
       )}

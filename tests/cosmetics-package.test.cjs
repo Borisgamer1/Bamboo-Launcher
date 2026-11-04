@@ -59,27 +59,63 @@ test('rejects a file that is not a package', () => {
   assert.throws(() => parseCosmiq(truncated, 'truncated'), /unvollst/)
 })
 
-test('installs, lists and removes a package in the instance folder', async () => {
+test('keeps one account-wide library and mirrors it into every instance', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bamboo-cosmetics-'))
   try {
+    const library = path.join(root, 'library')
+    const first = path.join(root, 'one')
+    const second = path.join(root, 'two')
     const bytes = bytesOf('bamboo-sticks.cosmiq')
-    const info = installedCosmetic('anything.cosmiq', bytes)
-    assert.equal(info.valid, true)
+    assert.equal(installedCosmetic('anything.cosmiq', bytes).valid, true)
 
-    const afterInstall = await installPackage(root, bytes, 'Bamboo Sticks')
+    const afterInstall = await installPackage(library, [first, second], bytes, 'Bamboo Sticks')
     assert.equal(afterInstall.length, 1)
-    assert.equal(afterInstall[0].name, 'Bamboo Sticks')
-    assert.ok(fs.existsSync(path.join(root, 'bamboo', 'cosmetics', afterInstall[0].file)))
+    const file = afterInstall[0].file
+    assert.ok(fs.existsSync(path.join(library, file)), 'library copy')
+    assert.ok(fs.existsSync(path.join(first, 'bamboo', 'cosmetics', file)), 'first instance')
+    assert.ok(fs.existsSync(path.join(second, 'bamboo', 'cosmetics', file)), 'second instance')
 
-    const preview = await previewInstalled(root, afterInstall[0].file)
+    // A package dropped into an instance by hand is adopted, not overwritten.
+    const third = path.join(root, 'three')
+    fs.mkdirSync(path.join(third, 'bamboo', 'cosmetics'), { recursive: true })
+    fs.writeFileSync(path.join(third, 'bamboo', 'cosmetics', 'strohhut.cosmiq'), bytesOf('strohhut.cosmiq'))
+    const adopted = await listInstalled(library, [first, second, third])
+    assert.deepEqual(adopted.map((entry) => entry.name).sort(), ['Bamboo Sticks', 'Strohhut'])
+    assert.ok(fs.existsSync(path.join(library, 'strohhut.cosmiq')))
+
+    const preview = await previewInstalled(library, file)
     assert.equal(preview.name, 'Bamboo Sticks')
     assert.equal(preview.parts.length, 2)
 
-    const afterRemove = await removeInstalled(root, afterInstall[0].file)
-    assert.deepEqual(afterRemove, [])
-    assert.deepEqual(await listInstalled(root), [])
-    await assert.rejects(() => previewInstalled(root, '../escape.cosmiq'), /Ungültiger/)
+    const afterRemove = await removeInstalled(library, [first, second, third], file)
+    assert.deepEqual(afterRemove.map((entry) => entry.name), ['Strohhut'])
+    assert.equal(fs.existsSync(path.join(first, 'bamboo', 'cosmetics', file)), false)
+    assert.equal(fs.existsSync(path.join(second, 'bamboo', 'cosmetics', file)), false)
+    await assert.rejects(() => previewInstalled(library, '../escape.cosmiq'), /Ungültiger/)
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('bundled catalog points at artwork that exists', () => {
+  const catalog = JSON.parse(fs.readFileSync(path.join(SHOP, 'catalog.json'), 'utf8'))
+  const cape = catalog.items.find((entry) => entry.id === 'bird-cape')
+  assert.equal(cape.image, './previews/bird-cape.png')
+  assert.ok(fs.existsSync(path.join(SHOP, cape.image)), 'preview file next to the catalog')
+  assert.equal(catalog.items.find((entry) => entry.id === 'strohhut').image, undefined)
+})
+
+test('shop entries expose resolved artwork instead of a filesystem path', async () => {
+  const { loadShop } = require('../dist-electron/cosmetics/shop.js')
+  const catalog = await loadShop()
+  assert.ok(catalog.items.length > 0)
+  for (const item of catalog.items) {
+    if (item.image === null) continue
+    // Bundled: data URL, because the renderer cannot read files.
+    // Remote: the raw GitHub URL of the PNG.
+    assert.ok(
+      item.image.startsWith(catalog.source === 'local' ? 'data:image/' : 'https://'),
+      `${item.id}: ${item.image.slice(0, 40)}`,
+    )
   }
 })

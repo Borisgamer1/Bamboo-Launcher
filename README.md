@@ -65,8 +65,9 @@ placeholder art.
 
 This repository holds the launcher itself. The companion cosmetics runtime is a separate project
 and is not part of this repository. The launcher manages the runtime's `.cosmiq` packages: it
-renders them on the player, installs packages from a GitHub catalog into
-`<instance>/bamboo/cosmetics` and deletes them. Equipping happens in game; see
+renders them on the player, installs packages from a GitHub catalog into an
+account-wide library mirrored to every instance and deletes them. Equipping
+happens in game; see
 [`docs/cosmetics-shop.md`](docs/cosmetics-shop.md).
 
 Current version: `0.2.3` (in development; the last published build is `0.2.2`). Packaging target:

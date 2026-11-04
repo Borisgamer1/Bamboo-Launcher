@@ -84,6 +84,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     curseforgeFiles: (modId, gameVersion, modLoaderType) =>
       invoke('curseforge-files', modId, gameVersion, modLoaderType),
     download: (data) => invoke('download-mod', data),
+    checkUpdates: (data) => invoke('bamboo:mods:check-updates', data),
     installModpack: (data) => invoke('install-modpack-mrpack', data),
     uploadLocal: (data) => invoke('upload-local-mod', data),
     listContentFiles: (data) => invoke('list-content-files', data),
@@ -132,12 +133,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   cosmetics: {
-    list: (folderName) => invoke('bamboo:cosmetics:list', folderName),
+    list: () => invoke('bamboo:cosmetics:list'),
     preview: (payload) => invoke('bamboo:cosmetics:preview', payload),
     remove: (payload) => invoke('bamboo:cosmetics:remove', payload),
     shop: () => invoke('bamboo:cosmetics:shop'),
     shopPreview: (id) => invoke('bamboo:cosmetics:shop-preview', id),
     install: (payload) => invoke('bamboo:cosmetics:install', payload),
+    syncStatus: () => invoke('bamboo:cosmetics:sync'),
   },
 
   window: {

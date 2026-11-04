@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { resolve, sep } from 'node:path'
 import type { CosmeticSlot } from './cosmiq'
 
@@ -24,6 +24,7 @@ const REMOTE_CATALOG_URL =
 const LOCAL_SHOP_DIRECTORY = resolve(__dirname, '..', '..', 'resources', 'cosmetics-shop')
 const MAXIMUM_CATALOG_BYTES = 512 * 1024
 const MAXIMUM_PACKAGE_BYTES = 16 * 1024 * 1024
+const MAXIMUM_IMAGE_BYTES = 2 * 1024 * 1024
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']
 const SLOTS: CosmeticSlot[] = ['head', 'back', 'cape']
 
@@ -38,6 +39,8 @@ export interface ShopItem {
   slots: CosmeticSlot[]
   /** Resolved download target: https URL or absolute local path. */
   file: string
+  /** Thumbnail: data URL for the bundled copy, https URL for GitHub. */
+  image: string | null
   remote: boolean
 }
 
@@ -95,10 +98,22 @@ function itemsOf(payload: unknown, source: 'remote' | 'local', base: string): Sh
       rarity: rarity ?? 'Common',
       slots: slotsOf(record.slots),
       file: target,
+      image: imageOf(record.image, source, base),
       remote: source === 'remote',
     })
   }
   return items.sort((left, right) => left.name.localeCompare(right.name))
+}
+
+/** Thumbnail path/URL, or null when the entry has none. */
+function imageOf(value: unknown, source: 'remote' | 'local', base: string): string | null {
+  const raw = text(value, 512)
+  if (!raw) return null
+  try {
+    return source === 'remote' ? new URL(raw, base).toString() : resolveLocal(base, raw)
+  } catch {
+    return null
+  }
 }
 
 function resolveLocal(directory: string, file: string): string {
@@ -125,7 +140,25 @@ async function readRemoteCatalog(): Promise<ShopItem[]> {
 async function readLocalCatalog(): Promise<ShopItem[]> {
   const file = resolve(LOCAL_SHOP_DIRECTORY, 'catalog.json')
   const payload: unknown = JSON.parse(await readFile(file, 'utf8'))
-  return itemsOf(payload, 'local', LOCAL_SHOP_DIRECTORY)
+  const items = itemsOf(payload, 'local', LOCAL_SHOP_DIRECTORY)
+  // The renderer cannot read files, so bundled thumbnails travel as data URLs.
+  return Promise.all(
+    items.map(async (item) =>
+      item.image ? { ...item, image: await localImage(item.image) } : item,
+    ),
+  )
+}
+
+async function localImage(file: string): Promise<string | null> {
+  try {
+    const info = await stat(file)
+    if (!info.isFile() || info.size > MAXIMUM_IMAGE_BYTES) return null
+    const extension = file.slice(file.lastIndexOf('.') + 1).toLowerCase()
+    const type = extension === 'jpg' ? 'jpeg' : extension
+    return `data:image/${type};base64,${(await readFile(file)).toString('base64')}`
+  } catch {
+    return null
+  }
 }
 
 export async function loadShop(): Promise<ShopCatalog> {
