@@ -28,6 +28,13 @@ import { analyzeInstance, applyFixAction, undoFixAction } from './logs'
 import type { AnalysisResult, FixResult } from './logs/types'
 import { VersionResolver } from './version'
 import { TelemetryService } from './telemetry'
+import {
+  StatisticsService,
+  StatisticsStore,
+  type StatisticsInstanceSummary,
+  type StatisticsSummary,
+} from './statistics'
+import { DISTANCE_KEYS, collectInstanceGameStats, emptyDistanceStats } from './instances/worlds'
 import { createSupportBundle, type SupportBundleResult } from './support-bundle'
 import type { FetchLike } from './download/http'
 import type { FixDeps } from './logs/types'
@@ -130,6 +137,7 @@ export class LauncherCore {
   readonly migration: MigrationResult
   readonly launchCoreMode: LaunchCoreMode
   readonly telemetry: TelemetryService
+  readonly statistics: StatisticsService
   readonly onAnalysis?: (result: AnalysisResult) => void
   readonly fetchImpl?: FetchLike
   readonly modrinthBaseUrl?: string
@@ -154,6 +162,7 @@ export class LauncherCore {
     migration: MigrationResult,
     launchCoreMode: LaunchCoreMode,
     telemetry: TelemetryService,
+    statistics: StatisticsService,
     onAnalysis: ((result: AnalysisResult) => void) | undefined,
     fetchImpl: FetchLike | undefined,
     modrinthBaseUrl: string | undefined,
@@ -177,6 +186,7 @@ export class LauncherCore {
     this.migration = migration
     this.launchCoreMode = launchCoreMode
     this.telemetry = telemetry
+    this.statistics = statistics
     this.onAnalysis = onAnalysis
     this.fetchImpl = fetchImpl
     this.modrinthBaseUrl = modrinthBaseUrl
@@ -245,7 +255,15 @@ export class LauncherCore {
     if (!telemetry.enabled) await telemetry.setEnabled(false)
 
     const launchCoreMode: LaunchCoreMode = process.env.LAUNCH_CORE === 'v2' ? 'v2' : 'legacy'
-    const launches = new LaunchTracker(logger.child('launch'), telemetry)
+    const statistics = new StatisticsService(
+      new StatisticsStore(resolved.paths.statisticsFile, logger.child('statistics')),
+      settingsData.statisticsEnabled !== false,
+      logger.child('statistics'),
+    )
+    await statistics.load()
+    const launches = new LaunchTracker(logger.child('launch'), telemetry, (session) => {
+      void statistics.record(session)
+    })
     const java = new JavaManager({
       file: resolved.paths.javaFile,
       gameRoot: resolved.paths.gameRoot,
@@ -322,6 +340,7 @@ export class LauncherCore {
       migration,
       launchCoreMode,
       telemetry,
+      statistics,
       options.onAnalysis,
       options.fetchImpl,
       options.modrinthBaseUrl,
@@ -362,9 +381,82 @@ export class LauncherCore {
     const payload = withoutRendererHiddenSettings({ ...(patch as Record<string, unknown>) })
     delete payload.accounts
     const telemetryRequested = 'telemetryEnabled' in payload ? payload.telemetryEnabled === true : undefined
-    await this.settings.save(payload)
+    const saved = await this.settings.save(payload)
     if (telemetryRequested !== undefined) await this.telemetry.setEnabled(telemetryRequested)
+    if ('statisticsEnabled' in payload) this.statistics.setEnabled(saved.statisticsEnabled !== false)
     return true
+  }
+
+  /**
+   * One source for the Statistics tab: playtime comes from the deletion-safe
+   * ledger, world object counters are read from the folders that exist now.
+   */
+  async getStatisticsSummary(): Promise<StatisticsSummary> {
+    const [ledger, instances] = await Promise.all([
+      this.statistics.snapshot(),
+      this.instanceManager.list(),
+    ])
+
+    // Playtime has exactly one owner: the deletion-safe ledger. The instance
+    // profile's own playTimeMs is legacy display data and must not feed this
+    // aggregate, otherwise a deleted or stale instance changes the total.
+    const sessionsByInstance = new Map<string, { playTimeMs: number; sessions: number }>()
+    for (const session of ledger.sessions) {
+      const current = sessionsByInstance.get(session.instanceId) ?? { playTimeMs: 0, sessions: 0 }
+      current.playTimeMs += session.durationMs
+      current.sessions += 1
+      sessionsByInstance.set(session.instanceId, current)
+    }
+
+    const perInstance: StatisticsInstanceSummary[] = instances.map(({ instance, directory }) => {
+      const stats = collectInstanceGameStats(join(directory, 'saves'))
+      const recorded = sessionsByInstance.get(instance.id)
+      return {
+        id: instance.id,
+        name: instance.name,
+        version: instance.version,
+        loader: instance.loader,
+        playTimeMs: recorded?.playTimeMs ?? 0,
+        sessions: recorded?.sessions ?? 0,
+        ...stats,
+      }
+    })
+    perInstance.sort((left, right) => left.name.localeCompare(right.name))
+
+    const distance = emptyDistanceStats()
+    let blocksMined = 0
+    let blocksPlaced = 0
+    let mobsKilled = 0
+    let deaths = 0
+    let jumps = 0
+    let worlds = 0
+    for (const entry of perInstance) {
+      for (const key of DISTANCE_KEYS) distance[key] += entry.distance[key]
+      blocksMined += entry.blocksMined
+      blocksPlaced += entry.blocksPlaced
+      mobsKilled += entry.mobsKilled
+      deaths += entry.deaths
+      jumps += entry.jumps
+      worlds += entry.worlds
+    }
+
+    return {
+      enabled: this.statistics.enabled,
+      playTimeMs: ledger.totals.playTimeMs,
+      sessions: ledger.totals.sessions,
+      firstPlayedAt: ledger.totals.firstPlayedAt,
+      lastPlayedAt: ledger.totals.lastPlayedAt,
+      distance,
+      blocksMined,
+      blocksPlaced,
+      mobsKilled,
+      deaths,
+      jumps,
+      instances: perInstance.length,
+      worlds,
+      perInstance,
+      generatedAt: Date.now(),
+    }
   }
 
   async createSupportBundle(destination: string): Promise<SupportBundleResult> {
@@ -435,6 +527,8 @@ export class LauncherCore {
     const handle = await this.launch.start({
       versionId: file.versionId || file.version,
       gameDirectory: found.directory,
+      instanceId: parsed.instanceId,
+      instanceName: file.name,
       account,
       ...(pinned ? { javaPath: file.javaPath } : {}),
       ...(memo ? { resolvedJavaPath: memo.path, resolvedJavaMajor: memo.major } : {}),

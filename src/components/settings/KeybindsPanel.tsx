@@ -52,6 +52,9 @@ interface RecordingState {
 const KEY_UNIT = 33
 const KEY_MIN_UNIT = 24
 const KEY_GAP = 4
+// Arrow glyphs render smaller than digits at the shared 10 px label size, which
+// made the arrow cluster look like a lesser control next to the numpad.
+const ARROW_KEY_IDS = new Set(['up', 'down', 'left', 'right'])
 
 function keycapClass(unbound = false): string {
   return cx(
@@ -179,17 +182,17 @@ export function KeybindsPanel({
       )}
 
       {note && (
-        <div className="flex items-start gap-2 rounded-[var(--r-lg)] border border-info/20 bg-info/8 px-3 py-2.5 text-mini leading-5 text-ink-secondary">
-          <Keyboard className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+        <div className="flex items-start gap-2.5 px-1 text-mini leading-5 text-ink-tertiary">
+          <Keyboard className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{note}</span>
         </div>
       )}
 
-      <section className="overflow-hidden rounded-[var(--r-xl)] border border-stroke bg-root/45">
-        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-hairline px-4 py-3">
+      <section className="overflow-hidden rounded-[var(--r-xl)] border border-hairline bg-canvas">
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-hairline px-5 py-4">
           <div>
             <h3 className="m-0 flex items-center gap-2 text-small font-medium text-ink">
-              <Keyboard className="h-4 w-4 text-accent" />
+              <Keyboard className="h-4 w-4 text-ink-tertiary" />
               {t(lang, 'Tastatur', 'Keyboard')}
             </h3>
             <p className="m-0 mt-0.5 text-mini text-ink-secondary">
@@ -219,7 +222,7 @@ export function KeybindsPanel({
           </div>
         </header>
 
-        <div ref={boardRef} className="overflow-x-auto px-4 pb-3 pt-4">
+        <div ref={boardRef} className="overflow-x-auto px-5 pb-4 pt-5">
           <div className="flex w-fit flex-col gap-[5px]">
             {activeLayout.rows.map((row, rowIndex) => {
               let cursor = 0
@@ -246,10 +249,10 @@ export function KeybindsPanel({
                         if (key.token) setSelectedToken(key.token === selectedToken ? null : key.token)
                       }}
                       className={cx(
-                        'relative flex h-[30px] shrink-0 items-center justify-center rounded-[5px] border text-[10px] font-medium tracking-tight transition-[background-color,border-color,color,box-shadow] duration-[var(--t-quick)] ease-[var(--ease-out)] cursor-pointer focus-visible:outline-none',
-                        state === 'unused' && 'border-stroke bg-surface/70 text-ink-tertiary hover:border-stroke-strong hover:text-ink-secondary',
-                        state === 'bound' && 'border-success/45 bg-success/12 text-ink hover:border-success/70',
-                        state === 'shared' && 'border-danger/55 bg-danger/12 text-danger hover:border-danger/80',
+                        'relative flex h-[30px] shrink-0 items-center justify-center rounded-[5px] border text-[11px] font-medium tracking-tight shadow-[inset_0_-2px_0_rgb(0_0_0/20%)] transition-[background-color,border-color,color,box-shadow] duration-[var(--t-quick)] ease-[var(--ease-out)] cursor-pointer focus-visible:outline-none',
+                        state === 'unused' && 'border-hairline bg-root text-ink-tertiary hover:border-stroke-strong hover:text-ink',
+                        state === 'bound' && 'border-success/35 bg-success/10 text-ink hover:border-success/60',
+                        state === 'shared' && 'border-danger/45 bg-danger/10 text-danger hover:border-danger/70',
                         conflict && 'ring-1 ring-danger/40',
                         selected && 'ring-2 ring-accent/70 ring-offset-1 ring-offset-[var(--bg-root)]',
                       )}
@@ -261,7 +264,9 @@ export function KeybindsPanel({
                         width: span * unit + (span - 1) * KEY_GAP,
                       }}
                     >
-                      <span className="px-0.5">{overlayKeyLabel(key)}</span>
+                      <span className={cx('px-0.5', ARROW_KEY_IDS.has(key.id) && 'text-[13px] font-semibold leading-none')}>
+                        {overlayKeyLabel(key)}
+                      </span>
                       {state !== 'unused' && (
                         <span
                           className={cx(
@@ -279,7 +284,7 @@ export function KeybindsPanel({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-hairline px-4 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-hairline px-5 py-3">
           <div className="flex flex-wrap items-center gap-3 text-micro text-ink-tertiary">
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-success" />
@@ -326,7 +331,7 @@ export function KeybindsPanel({
           </div>
         </div>
 
-        <div className="min-h-[46px] border-t border-hairline bg-root/30 px-4 py-2">
+        <div className="min-h-[46px] border-t border-hairline bg-root/30 px-5 py-2.5">
           {selectedToken ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-micro text-accent">{formatKeyToken(selectedToken, lang)}</span>
@@ -421,12 +426,12 @@ export function KeybindsPanel({
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-[var(--r-xl)] border border-stroke bg-surface/65">
-        <header className="flex flex-wrap items-center gap-2 border-b border-hairline px-4 py-3">
+      <section className="overflow-hidden rounded-[var(--r-xl)] border border-hairline bg-canvas">
+        <header className="flex flex-wrap items-center gap-2 border-b border-hairline px-5 py-4">
           <div className="min-w-0">
             <h3 className="m-0 text-small font-medium text-ink">
               {t(lang, 'Aktionen', 'Actions')}{' '}
-              <span className="font-normal text-ink-tertiary">
+              <span className="font-mono text-micro tabular-nums text-ink-tertiary">
                 {boundCount}/{ALL_KEYBIND_ACTIONS.length}
               </span>
             </h3>
@@ -446,16 +451,16 @@ export function KeybindsPanel({
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t(lang, 'Aktionen suchen …', 'Search actions …')}
-                className="h-7 w-44 rounded-lg border border-stroke bg-root/50 pl-7 pr-2 text-micro text-ink outline-none placeholder:text-ink-quaternary focus:border-accent/50"
+                className="h-8 w-44 rounded-md border border-hairline bg-root pl-7 pr-2 text-micro text-ink outline-none placeholder:text-ink-quaternary transition-colors hover:border-rim focus:border-accent/50"
               />
             </div>
             <ConfirmButton
               onConfirm={onResetAll}
-              confirmLabel={t(lang, 'Wirklich?', 'Really?')}
+              confirmLabel={t(lang, 'Wirklich zurücksetzen?', 'Really reset?')}
               variant="secondary"
               icon={<RotateCcw className="h-3 w-3" />}
             >
-              {t(lang, 'Vanilla', 'Vanilla')}
+              {t(lang, 'Zurücksetzen', 'Reset')}
             </ConfirmButton>
           </div>
         </header>
@@ -467,14 +472,14 @@ export function KeybindsPanel({
             </p>
           )}
           {filteredGroups.map((group) => (
-            <div key={group.id} className="px-4 py-3">
-              <div className="mb-1.5 flex items-center gap-2">
-                <span className="text-micro font-medium uppercase tracking-label text-ink-tertiary">
+            <div key={group.id} className="px-5 py-3.5">
+              <div className="mb-1.5 flex items-center gap-3">
+                <span className="text-micro font-medium text-ink-tertiary">
                   {group.label[lang]}
                 </span>
                 <div className="h-px flex-1 bg-hairline" />
               </div>
-              <div className="grid grid-cols-1 gap-x-6 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-x-8 lg:grid-cols-2">
                 {group.actions.map((action) => {
                   const token = values[action.id]
                   const conflict = conflicts.get(action.id)
@@ -495,7 +500,7 @@ export function KeybindsPanel({
                             'Diese Taste gibt es auf dem gewählten Layout nicht – die Bindung bleibt gespeichert.',
                             'This key does not exist on the selected layout – the binding is kept.',
                           )}
-                          className="shrink-0 rounded border border-warning/35 bg-warning/10 px-1 text-[10px] font-medium leading-4 text-warning"
+                          className="shrink-0 rounded border border-warning/35 bg-warning/10 px-1 text-[11px] font-medium leading-4 text-warning"
                         >
                           {t(lang, 'fehlt', 'missing')}
                         </span>
@@ -639,14 +644,14 @@ function KeyRecorder({
         role="dialog"
         aria-modal="true"
         aria-label={t(lang, 'Taste belegen', 'Assign key')}
-        className="w-[360px] rounded-2xl border border-rim bg-surface p-5 shadow-[var(--shadow-palette)]"
+        className="w-[360px] rounded-[var(--r-xl)] border border-hairline bg-canvas p-5 shadow-[var(--shadow-palette)]"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="m-0 text-micro font-medium uppercase tracking-label text-accent">
+            <p className="m-0 text-micro text-ink-tertiary">
               {t(lang, 'Taste belegen', 'Assign key')}
             </p>
-            <h3 className="m-0 mt-1 text-regular font-semibold text-ink">{recording.label}</h3>
+            <h3 className="m-0 mt-1 text-regular font-medium text-ink">{recording.label}</h3>
           </div>
           <button
             type="button"
@@ -660,8 +665,8 @@ function KeyRecorder({
 
         <div
           className={cx(
-            'mt-4 flex h-24 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed transition-colors',
-            armed ? 'border-accent/50 bg-accent/5' : 'border-stroke',
+            'mt-4 flex h-24 flex-col items-center justify-center gap-1 rounded-lg border transition-colors',
+            armed ? 'border-accent/40 bg-accent/5' : 'border-hairline bg-root/40',
           )}
         >
           <Keyboard className={cx('h-5 w-5', armed ? 'text-accent' : 'text-ink-tertiary')} />

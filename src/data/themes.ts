@@ -1,8 +1,8 @@
 export interface ThemeDefinition {
   id: string
   name: string
-  desc: string
-  accentLabel: string
+  desc: { de: string; en: string }
+  accentLabel: { de: string; en: string }
   accent: string
   bgImage?: string
   particleShapes?: number[][][]
@@ -16,66 +16,114 @@ export interface ThemeDefinition {
  * Themes ship with the launcher. Backgrounds live in `public/images` and are
  * referenced relative to the document base so they resolve both in the Vite
  * dev server and from `dist/index.html` in a packaged build.
+ *
+ * Every preset uses the same brightness/blur so switching themes never throws
+ * the artwork in your face: bright enough to see the landscape, soft enough to
+ * keep text readable.
  */
+export const PRESET_BRIGHTNESS = 45
+export const PRESET_BLUR = 4
+
 export const LOCAL_THEMES: ThemeDefinition[] = [
   {
     id: 'bamboo',
     name: 'Bamboo Forest',
-    desc: 'Green accent with a bamboo forest background.',
-    accentLabel: 'Green',
-    accent: '#7cd98b',
-    bgImage: './images/bamboo_forest.png',
+    desc: {
+      de: 'Ruhiges Grün zwischen Bambus und Sonnenlicht.',
+      en: 'Calm green between bamboo and sunlight.',
+    },
+    accentLabel: { de: 'Grün', en: 'Green' },
+    accent: '#5fbf6a',
+    bgImage: './images/theme_bamboo_green.png',
+  },
+  {
+    id: 'end',
+    name: 'End City',
+    desc: {
+      de: 'Violette Türme über der ewigen Leere.',
+      en: 'Violet towers above the endless void.',
+    },
+    accentLabel: { de: 'Violett', en: 'Purple' },
+    accent: '#b06ad4',
+    bgImage: './images/theme_end_purple.png',
+  },
+  {
+    id: 'frozen',
+    name: 'Snowy Lands',
+    desc: {
+      de: 'Klares Eisblau mit frischer, kalter Luft.',
+      en: 'Crisp ice blue with fresh, cold air.',
+    },
+    accentLabel: { de: 'Hellblau', en: 'Light blue' },
+    accent: '#9fc6e0',
+    bgImage: './images/theme_icy_blue.png',
+  },
+  {
+    id: 'nether',
+    name: 'Nether Fortress',
+    desc: {
+      de: 'Glühendes Rot zwischen Basalt und Lava.',
+      en: 'Glowing red between basalt and lava.',
+    },
+    accentLabel: { de: 'Rot', en: 'Red' },
+    accent: '#e05252',
+    bgImage: './images/theme_nether_red.png',
+  },
+  {
+    id: 'obsidian',
+    name: 'Obsidian Portal',
+    desc: {
+      de: 'Tiefes Nachtblau mit einem Hauch von Amethyst.',
+      en: 'Deep midnight blue with a hint of amethyst.',
+    },
+    accentLabel: { de: 'Dunkelblau', en: 'Dark blue' },
+    accent: '#7d74d9',
+    bgImage: './images/theme_obsidian.png',
+  },
+  {
+    id: 'warden',
+    name: 'Warden Valley',
+    desc: {
+      de: 'Sculk-Cyan aus den Tiefen des Deep Dark.',
+      en: 'Sculk cyan from the depths of the Deep Dark.',
+    },
+    accentLabel: { de: 'Cyan', en: 'Cyan' },
+    accent: '#4fb3ab',
+    bgImage: './images/theme_warden_cyan.png',
+  },
+  {
+    id: 'copper',
+    name: 'Copper Trials',
+    desc: {
+      de: 'Warmes Kupferorange aus den Trial Chambers.',
+      en: 'Warm copper orange from the Trial Chambers.',
+    },
+    accentLabel: { de: 'Orange', en: 'Orange' },
+    accent: '#d97742',
+    bgImage: './images/theme_copper_trials.webp',
+  },
+  {
+    id: 'underwater',
+    name: 'Underwater Paradise',
+    desc: {
+      de: 'Satte Ozeanblau-Töne mit ruhigem Licht.',
+      en: 'Rich ocean blues with calm light.',
+    },
+    accentLabel: { de: 'Blau', en: 'Blue' },
+    accent: '#3f8fd0',
+    bgImage: './images/theme_underwater.webp',
   },
   {
     id: 'cherry',
     name: 'Cherry Blossom',
-    desc: 'Pink accent with a cherry blossom background.',
-    accentLabel: 'Pink',
-    accent: '#f2a7c3',
-    bgImage: './images/cherry_blossom.png',
-  },
-  {
-    id: 'frozen',
-    name: 'Frozen Ice',
-    desc: 'Ice-blue accent with a glacier background.',
-    accentLabel: 'Ice blue',
-    accent: '#8fd3f4',
-    bgImage: './images/frozen_ice.png',
-  },
-  {
-    id: 'nether',
-    name: 'Nether Amber',
-    desc: 'Amber accent with a warm Nether background.',
-    accentLabel: 'Amber',
-    accent: '#ff8a5c',
-    bgImage: './images/nether_amber.png',
-  },
-  {
-    id: 'end',
-    name: 'The End',
-    desc: 'Purple accent with a dark, minimal palette.',
-    accentLabel: 'Purple',
-    accent: '#b39ddb',
-  },
-  {
-    id: 'warden',
-    name: 'Warden',
-    desc: 'Teal accent based on deep dark sculk colors.',
-    accentLabel: 'Teal',
-    accent: '#4fd1c5',
-  },
-  {
-    id: 'copper',
-    name: 'Copper',
-    desc: 'Copper accent with warm metallic tones.',
-    accentLabel: 'Copper',
-    accent: '#d98e5f',
-  },
-  {
-    id: 'obsidian',
-    name: 'Obsidian',
-    desc: 'Violet accent with obsidian and amethyst tones.',
-    accentLabel: 'Violet',
-    accent: '#9184f0',
+    desc: {
+      de: 'Sanftes Pink unter blühenden Kirschbäumen.',
+      en: 'Soft pink beneath blooming cherry trees.',
+    },
+    accentLabel: { de: 'Pink', en: 'Pink' },
+    accent: '#f2a3b7',
+    bgImage: './images/theme_cherry.webp',
   },
 ]
+
+export const DEFAULT_THEME_ID = 'bamboo'

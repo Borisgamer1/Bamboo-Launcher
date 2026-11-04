@@ -8,7 +8,7 @@ import { mergeJvmArgumentLayers } from './jvm'
 import type { LaunchPreparation } from './types'
 
 export const LAUNCHER_NAME = 'Bamboo Launcher'
-export const LAUNCHER_VERSION = '0.2.1'
+export const LAUNCHER_VERSION = '0.2.3'
 export const LAUNCH_CLIENT_ID = 'bamboo-launcher'
 
 export type PlaceholderValues = Record<string, string | number>
@@ -175,6 +175,11 @@ export function buildLaunchCommand(preparation: LaunchPreparation): BuiltCommand
   } else if (preparation.world && quickPlay) {
     command.push('--quickPlaySingleplayer', preparation.world)
   }
+
+  // Test hook for the local renderer: open a world without clicking through
+  // the title screen. It is inert in normal launches.
+  const quickWorld = process.env.BAMBOO_QUICK_PLAY_WORLD
+  if (quickWorld && quickPlay) command.push('--quickPlaySingleplayer', quickWorld)
   if (preparation.demo && !command.includes('--demo')) command.push('--demo')
   if (preparation.extraGameArgs && preparation.extraGameArgs.length > 0) {
     command.push(...preparation.extraGameArgs.filter(Boolean))

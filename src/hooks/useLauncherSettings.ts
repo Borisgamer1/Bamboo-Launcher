@@ -1,16 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import {
   normalizePreferences,
   type LauncherPreferences,
 } from '../lib/launcherPreferences'
 import type { LanguageType } from '../lib/translations'
+import {
+  DEFAULT_ONBOARDING,
+  normalizeOnboarding,
+  type OnboardingState,
+} from '../lib/onboarding'
 
 export interface LauncherSettingsState {
   preferences: LauncherPreferences
   setPreferences: Dispatch<SetStateAction<LauncherPreferences>>
   lang: LanguageType
   setLang: Dispatch<SetStateAction<LanguageType>>
+  statisticsEnabled: boolean
+  setStatisticsEnabled: (enabled: boolean) => void
+  onboarding: OnboardingState
+  saveOnboarding: (patch: Partial<OnboardingState>) => void
   settingsLoaded: boolean
 }
 
@@ -21,7 +30,34 @@ interface UseLauncherSettingsOptions {
 export function useLauncherSettings({ setThemeId }: UseLauncherSettingsOptions): LauncherSettingsState {
   const [preferences, setPreferences] = useState<LauncherPreferences>(() => normalizePreferences(undefined))
   const [lang, setLang] = useState<LanguageType>('de')
+  const [statisticsEnabled, setStatisticsEnabledState] = useState(true)
+  const [onboarding, setOnboarding] = useState<OnboardingState>(DEFAULT_ONBOARDING)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+
+  // First-run state is written immediately: a launcher closed right after the
+  // tour must not show it again.
+  const saveOnboarding = useCallback((patch: Partial<OnboardingState>) => {
+    setOnboarding((current) => {
+      const next = normalizeOnboarding({ ...current, ...patch })
+      void window.electronAPI?.settings
+        .save?.({ onboarding: next })
+        .catch(() => console.warn('[Bamboo] Failed to save onboarding state'))
+      return next
+    })
+  }, [])
+
+  // Save this flag on its own so main stops (or starts) recording immediately
+  // instead of waiting for the debounced full settings pass.
+  const setStatisticsEnabled = useCallback((enabled: boolean) => {
+    setStatisticsEnabledState(enabled)
+    void (async () => {
+      try {
+        await window.electronAPI?.settings.save?.({ statisticsEnabled: enabled })
+      } catch {
+        console.warn('[Bamboo] Failed to save statistics setting')
+      }
+    })()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -40,6 +76,10 @@ export function useLauncherSettings({ setThemeId }: UseLauncherSettingsOptions):
           if (settings.preferences) {
             setPreferences(normalizePreferences(settings.preferences))
           }
+          if (typeof settings.statisticsEnabled === 'boolean') {
+            setStatisticsEnabledState(settings.statisticsEnabled)
+          }
+          setOnboarding(normalizeOnboarding(settings.onboarding))
           setSettingsLoaded(true)
           return
         }
@@ -57,5 +97,15 @@ export function useLauncherSettings({ setThemeId }: UseLauncherSettingsOptions):
     }
   }, [setThemeId])
 
-  return { preferences, setPreferences, lang, setLang, settingsLoaded }
+  return {
+    preferences,
+    setPreferences,
+    lang,
+    setLang,
+    statisticsEnabled,
+    setStatisticsEnabled,
+    onboarding,
+    saveOnboarding,
+    settingsLoaded,
+  }
 }

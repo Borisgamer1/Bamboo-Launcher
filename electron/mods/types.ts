@@ -236,6 +236,12 @@ export interface ModpackLock {
   updatedAt: number
 }
 
+/** A pack file that could not be obtained through any sanctioned route. */
+export interface BlockedPackFile {
+  fileName: string
+  message: string
+}
+
 export interface ModpackInstallResult {
   format: 'mrpack' | 'curseforge'
   installed: string[]
@@ -247,4 +253,6 @@ export interface ModpackInstallResult {
   updated: string[]
   removed: string[]
   kept: string[]
+  /** Distribution-blocked files the pack could not fetch; the install continues without them. */
+  blocked: BlockedPackFile[]
 }

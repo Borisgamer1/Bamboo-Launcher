@@ -18,7 +18,6 @@ import {
   type GameOptionValue,
 } from '../../lib/gameOptions'
 import {
-  Badge,
   ConfirmButton,
   SettingsCard,
   SettingsRow,
@@ -60,14 +59,14 @@ export function GameOptionsPanel({ lang, values, onChange, onReplace, note }: Ga
   return (
     <div className="flex flex-col gap-4">
       {note && (
-        <div className="flex items-start gap-2 rounded-[var(--r-lg)] border border-info/20 bg-info/8 px-3 py-2.5 text-mini leading-5 text-ink-secondary">
-          <Monitor className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+        <div className="flex items-start gap-2.5 px-1 text-mini leading-5 text-ink-tertiary">
+          <Monitor className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{note}</span>
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1 rounded-xl border border-stroke bg-root/40 p-1">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-hairline">
+        <div className="flex items-center gap-0.5 overflow-x-hidden flex-nowrap">
           {GAME_OPTION_CATEGORIES.map((entry) => {
             const Icon = CATEGORY_ICONS[entry.icon] || Monitor
             const active = entry.id === category
@@ -76,49 +75,47 @@ export function GameOptionsPanel({ lang, values, onChange, onReplace, note }: Ga
                 key={entry.id}
                 type="button"
                 onClick={() => setCategory(entry.id)}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-mini font-medium transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] cursor-pointer ${
+                aria-current={active ? 'page' : undefined}
+                className={`-mb-px inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 border-b-2 px-2.5 text-mini font-medium transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] ${
                   active
-                    ? 'bg-accent/12 text-accent'
-                    : 'text-ink-secondary hover:bg-hover hover:text-ink'
+                    ? 'border-accent text-ink'
+                    : 'border-transparent text-ink-secondary hover:text-ink'
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className={`h-4 w-4 ${active ? 'text-accent' : 'text-ink-tertiary'}`} />
                 {entry.label[lang]}
               </button>
             )
           })}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 pb-2">
           {changedCount > 0 && (
-            <Badge tone="accent">
+            <span className="font-mono text-micro tabular-nums text-ink-tertiary">
               {t(lang, `${changedCount} angepasst`, `${changedCount} customized`)}
-            </Badge>
+            </span>
           )}
           <ConfirmButton
             onConfirm={() => onReplace(resetGameOptionsForCategory(values, category))}
-            confirmLabel={t(lang, 'Wirklich?', 'Really?')}
+            confirmLabel={t(lang, 'Wirklich zurücksetzen?', 'Really reset?')}
             variant="secondary"
-            icon={<RotateCcw className="h-3 w-3" />}
+            icon={<RotateCcw className="h-3.5 w-3.5" />}
           >
-            {t(lang, 'Vanilla', 'Vanilla')}
+            {t(lang, 'Zurücksetzen', 'Reset')}
           </ConfirmButton>
         </div>
       </div>
 
       <SettingsCard
         title={activeCategory?.label[lang]}
-        description={t(
-          lang,
-          'Diese Werte werden beim Start in die options.txt der Instanz übernommen – auch bei bestehenden Instanzen.',
-          'These values are applied to the instance options.txt on every launch, including existing instances.',
-        )}
         action={
           categoryChanged > 0 ? (
-            <Badge tone="warning">
+            <span className="font-mono text-micro tabular-nums text-warning">
               {t(lang, `${categoryChanged} geändert`, `${categoryChanged} changed`)}
-            </Badge>
+            </span>
           ) : (
-            <Badge>{t(lang, 'Vanilla', 'Vanilla')}</Badge>
+            <span className="font-mono text-micro tabular-nums text-ink-quaternary">
+              {t(lang, 'Standard', 'Default')}
+            </span>
           )
         }
       >
@@ -193,7 +190,7 @@ function GameOptionRow({
       title={option.label[lang]}
       description={option.description?.[lang]}
       control={
-        <div className="w-[260px] max-w-[46vw]">
+        <div className="w-[280px] max-w-[46vw]">
           <Slider
             min={option.min ?? 0}
             max={option.max ?? 100}

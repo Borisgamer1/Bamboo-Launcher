@@ -84,6 +84,14 @@ export const IPC_ARG_SCHEMAS: Record<string, z.ZodType> = {
       folderName: folderName.optional(),
     }),
   ]),
+  'change-instance-version': z.tuple([
+    z.object({
+      folderName,
+      mcVersion: text(64),
+      loader: z.enum(['vanilla', 'fabric', 'quilt', 'forge', 'neoforge']),
+      loaderVersion: z.string().max(64).optional(),
+    }),
+  ]),
   'save-settings': z.tuple([record]),
   'curseforge-search': z.tuple([
     z.object({
@@ -123,9 +131,6 @@ export const IPC_ARG_SCHEMAS: Record<string, z.ZodType> = {
   ]),
   'import-preview': z.tuple([text(4096)]),
   'import-profile': z.tuple([record]),
-  'build-invite-link': z.tuple([record]),
-  'bamboo:join:prepare': z.tuple([record]),
-  'bamboo:join:confirm': z.tuple([text(256)]),
   'install-modpack-mrpack': z.tuple([
     z.object({ folderName, mcVersion: text(64), loader: text(64), mrpackUrl: url }),
   ]),
@@ -134,9 +139,15 @@ export const IPC_ARG_SCHEMAS: Record<string, z.ZodType> = {
       folderName,
       profileName: z.string().max(256).optional(),
       versionId: z.string().max(128).optional(),
-      downloadUrl: url,
+      downloadUrl: url.optional(),
       filename: fileName,
       itemType: z.string().max(64).optional(),
+      curseforgeFileId: z.number().int().positive().optional(),
+      taskId: z.string().max(256).optional(),
+      title: z.string().max(256).optional(),
+    }).refine((value) => Boolean(value.downloadUrl) || value.curseforgeFileId !== undefined, {
+      message: 'downloadUrl or curseforgeFileId is required',
+      path: ['downloadUrl'],
     }),
   ]),
   'get-screenshots': z.tuple([folderName]),
@@ -188,6 +199,17 @@ export const IPC_ARG_SCHEMAS: Record<string, z.ZodType> = {
       modName: z.string().max(256).optional(),
       projectId: z.union([z.string().max(64), z.number()]).optional(),
       source: z.string().max(32).optional(),
+    }),
+  ]),
+  'identify-content-files': z.tuple([
+    z.object({
+      folderName,
+      files: z.array(
+        z.object({
+          fileName,
+          type: z.string().max(64).optional(),
+        }),
+      ).max(100),
     }),
   ]),
   'hash-content-files': z.tuple([

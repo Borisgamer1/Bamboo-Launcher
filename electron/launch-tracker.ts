@@ -1,4 +1,4 @@
-import type { Logger } from './logger'
+import { describeError, type Logger } from './logger'
 import type { TelemetryService } from './telemetry'
 
 export interface LaunchJvmInfo {
@@ -12,6 +12,8 @@ export interface LaunchStartInfo {
   loader?: string
   loaderVersion?: string
   instancePath: string
+  instanceId?: string
+  instanceName?: string
   javaPath: string
   account?: string
   gameRoot?: string
@@ -28,15 +30,32 @@ export interface LaunchHandle {
   finish(outcome?: LaunchOutcome): void
 }
 
+/** A finished launch that can be written to the global statistics ledger. */
+export interface LaunchSession {
+  id: string
+  instanceId: string
+  instanceName: string
+  version: string
+  loader: string
+  loaderVersion: string
+  startedAt: number
+  endedAt: number
+  durationMs: number
+}
+
+export type LaunchSessionListener = (session: LaunchSession) => void | Promise<void>
+
 export class LaunchTracker {
   #logger: Logger
   #telemetry?: TelemetryService
+  #onSession?: LaunchSessionListener
   #counter = 0
   #active = new Map<string, { info: LaunchStartInfo; startedAt: number }>()
 
-  constructor(logger: Logger, telemetry?: TelemetryService) {
+  constructor(logger: Logger, telemetry?: TelemetryService, onSession?: LaunchSessionListener) {
     this.#logger = logger
     this.#telemetry = telemetry
+    this.#onSession = onSession
   }
 
   get activeCount(): number {
@@ -54,6 +73,8 @@ export class LaunchTracker {
       loader: info.loader ?? 'vanilla',
       loaderVersion: info.loaderVersion ?? '',
       instancePath: info.instancePath,
+      instanceId: info.instanceId ?? '',
+      instanceName: info.instanceName ?? '',
       javaPath: info.javaPath,
       gameRoot: info.gameRoot ?? '',
       account: info.account ?? '',
@@ -67,6 +88,8 @@ export class LaunchTracker {
         if (finished) return
         finished = true
         this.#active.delete(launchId)
+        const endedAt = Date.now()
+        const durationMs = endedAt - startedAt
         const payload = {
           launchId,
           version: info.version,
@@ -82,11 +105,37 @@ export class LaunchTracker {
               }
             : {}),
           exitCode: outcome.exitCode ?? null,
-          durationMs: Date.now() - startedAt,
+          durationMs,
           error: outcome.error ?? '',
         }
         if (outcome.error) this.#logger.error('Launch failed', payload)
         else this.#logger.info('Launch finished', payload)
+        if (!outcome.error && this.#onSession) {
+          const session: LaunchSession = {
+            id: launchId,
+            instanceId: info.instanceId ?? '',
+            instanceName: info.instanceName ?? '',
+            version: info.version,
+            loader: info.loader ?? 'vanilla',
+            loaderVersion: info.loaderVersion ?? '',
+            startedAt,
+            endedAt,
+            durationMs,
+          }
+          try {
+            void Promise.resolve(this.#onSession(session)).catch((error) => {
+              this.#logger.warn('Launch session listener failed', {
+                launchId,
+                error: describeError(error),
+              })
+            })
+          } catch (error) {
+            this.#logger.warn('Launch session listener failed', {
+              launchId,
+              error: describeError(error),
+            })
+          }
+        }
         if (this.#telemetry?.enabled) {
           const ok = !outcome.error && outcome.exitCode === 0
           const code = outcome.error

@@ -224,18 +224,126 @@ function asCompound(value: NbtValue | undefined): NbtCompound | undefined {
   return value as NbtCompound
 }
 
-interface StatsPlaytime {
-  ms: number
+/** The distance stats Minecraft writes per player, in display order. */
+export const DISTANCE_KEYS = [
+  'walkCm',
+  'sprintCm',
+  'crouchCm',
+  'swimCm',
+  'flyCm',
+  'climbCm',
+  'fallCm',
+  'walkOnWaterCm',
+  'walkUnderWaterCm',
+  'aviateCm',
+  'minecartCm',
+  'boatCm',
+  'pigCm',
+  'horseCm',
+  'striderCm',
+  'happyGhastCm',
+] as const
+
+export type DistanceKey = (typeof DISTANCE_KEYS)[number]
+export type DistanceStats = Record<DistanceKey, number>
+
+const DISTANCE_STAT_KEYS: Record<DistanceKey, string> = {
+  walkCm: 'minecraft:walk_one_cm',
+  sprintCm: 'minecraft:sprint_one_cm',
+  crouchCm: 'minecraft:crouch_one_cm',
+  swimCm: 'minecraft:swim_one_cm',
+  flyCm: 'minecraft:fly_one_cm',
+  climbCm: 'minecraft:climb_one_cm',
+  fallCm: 'minecraft:fall_one_cm',
+  walkOnWaterCm: 'minecraft:walk_on_water_one_cm',
+  walkUnderWaterCm: 'minecraft:walk_under_water_one_cm',
+  aviateCm: 'minecraft:aviate_one_cm',
+  minecartCm: 'minecraft:minecart_one_cm',
+  boatCm: 'minecraft:boat_one_cm',
+  pigCm: 'minecraft:pig_one_cm',
+  horseCm: 'minecraft:horse_one_cm',
+  striderCm: 'minecraft:strider_one_cm',
+  happyGhastCm: 'minecraft:happy_ghast_one_cm',
+}
+
+export function emptyDistanceStats(): DistanceStats {
+  return {
+    walkCm: 0,
+    sprintCm: 0,
+    crouchCm: 0,
+    swimCm: 0,
+    flyCm: 0,
+    climbCm: 0,
+    fallCm: 0,
+    walkOnWaterCm: 0,
+    walkUnderWaterCm: 0,
+    aviateCm: 0,
+    minecartCm: 0,
+    boatCm: 0,
+    pigCm: 0,
+    horseCm: 0,
+    striderCm: 0,
+    happyGhastCm: 0,
+  }
+}
+
+function readDistanceStats(custom: NbtCompound | undefined): DistanceStats {
+  const distance = emptyDistanceStats()
+  for (const key of DISTANCE_KEYS) {
+    const amount = asNumber(custom?.[DISTANCE_STAT_KEYS[key]])
+    distance[key] = amount !== undefined && amount > 0 ? amount : 0
+  }
+  return distance
+}
+
+function maxDistanceStats(left: DistanceStats, right: DistanceStats): DistanceStats {
+  const distance = emptyDistanceStats()
+  for (const key of DISTANCE_KEYS) distance[key] = Math.max(left[key], right[key])
+  return distance
+}
+
+interface WorldStats {
+  playtimeMs: number
   players: number
+  distance: DistanceStats
+  blocksMined: number
+  blocksPlaced: number
+  mobsKilled: number
+  deaths: number
+  jumps: number
+}
+
+export interface InstanceGameStats {
+  distance: DistanceStats
+  blocksMined: number
+  blocksPlaced: number
+  mobsKilled: number
+  deaths: number
+  jumps: number
+  worlds: number
+}
+
+function sumCounts(value: NbtValue | undefined): number {
+  const compound = asCompound(value)
+  if (!compound) return 0
+  let total = 0
+  for (const entry of Object.values(compound)) {
+    const amount = asNumber(entry)
+    if (amount !== undefined && amount > 0) total += amount
+  }
+  return total
 }
 
 /**
- * Recorded playtime of the world's players, taken from the game's own statistics
- * (`minecraft:custom.minecraft:play_time`, in ticks). Modern worlds keep these in
- * `players/stats`, older ones directly in `stats`. The longest single player value
- * is used so multi-player worlds do not sum unrelated sessions.
+ * Recorded statistics from the world's players. Modern worlds keep these in
+ * `players/stats`, older ones directly in `stats`. For each value the longest
+ * single-player entry is used, so multi-player worlds do not inflate the totals.
+ *
+ * `minecraft:used` is the vanilla counter that includes placed blocks (Minecraft
+ * has no dedicated block-placed statistic); mined blocks come from
+ * `minecraft:mined`.
  */
-function readStatsPlaytime(worldDir: string): StatsPlaytime | null {
+function readWorldStats(worldDir: string): WorldStats | null {
   for (const statsDir of [join(worldDir, 'players', 'stats'), join(worldDir, 'stats')]) {
     let entries: string[]
     try {
@@ -249,7 +357,16 @@ function readStatsPlaytime(worldDir: string): StatsPlaytime | null {
       continue
     }
     let players = 0
-    let bestTicks = 0
+    let best: WorldStats = {
+      playtimeMs: 0,
+      players: 0,
+      distance: emptyDistanceStats(),
+      blocksMined: 0,
+      blocksPlaced: 0,
+      mobsKilled: 0,
+      deaths: 0,
+      jumps: 0,
+    }
     for (const entry of entries) {
       if (!entry.endsWith('.json')) continue
       try {
@@ -257,8 +374,23 @@ function readStatsPlaytime(worldDir: string): StatsPlaytime | null {
         const stats = asCompound((parsed as NbtCompound | undefined)?.stats as NbtValue | undefined)
         const custom = asCompound(stats?.['minecraft:custom'])
         const ticks = asNumber(custom?.['minecraft:play_time'])
+        const distance = readDistanceStats(custom)
+        const blocksMined = sumCounts(stats?.['minecraft:mined'])
+        const blocksPlaced = sumCounts(stats?.['minecraft:used'])
+        const mobsKilled = sumCounts(stats?.['minecraft:killed'])
+        const deaths = Math.max(0, Math.round(asNumber(custom?.['minecraft:deaths']) ?? 0))
+        const jumps = Math.max(0, Math.round(asNumber(custom?.['minecraft:jump']) ?? 0))
         players += 1
-        if (ticks !== undefined && ticks > bestTicks) bestTicks = ticks
+        best = {
+          playtimeMs: Math.max(best.playtimeMs, Math.round(((ticks ?? 0) / TICKS_PER_SECOND) * 1000)),
+          players: 0,
+          distance: maxDistanceStats(best.distance, distance),
+          blocksMined: Math.max(best.blocksMined, blocksMined),
+          blocksPlaced: Math.max(best.blocksPlaced, blocksPlaced),
+          mobsKilled: Math.max(best.mobsKilled, mobsKilled),
+          deaths: Math.max(best.deaths, deaths),
+          jumps: Math.max(best.jumps, jumps),
+        }
       } catch (error) {
         // Unreadable or partial stat file: count the player but keep the value we have.
         getDefaultLogger().child('worlds').debug('player statistics file unreadable', {
@@ -269,10 +401,57 @@ function readStatsPlaytime(worldDir: string): StatsPlaytime | null {
       }
     }
     if (players > 0) {
-      return { ms: Math.round((bestTicks / TICKS_PER_SECOND) * 1000), players }
+      return { ...best, players }
     }
   }
   return null
+}
+
+/** Sums the object statistics of every world in an instance's saves folder. */
+export function collectInstanceGameStats(savesDir: string): InstanceGameStats {
+  let entries: { name: string; isDirectory: () => boolean }[]
+  try {
+    entries = readdirSync(savesDir, { withFileTypes: true })
+  } catch (error) {
+    // An instance without a saves folder simply has no world statistics.
+    getDefaultLogger().child('worlds').debug('saves folder unavailable for statistics', {
+      savesDir,
+      error: describeError(error),
+    })
+    return {
+      distance: emptyDistanceStats(),
+      blocksMined: 0,
+      blocksPlaced: 0,
+      mobsKilled: 0,
+      deaths: 0,
+      jumps: 0,
+      worlds: 0,
+    }
+  }
+
+  const totals: InstanceGameStats = {
+    distance: emptyDistanceStats(),
+    blocksMined: 0,
+    blocksPlaced: 0,
+    mobsKilled: 0,
+    deaths: 0,
+    jumps: 0,
+    worlds: 0,
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+    const worldDir = join(savesDir, entry.name)
+    const stats = readWorldStats(worldDir)
+    if (!stats) continue
+    for (const key of DISTANCE_KEYS) totals.distance[key] += stats.distance[key]
+    totals.blocksMined += stats.blocksMined
+    totals.blocksPlaced += stats.blocksPlaced
+    totals.mobsKilled += stats.mobsKilled
+    totals.deaths += stats.deaths
+    totals.jumps += stats.jumps
+    totals.worlds += 1
+  }
+  return totals
 }
 
 function readWorldIcon(worldDir: string): string | null {
@@ -345,13 +524,13 @@ export function summarizeWorld(worldDir: string, folderName: string): WorldSumma
   const lastPlayed = asNumber(data.LastPlayed) ?? base.lastPlayed
   const versionName = asString(asCompound(data.Version)?.Name)
 
-  const recorded = readStatsPlaytime(worldDir)
+  const recorded = readWorldStats(worldDir)
   const worldAgeTicks = asNumber(data.Time)
   let playtimeMs: number | null = null
   let playtimeSource: WorldPlaytimeSource = 'none'
   let playtimeApproximate = false
   if (recorded) {
-    playtimeMs = recorded.ms
+    playtimeMs = recorded.playtimeMs
     playtimeSource = 'stats'
   } else if (worldAgeTicks !== undefined) {
     playtimeMs = Math.round((worldAgeTicks / TICKS_PER_SECOND) * 1000)

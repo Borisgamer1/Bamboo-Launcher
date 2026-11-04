@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, shell, clipboard, dialog, protocol, net, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, clipboard, dialog, protocol, net, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const { createIpcRegistrar } = require('./dist-electron/ipc-registry.js');
 const { deleteScreenshotFile } = require('./dist-electron/screenshots.js');
@@ -8,10 +9,13 @@ const { deleteScreenshotFile } = require('./dist-electron/screenshots.js');
 const { downloadFolder } = require('./dist-electron/mods/legacy/shared.js');
 // Shared with the renderer and the CurseForge provider; compiled from electron/shared.
 const { CURSEFORGE_CLASS_IDS: CF_CLASS_IDS } = require('./dist-electron/shared/curseforgeClassIds.js');
+const {
+  shortcutCoverPlan,
+  shortcutIconFileName,
+  pngToIco,
+} = require('./dist-electron/shared/shortcutIcon.js');
 
 const { startRPC, setActivity: setDiscordActivity } = require('./src/discordRPC');
-
-const INVITE_PROTOCOL = 'bamboo-launcher';
 
 // The core creates the file logger; shell code shares it once the core is ready.
 // Before that, warnings and errors still reach the console so a failed boot is visible.
@@ -36,9 +40,6 @@ const shellLog = {
   },
 };
 
-let joinService = null;
-let joinSeamReady = false;
-const preReadyJoinLinks = [];
 const ACTIVE_LAUNCHES = new Map();
 // Every channel below goes through this one registration path. It applies the
 // sender check and the argument schemas before the legacy handler runs.
@@ -420,13 +421,45 @@ function normalizeKeyBindings(bindings) {
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
+// The launcher may only rewrite options.txt while the file still matches the
+// version it wrote itself. Minecraft rewrites the file on exit, and from then
+// on it belongs to the player: their in-game changes are never reset.
+const OPTIONS_SYNC_FILE = '.bamboo-options-sync.json';
+
+function optionsFileHash(text) {
+  return crypto.createHash('sha1').update(text, 'utf8').digest('hex');
+}
+
+function readOptionsSyncState(gameDir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(gameDir, OPTIONS_SYNC_FILE), 'utf8'));
+    return parsed && typeof parsed.hash === 'string' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeOptionsSyncState(gameDir, text) {
+  try {
+    fs.writeFileSync(
+      path.join(gameDir, OPTIONS_SYNC_FILE),
+      JSON.stringify({ hash: optionsFileHash(text), updatedAt: Date.now() }, null, 2),
+      'utf8',
+    );
+  } catch (error) {
+    shellLog.warn('options sync marker could not be written', { gameDir, error: error.message });
+  }
+}
+
 function writeFirstRunOptions(gameDir, options) {
   const optionsPath = path.join(gameDir, 'options.txt');
   if (!options || typeof options !== 'object') return { created: false, path: optionsPath, reason: 'no-options' };
   if (fs.existsSync(optionsPath)) return { created: false, path: optionsPath, reason: 'exists' };
   fs.mkdirSync(gameDir, { recursive: true });
   const keyBindings = normalizeKeyBindings(options.keyBindings);
-  fs.writeFileSync(optionsPath, buildOptionsTxt({ ...options, keyBindings }), 'utf8');
+  const text = buildOptionsTxt({ ...options, keyBindings });
+  fs.writeFileSync(optionsPath, text, 'utf8');
+  writeOptionsSyncState(gameDir, text);
   return { created: true, path: optionsPath, keybindCount: keyBindings ? Object.keys(keyBindings).length : 0 };
 }
 
@@ -697,6 +730,12 @@ function applyLauncherGameOptions(gameDir, options) {
   if (!fs.existsSync(optionsPath)) return [];
 
   const original = fs.readFileSync(optionsPath, 'utf8');
+  const syncState = readOptionsSyncState(gameDir);
+  // No marker (older profile) or a different hash means the file changed
+  // outside the launcher. Keep the player's settings instead of resetting them.
+  if (!syncState || syncState.hash !== optionsFileHash(original)) {
+    return [];
+  }
   const eol = original.includes('\r\n') ? '\r\n' : '\n';
   const lines = original.split(/\r?\n/);
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
@@ -742,6 +781,12 @@ function applyLauncherGameOptions(gameDir, options) {
     setOption('lang', options.lang.trim(), 'lang');
   }
 
+  // Fullscreen is a launcher switch, so both directions must reach options.txt.
+  // The default (false) would otherwise be filtered out and leave a stale true.
+  if (typeof options.fullscreen === 'boolean') {
+    setOption('fullscreen', options.fullscreen ? 'true' : 'false', 'fullscreen');
+  }
+
   if (mcVer >= 26000) {
     const distances = customised.includes('renderDistance') || customised.includes('simulationDistance');
     const mode = String(options.graphicsMode || '').toLowerCase();
@@ -751,7 +796,9 @@ function applyLauncherGameOptions(gameDir, options) {
   }
 
   if (!changed) return [];
-  fs.writeFileSync(optionsPath, lines.join(eol) + eol, 'utf8');
+  const next = lines.join(eol) + eol;
+  fs.writeFileSync(optionsPath, next, 'utf8');
+  writeOptionsSyncState(gameDir, next);
   return applied;
 }
 
@@ -814,6 +861,12 @@ ipc.handle('apply-options-patch', async (_event, { folderName, patch }) => {
 ipc.on('window-minimize', () => mainWindow?.minimize());
 ipc.on('window-focus', () => { mainWindow?.show(); mainWindow?.focus(); });
 ipc.on('window-close', () => mainWindow?.close());
+ipc.on('window-maximize', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+ipc.handle('window-is-maximized', () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isMaximized()));
 
 ipc.handle('open-profile-folder', async (_event, folderName) => {
   const rootPath = gameRoot();
@@ -896,6 +949,216 @@ ipc.handle('repair-profile', async (event, { loader, loaderVersion, mcVersion, f
   sendProgress('Reparatur abgeschlossen!', 100);
   shellLog.info('profile repaired', { loader: normalizedLoader, loaderVersion: loaderVersion || '', mcVersion });
   return true;
+});
+
+function loaderDisplayName(loader) {
+  const map = { vanilla: 'Vanilla', fabric: 'Fabric', quilt: 'Quilt', forge: 'Forge', neoforge: 'Neoforge' };
+  return map[String(loader || '').toLowerCase()] || 'Vanilla';
+}
+
+/**
+ * `modrinth.index.json` is the launch-time source of truth for modpacks: the
+ * launch handler prefers its dependencies over the renderer's labels. A version
+ * switch that only rewrites profiles.json would therefore keep starting the old
+ * pack version.
+ */
+function updateModpackIndexDependencies(instanceDir, mcVersion, loader, loaderVersion) {
+  const indexFile = path.join(instanceDir, 'modrinth.index.json');
+  if (!fs.existsSync(indexFile)) return false;
+  try {
+    const index = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
+    if (!index || typeof index !== 'object' || Array.isArray(index)) return false;
+    const dependencies = index.dependencies && typeof index.dependencies === 'object'
+      ? { ...index.dependencies }
+      : {};
+    delete dependencies['fabric-loader'];
+    delete dependencies['quilt-loader'];
+    delete dependencies.forge;
+    delete dependencies.neoforge;
+    dependencies.minecraft = String(mcVersion);
+    if (loader !== 'vanilla' && loaderVersion) {
+      const key = loader === 'fabric' ? 'fabric-loader' : loader === 'quilt' ? 'quilt-loader' : loader;
+      dependencies[key] = String(loaderVersion);
+    }
+    index.dependencies = dependencies;
+    fs.writeFileSync(indexFile, JSON.stringify(index, null, 2));
+    return true;
+  } catch (error) {
+    shellLog.warn('change-instance-version: modpack index not updated', {
+      indexFile,
+      error: error.message,
+    });
+    return false;
+  }
+}
+
+/**
+ * Copied legacy profiles carry the source instance's `instance.json`, which can
+ * still name the old Minecraft version and loader profile. The core store entry
+ * for such a folder is only created on first launch, so a version switch must
+ * also rewrite the file directly when no store record exists yet.
+ */
+function updateLegacyInstanceMetadata(instanceDir, values) {
+  const file = path.join(instanceDir, 'instance.json');
+  if (!fs.existsSync(file)) return false;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+    parsed.version = String(values.mcVersion || '');
+    parsed.versionId = String(values.versionId || '');
+    parsed.loader = String(values.loader || 'vanilla');
+    parsed.loaderVersion = String(values.loaderVersion || '');
+    parsed.updatedAt = Date.now();
+    fs.writeFileSync(file, JSON.stringify(parsed, null, 2));
+    return true;
+  } catch (error) {
+    shellLog.warn('change-instance-version: legacy instance file not updated', {
+      instanceDir,
+      error: error.message,
+    });
+    return false;
+  }
+}
+
+ipc.handle('change-instance-version', async (event, { folderName, mcVersion, loader, loaderVersion }) => {
+  const requestedFolder = path.basename(String(folderName || ''));
+  if (!requestedFolder || requestedFolder !== String(folderName) || requestedFolder === '.' || requestedFolder === '..') {
+    return { success: false, error: 'Ungültiger Instanzordner' };
+  }
+  const normalizedLoader = String(loader || 'vanilla').toLowerCase();
+  if (!['vanilla', 'fabric', 'quilt', 'forge', 'neoforge'].includes(normalizedLoader)) {
+    return { success: false, error: 'Unbekannter Modloader' };
+  }
+  const targetMc = String(mcVersion || '');
+  if (!targetMc) return { success: false, error: 'Minecraft-Version fehlt' };
+
+  const taskId = `version-switch:${requestedFolder}`;
+  const emitProgress = (percent, label) => {
+    try {
+      event.sender.send('background-task-progress', {
+        id: taskId,
+        percent: Math.max(0, Math.min(100, Math.round(percent))),
+        label: String(label || ''),
+      });
+    } catch (error) {
+      shellLog.debug('change-instance-version: progress could not be sent', { error: error.message });
+    }
+  };
+
+  emitProgress(2, 'Zielversion wird vorbereitet…');
+  let versionId = targetMc;
+  let installedLoaderVersion = '';
+
+  try {
+    const rootPath = await resolveGameRoot();
+    if (normalizedLoader === 'vanilla') {
+      const { installVersion } = require('./dist-electron/install/version.js');
+      await installVersion(rootPath, targetMc, {
+        cacheDir: path.join(rootPath, 'cache'),
+        withAssets: true,
+      });
+    } else {
+      const result = await installLoaderViaCore(
+        normalizedLoader,
+        targetMc,
+        loaderVersion || '',
+        (progress) => {
+          const percentMap = {
+            metadata: 8,
+            base: 18,
+            installer: 28,
+            profile: 36,
+            inputs: 40,
+            processors: 44,
+            done: 48,
+          };
+          emitProgress(percentMap[progress?.phase] || 24, progress?.message || 'Loader wird installiert…');
+        },
+      );
+      versionId = result.versionId || versionId;
+      installedLoaderVersion = result.loaderVersion || String(loaderVersion || '');
+    }
+
+    emitProgress(54, 'Instanzdaten werden aktualisiert…');
+
+    const profiles = readProfilesSync(rootPath);
+    let profileUpdated = false;
+    const nextProfiles = profiles.map((profile) => {
+      if (!profile || typeof profile !== 'object') return profile;
+      if (profileFolderOf(profile) !== requestedFolder) return profile;
+      profileUpdated = true;
+      return {
+        ...profile,
+        version: targetMc,
+        loader: loaderDisplayName(normalizedLoader),
+        loaderVersion: installedLoaderVersion,
+      };
+    });
+    if (profileUpdated) {
+      writeProfilesSync(rootPath, nextProfiles);
+    } else {
+      shellLog.warn('change-instance-version: profile not found in profiles.json', {
+        folderName: requestedFolder,
+      });
+    }
+
+    // Keep the core instance file/index in sync even when the visible instance
+    // list lives in the legacy profiles.json.
+    const instanceDir = path.join(rootPath, 'profiles', requestedFolder);
+    try {
+      const core = await getBambooCore();
+      const found = core ? await core.instanceManager.findByFolder(requestedFolder) : undefined;
+      if (found) {
+        await core.instanceManager.updateFile(found.instance.id, {
+          version: targetMc,
+          versionId,
+          loader: normalizedLoader,
+          loaderVersion: installedLoaderVersion,
+        });
+      } else {
+        updateLegacyInstanceMetadata(instanceDir, {
+          mcVersion: targetMc,
+          versionId,
+          loader: normalizedLoader,
+          loaderVersion: installedLoaderVersion,
+        });
+      }
+    } catch (error) {
+      shellLog.warn('change-instance-version: core instance file not updated', {
+        folderName: requestedFolder,
+        error: error.message,
+      });
+    }
+
+    updateModpackIndexDependencies(
+      instanceDir,
+      targetMc,
+      normalizedLoader,
+      installedLoaderVersion,
+    );
+
+    emitProgress(100, 'Version gewechselt');
+    shellLog.info('instance version changed', {
+      folderName: requestedFolder,
+      mcVersion: targetMc,
+      loader: normalizedLoader,
+      loaderVersion: installedLoaderVersion,
+      versionId,
+    });
+    return {
+      success: true,
+      mcVersion: targetMc,
+      loader: normalizedLoader,
+      loaderVersion: installedLoaderVersion,
+      versionId,
+    };
+  } catch (error) {
+    shellLog.error('change-instance-version failed', {
+      folderName: requestedFolder,
+      error: error.message,
+    });
+    return { success: false, error: error.message };
+  }
 });
 
 ipc.handle('get-settings', async () => {
@@ -1297,26 +1560,57 @@ ipc.handle('show-save-dialog', async (_event, options) => {
   return dialog.showSaveDialog(options);
 });
 
+// Server status responses are cached briefly and identical in-flight requests
+// are shared, so refreshing the list or watching a typed address costs one
+// upstream call instead of one per render. api.mcsrvstat.us is free and needs
+// no key.
+const SERVER_STATUS_TTL_MS = 60 * 1000;
+const serverStatusCache = new Map();
+const serverStatusInFlight = new Map();
+
+function normalizeServerAddress(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^minecraft:\/\//i, '')
+    .replace(/\/+$/, '') || '';
+}
+
+async function fetchServerStatus(address) {
+  const startedAt = Date.now();
+  const url = `https://api.mcsrvstat.us/3/${encodeURIComponent(address)}`;
+  const res = await net.fetch(url, { signal: AbortSignal.timeout(4000) });
+  const duration = Date.now() - startedAt;
+  if (!res.ok) return { online: false, ping: 999, error: `HTTP ${res.status}` };
+  const data = await res.json();
+  return {
+    online: data.online ?? false,
+    playersOnline: data.players?.online ?? 0,
+    playersMax: data.players?.max ?? 0,
+    motd: data.motd?.clean?.join("\n") || "",
+    ping: duration,
+    version: data.version || "Unknown",
+    icon: data.icon || null,
+  };
+}
+
 ipc.handle('ping-server', async (_event, serverIp) => {
-  const startTime = Date.now();
-  try {
-    const url = `https://api.mcsrvstat.us/3/${encodeURIComponent(serverIp)}`;
-    const res = await net.fetch(url);
-    const duration = Date.now() - startTime;
-    if (!res.ok) return { online: false, ping: 999, error: `HTTP ${res.status}` };
-    const data = await res.json();
-    return {
-      online: data.online ?? false,
-      playersOnline: data.players?.online ?? 0,
-      playersMax: data.players?.max ?? 0,
-      motd: data.motd?.clean?.join("\n") || "",
-      ping: duration,
-      version: data.version || "Unknown",
-      icon: data.icon || null,
-    };
-  } catch (e) {
-    return { online: false, ping: 999, error: e.message };
-  }
+  const address = normalizeServerAddress(serverIp);
+  if (!address) return { online: false, ping: 999, error: 'Leere Serveradresse' };
+  const cached = serverStatusCache.get(address);
+  if (cached && Date.now() - cached.at < SERVER_STATUS_TTL_MS) return cached.value;
+  const pending = serverStatusInFlight.get(address);
+  if (pending) return pending;
+  const request = fetchServerStatus(address)
+    .catch((error) => ({ online: false, ping: 999, error: error.message }))
+    .then((value) => {
+      serverStatusCache.set(address, { value, at: Date.now() });
+      return value;
+    })
+    .finally(() => {
+      serverStatusInFlight.delete(address);
+    });
+  serverStatusInFlight.set(address, request);
+  return request;
 });
 
 ipc.handle('read-file-as-base64', async (_event, filePath) => {
@@ -1713,10 +2007,6 @@ if (!gotLock) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
-    const deepLinkArg = (commandLine || []).find(arg => typeof arg === 'string' && arg.startsWith(`${INVITE_PROTOCOL}://`));
-    if (deepLinkArg) {
-      handleDeepLinkUrl(deepLinkArg);
-    }
     const instanceArg = readInstanceLaunchArg(commandLine);
     if (instanceArg) queueInstanceLaunch(instanceArg);
   });
@@ -1778,6 +2068,25 @@ function createWindow() {
     mainWindow.show();
   });
 
+  // Test hook: launch a known instance without clicking through the UI. It is
+  // inert unless the local test process opts in.
+  if (process.env.BAMBOO_AUTOPLAY) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      setTimeout(() => {
+        const payload = JSON.stringify({
+          folderName: process.env.BAMBOO_AUTOPLAY_FOLDER || 'furry-smp',
+          profileName: process.env.BAMBOO_AUTOPLAY_NAME || 'Furry SMP',
+          version: process.env.BAMBOO_AUTOPLAY_VERSION || '26.3',
+          modLoader: 'fabric',
+          loaderVersion: '0.20.1',
+        });
+        mainWindow.webContents.executeJavaScript(
+          `window.electronAPI.launch.start(${payload})`,
+        ).catch((error) => console.error('autoplay failed', error));
+      }, 2500);
+    });
+  }
+
   const saveBounds = () => {
     if (!mainWindow.isMaximized()) {
       saveWindowState(mainWindow.getBounds());
@@ -1785,8 +2094,14 @@ function createWindow() {
   };
   mainWindow.on('resize', saveBounds);
   mainWindow.on('move', saveBounds);
-  mainWindow.on('maximize', () => saveWindowState({ isMaximized: true }));
-  mainWindow.on('unmaximize', () => saveWindowState(mainWindow.getBounds()));
+  mainWindow.on('maximize', () => {
+    saveWindowState({ isMaximized: true });
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('window-maximized-change', true);
+  });
+  mainWindow.on('unmaximize', () => {
+    saveWindowState(mainWindow.getBounds());
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('window-maximized-change', false);
+  });
 
   let allowClose = false;
   let closeTimer = null;
@@ -1818,60 +2133,6 @@ function createWindow() {
     if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
     ipc.removeListener('app:flush-before-close-done', finishClose);
   });
-}
-
-const joinLogger = {
-  debug: (message, data) => shellLog.debug(`join: ${message}`, data),
-  info: (message, data) => shellLog.info(`join: ${message}`, data),
-  warn: (message, data) => shellLog.warn(`join: ${message}`, data),
-  error: (message, data) => shellLog.error(`join: ${message}`, data),
-  child: () => joinLogger,
-};
-
-function getJoinService() {
-  if (!joinService) {
-    const { JoinService } = require('./dist-electron/join/index.js');
-    joinService = new JoinService({
-      appDataPath: app.getPath('userData'),
-      logger: joinLogger,
-      deliver: (payload) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('deep-link-invite', payload);
-        }
-      },
-      runtime: async () => {
-        const core = await getBambooCore();
-        if (!core) throw new Error('Launcher-Core (dist-electron) nicht verfügbar');
-        return {
-          instances: core.instanceManager,
-          launch: (request, onEvent) => core.launchInstance(request, onEvent),
-        };
-      },
-    });
-  }
-  return joinService;
-}
-
-function buildInviteUrl(payload) {
-  return getJoinService().buildInviteUrl(payload);
-}
-
-function handleDeepLinkUrl(url) {
-  if (!url || typeof url !== 'string') return;
-  if (!joinSeamReady) {
-    preReadyJoinLinks.push(url);
-    if (preReadyJoinLinks.length > 5) preReadyJoinLinks.shift();
-    return;
-  }
-  try {
-    void getJoinService().receive(url).then((result) => {
-      if (!result.ok) shellLog.warn('join: deep link rejected', { code: result.code, error: result.message });
-    }).catch((error) => {
-      shellLog.error('join: deep link failed', { error: error.message });
-    });
-  } catch (error) {
-    shellLog.error('join: module unavailable', { error: error.message });
-  }
 }
 
 // Desktop shortcuts pass --bamboo-instance=<folder>; the renderer starts the
@@ -1923,7 +2184,6 @@ app.whenReady().then(async () => {
   if (process.platform === 'win32' && typeof app.setAppUserModelId === 'function') {
     app.setAppUserModelId('de.bamboo.launcher.app');
   }
-  app.setAsDefaultProtocolClient(INVITE_PROTOCOL);
   const core = await getBambooCore();
   try {
     const { repaired, changes } = repairProfileFolderCollisions(gameRoot());
@@ -1951,32 +2211,18 @@ app.whenReady().then(async () => {
     shellLog.warn('auto-updater unavailable', { error: error.message });
   }
   createWindow();
-  joinSeamReady = true;
   const startupInstance = readInstanceLaunchArg(process.argv);
   if (startupInstance) queueInstanceLaunch(startupInstance);
-  for (const link of preReadyJoinLinks.splice(0)) handleDeepLinkUrl(link);
-  if (process.platform === 'win32') {
-    const deepLinkArg = (process.argv || []).find(arg => typeof arg === 'string' && arg.startsWith(`${INVITE_PROTOCOL}://`));
-    if (deepLinkArg) handleDeepLinkUrl(deepLinkArg);
-  }
   await startRPC();
   updateDiscordPresence('launcher');
 });
-app.on('open-url', (event, url) => {
-  event.preventDefault();
-  handleDeepLinkUrl(url);
-});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
-ipc.handle('build-invite-link', async (_event, payload) => buildInviteUrl(payload));
 ipc.handle('bamboo:ui:ready', async () => {
   rendererReady = true;
-  const result = await getJoinService().uiReady();
   setTimeout(flushPendingInstanceLaunch, 200);
-  return result;
+  return true;
 });
-ipc.handle('bamboo:join:prepare', async (_event, payload) => getJoinService().prepare(payload));
-ipc.handle('bamboo:join:confirm', async (_event, offerId) => getJoinService().confirm(offerId));
 
 async function installLoaderViaCore(loader, minecraftVersion, loaderVersion, onProgress) {
   const kind = String(loader || '').toLowerCase();
@@ -2387,6 +2633,9 @@ ipc.on('launch-game', async (event, args) => {
   let normalizedLoader = String(modLoader || 'vanilla').toLowerCase();
   let loaderVersion = String(rawLoaderVersion || '');
   const emitLaunchFailed = (message) => event.reply('launch-failed', { folderName, profileName, message });
+  // One timestamp per launch: a remounted card resumes the same curve instead
+  // of starting over, and the synthetic display never runs backwards.
+  const launchStartedAt = Date.now();
   const emitLaunchProgress = (percent, label) => {
     try {
       event.reply('launch-progress', {
@@ -2394,6 +2643,7 @@ ipc.on('launch-game', async (event, args) => {
         profileName,
         percent: Math.max(0, Math.min(100, Math.round(percent))),
         label: String(label || ''),
+        startedAt: launchStartedAt,
       });
     } catch (error) {
       shellLog.debug('launch-game: progress could not be sent', { error: error.message });
@@ -2452,6 +2702,8 @@ ipc.on('launch-game', async (event, args) => {
   const prepareLaunchTarget = async ({ directory }) => {
     if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
 
+    // Cosmetics live in `<instance>/bamboo/cosmetics`; the game reads that
+    // folder itself, so the launch path has nothing to rewrite.
     const seeded = writeFirstRunOptions(directory, gameOptions);
     if (seeded.created) {
       shellLog.debug('launch-game: options.txt seeded', { path: seeded.path });
@@ -2638,6 +2890,143 @@ ipc.handle('hash-content-files', async (_event, payload = {}) => {
         shellLog.debug('hash-content-files: file could not be hashed', { file: file.fileName, error: error.message });
       }
     }));
+  }
+  return result;
+});
+
+// Identify locally added files through their content, not their file name:
+// Modrinth matches the SHA-1 of the exact released file, CurseForge matches its
+// Murmur2 fingerprint. Only an exact file match is accepted, so a mod that was
+// repacked or edited stays local instead of being labelled with a wrong project.
+ipc.handle('identify-content-files', async (_event, payload = {}) => {
+  const { folderName, files } = payload || {};
+  const profilesDir = path.resolve(gameRoot(), 'profiles');
+  const profileDir = path.resolve(profilesDir, String(folderName || ''));
+  if (!folderName || !profileDir.startsWith(profilesDir) || !Array.isArray(files)) return {};
+  const { curseForgeFingerprint } = require('./dist-electron/mods/fingerprint.js');
+  const entries = files
+    .filter((file) => file && typeof file.fileName === 'string' && file.fileName.length > 0)
+    .slice(0, 100);
+
+  const sha1ByFile = new Map();
+  const fingerprintByFile = new Map();
+  for (const entry of entries) {
+    try {
+      const dir = path.resolve(profileDir, downloadFolder(entry.type));
+      if (!dir.startsWith(profileDir)) continue;
+      const filePath = path.resolve(dir, path.basename(entry.fileName));
+      if (!filePath.startsWith(dir) || !fs.existsSync(filePath)) continue;
+      const buffer = fs.readFileSync(filePath);
+      sha1ByFile.set(entry.fileName, crypto.createHash('sha1').update(buffer).digest('hex'));
+      fingerprintByFile.set(entry.fileName, curseForgeFingerprint(buffer) >>> 0);
+    } catch (error) {
+      shellLog.debug('identify-content-files: unreadable', { file: entry.fileName, error: error.message });
+    }
+  }
+
+  const result = {};
+  const userAgent = `BambooLauncher/${app.getVersion()}`;
+  const hashes = [...new Set(sha1ByFile.values())];
+  const versionsByHash = new Map();
+  for (let index = 0; index < hashes.length; index += 100) {
+    try {
+      const res = await fetch('https://api.modrinth.com/v2/version_files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': userAgent },
+        body: JSON.stringify({ hashes: hashes.slice(index, index + 100), algorithm: 'sha1' }),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const [hash, version] of Object.entries(data || {})) {
+        if (version && typeof version === 'object') versionsByHash.set(hash, version);
+      }
+    } catch (error) {
+      shellLog.debug('identify-content-files: Modrinth hashes failed', { error: error.message });
+    }
+  }
+
+  const projectIds = [...new Set(
+    [...versionsByHash.values()].map((version) => version.project_id).filter(Boolean),
+  )];
+  const projectsById = new Map();
+  for (let index = 0; index < projectIds.length; index += 50) {
+    try {
+      const res = await fetch(
+        `https://api.modrinth.com/v2/projects?ids=${encodeURIComponent(JSON.stringify(projectIds.slice(index, index + 50)))}`,
+        { headers: { 'User-Agent': userAgent } },
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const project of Array.isArray(data) ? data : []) {
+        if (project && project.id) projectsById.set(project.id, project);
+      }
+    } catch (error) {
+      shellLog.debug('identify-content-files: Modrinth projects failed', { error: error.message });
+    }
+  }
+
+  for (const [fileName, hash] of sha1ByFile) {
+    const version = versionsByHash.get(hash);
+    const project = version && projectsById.get(version.project_id);
+    if (!project || !project.slug) continue;
+    result[fileName] = {
+      source: 'modrinth',
+      projectId: project.slug,
+      name: project.title || '',
+      iconUrl: project.icon_url || '',
+      versionNumber: version.version_number || '',
+    };
+  }
+
+  const cfHeaders = curseForgeHeaders();
+  const unmatched = entries.filter((entry) => !result[entry.fileName] && fingerprintByFile.has(entry.fileName));
+  if (cfHeaders && unmatched.length > 0) {
+    try {
+      const fingerprints = [...new Set(unmatched.map((entry) => fingerprintByFile.get(entry.fileName)))];
+      const res = await curseForgeFetch('https://api.curseforge.com/v1/fingerprints', {
+        method: 'POST',
+        headers: { ...cfHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprints }),
+      });
+      if (res.ok) {
+        const data = (await res.json()).data || {};
+        const matches = Array.isArray(data.exactMatches) ? data.exactMatches : [];
+        const modIds = [...new Set(
+          matches.map((match) => Number(match && match.file && match.file.modId)).filter((id) => id > 0),
+        )].slice(0, 50);
+        const modsById = new Map();
+        if (modIds.length > 0) {
+          const modsRes = await curseForgeFetch('https://api.curseforge.com/v1/mods', {
+            method: 'POST',
+            headers: { ...cfHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ modIds }),
+          });
+          if (modsRes.ok) {
+            const mods = (await modsRes.json()).data || [];
+            for (const mod of Array.isArray(mods) ? mods : []) {
+              if (mod && mod.id) modsById.set(Number(mod.id), mod);
+            }
+          }
+        }
+        for (const match of matches) {
+          const file = match && match.file;
+          const mod = file ? modsById.get(Number(file.modId)) : undefined;
+          if (!file || !mod) continue;
+          const fileName = String(file.fileName || '');
+          if (!fileName || result[fileName]) continue;
+          const logo = mod.logo && (mod.logo.thumbnailUrl || mod.logo.url);
+          result[fileName] = {
+            source: 'curseforge',
+            projectId: String(mod.id),
+            name: mod.name || '',
+            iconUrl: logo || '',
+            versionNumber: String(file.displayName || file.fileName || ''),
+          };
+        }
+      }
+    } catch (error) {
+      shellLog.debug('identify-content-files: CurseForge fingerprints failed', { error: error.message });
+    }
   }
   return result;
 });
@@ -2916,6 +3305,69 @@ ipc.handle('clone-instance', async (_event, { folderName, newName }) => {
   }
 });
 
+function resolveBundledInstanceCover(file) {
+  const roots = [
+    path.join(app.getAppPath(), 'dist'),
+    path.join(app.getAppPath(), 'public'),
+    path.join(__dirname, 'dist'),
+    path.join(__dirname, 'public'),
+  ];
+  for (const root of roots) {
+    const candidate = path.join(root, 'instance-covers', file);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return '';
+}
+
+function shortcutCoverImage(profile) {
+  const source = shortcutCoverPlan(profile?.thumbnail || profile?.icon || '');
+  try {
+    if (source.kind === 'data-url') return nativeImage.createFromDataURL(source.value);
+    if (source.kind === 'bundled') {
+      const file = resolveBundledInstanceCover(source.file);
+      // Read through fs so the image also loads when the app runs from an asar.
+      return file ? nativeImage.createFromBuffer(fs.readFileSync(file)) : nativeImage.createEmpty();
+    }
+    if (source.kind === 'file') {
+      return fs.existsSync(source.path) ? nativeImage.createFromPath(source.path) : nativeImage.createEmpty();
+    }
+  } catch (error) {
+    shellLog.debug('shortcut icon cover unreadable', { kind: source.kind, error: error.message });
+  }
+  return nativeImage.createEmpty();
+}
+
+/** Windows shortcuts need an .ico; the instance cover becomes a 256 px PNG icon. */
+function createShortcutIcon(profile, folderName) {
+  let image = shortcutCoverImage(profile);
+  // A broken cover still gets an instance image (the bundled default), never the logo.
+  if (image.isEmpty()) image = shortcutCoverImage({});
+  if (image.isEmpty()) return '';
+  // Crop the cover to a centred square before scaling, so the shortcut icon is
+  // never squashed when the source image has a 16:9 or 4:3 aspect ratio.
+  const size = image.getSize();
+  const side = Math.min(size.width, size.height);
+  if (side > 0 && size.width !== size.height) {
+    image = image.crop({
+      x: Math.max(0, Math.round((size.width - side) / 2)),
+      y: Math.max(0, Math.round((size.height - side) / 2)),
+      width: side,
+      height: side,
+    });
+  }
+  const png = image.resize({ width: 256, height: 256, quality: 'best' }).toPNG();
+  if (!png || png.length === 0) return '';
+  const directory = path.join(app.getPath('userData'), 'shortcut-icons');
+  fs.mkdirSync(directory, { recursive: true });
+  // Content-addressed name: changing the cover changes the path, so Windows
+  // cannot keep showing the cached old icon on the shortcut.
+  const base = shortcutIconFileName(folderName).replace(/\.ico$/, '');
+  const digest = crypto.createHash('sha1').update(png).digest('hex').slice(0, 10);
+  const iconPath = path.join(directory, `${base}-${digest}.ico`);
+  fs.writeFileSync(iconPath, pngToIco(png));
+  return iconPath;
+}
+
 ipc.handle('create-desktop-shortcut', async (_event, { folderName, instanceName }) => {
   try {
     if (process.platform !== 'win32') {
@@ -2940,16 +3392,20 @@ ipc.handle('create-desktop-shortcut', async (_event, { folderName, instanceName 
     const shortcutPath = path.join(app.getPath('desktop'), `${shortcutLabel} - Bamboo Launcher.lnk`);
     const launchArgs = `--bamboo-instance="${profileFolderOf(profile)}"`;
     const args = app.isPackaged ? launchArgs : `"${app.getAppPath()}" ${launchArgs}`;
+    const iconPath = createShortcutIcon(profile, profileFolderOf(profile));
+    if (!iconPath) {
+      return { success: false, error: 'Das Instanzbild konnte nicht als Verknüpfungs-Icon gespeichert werden.' };
+    }
     const operation = fs.existsSync(shortcutPath) ? 'update' : 'create';
     const created = shell.writeShortcutLink(shortcutPath, operation, {
       target: process.execPath,
       args,
       description: `${safeLabel} mit Bamboo Launcher starten`,
-      icon: process.execPath,
+      icon: iconPath,
       iconIndex: 0,
     });
     if (!created) return { success: false, error: 'Verknüpfung konnte nicht erstellt werden.' };
-    shellLog.info('desktop shortcut created', { shortcutPath, folderName });
+    shellLog.info('desktop shortcut created', { shortcutPath, folderName, icon: path.basename(iconPath) });
     return { success: true, path: shortcutPath };
   } catch (e) {
     shellLog.error('create-desktop-shortcut failed', { folderName, error: e.message });
@@ -3013,7 +3469,7 @@ ipc.handle('match-local-mod', async (_event, { modName, projectId, source }) => 
     if (source === 'modrinth') {
       try {
         var url2 = 'https://api.modrinth.com/v2/project/' + projectId;
-        const res = await fetch(url2, { headers: { 'User-Agent': 'BambooLauncher/0.2.0' } });
+        const res = await fetch(url2, { headers: { 'User-Agent': `BambooLauncher/${app.getVersion()}` } });
         if (res.ok) results.modrinth = await res.json();
       } catch (e) {
         shellLog.warn('match-local-mod: Modrinth lookup failed', { projectId, error: e.message });
@@ -3042,7 +3498,7 @@ ipc.handle('match-local-mod', async (_event, { modName, projectId, source }) => 
       try {
         var encoded = encodeURIComponent(searchName);
         var url4 = 'https://api.modrinth.com/v2/search?query=' + encoded + '&limit=5&index=relevance';
-        const res = await fetch(url4, { headers: { 'User-Agent': 'BambooLauncher/0.2.0' } });
+        const res = await fetch(url4, { headers: { 'User-Agent': `BambooLauncher/${app.getVersion()}` } });
         if (res.ok) {
           const data = await res.json();
           const hits = data.hits || [];

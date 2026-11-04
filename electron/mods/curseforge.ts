@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { hashBuffer } from '../download/checksum'
 import { DownloadError, type FetchLike } from '../download/http'
+import { LAUNCHER_VERSION } from '../launch/args'
 import { streamToFile, TRANSFER_STAGE } from '../download/stream'
 import type { Logger } from '../logger'
 import { describeError, getDefaultLogger } from '../logger'
@@ -346,7 +347,7 @@ export class CurseForgeClient {
         headers: {
           'x-api-key': this.#key,
           accept: 'application/json',
-          'user-agent': 'BambooLauncher/0.1',
+          'user-agent': `BambooLauncher/${LAUNCHER_VERSION}`,
           ...(init ? { 'content-type': 'application/json' } : {}),
         },
         ...(init ? { method: init.method, body: init.body } : {}),

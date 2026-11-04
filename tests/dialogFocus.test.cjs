@@ -18,6 +18,7 @@ const DIALOGS = [
   ["src/components/InstancesView.tsx", "delete-dialog-title"],
   ["src/components/InstancesView.tsx", "create-dialog-title"],
   ["src/components/InstancesView.tsx", "rename-dialog-title"],
+  ["src/components/InstancesView.tsx", "own-mods-warning-title"],
   ["src/components/ProfileImportModal.tsx", "import-dialog-title"],
   ["src/components/ProfileExportModal.tsx", "profile-export-dialog-title"],
 ];
@@ -108,8 +109,8 @@ test("dialog props: what the primitive needs, it does not default", () => {
   assert.match(dialog, /closeLabel: string;/);
   assert.match(dialog, /tone: "accent" \| "danger" \| "info";/);
   const supplied = CALL_SITES.map((file) => read(file)).join("\n");
-  assert.equal((supplied.match(/closeLabel=\{/g) || []).length, 6, "all six call sites pass closeLabel");
-  assert.equal((supplied.match(/tone="/g) || []).length, 6, "all six call sites pass tone");
+  assert.equal((supplied.match(/closeLabel=\{/g) || []).length, 7, "all seven call sites pass closeLabel");
+  assert.equal((supplied.match(/tone="/g) || []).length, 7, "all seven call sites pass tone");
   assert.doesNotMatch(supplied, /tone="neutral"/, "no caller selects the removed tone");
 });
 

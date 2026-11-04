@@ -38,6 +38,12 @@ export interface StoreFile {
   primary?: boolean
 }
 
+export interface StoreDependency {
+  projectId?: string
+  versionId?: string
+  dependencyType?: 'required' | 'optional' | 'incompatible' | 'embedded'
+}
+
 export interface StoreVersion {
   versionNumber: string
   versionId?: string
@@ -45,12 +51,22 @@ export interface StoreVersion {
   gameVersions: string[]
   loaders: string[]
   files: StoreFile[]
+  /**
+   * Provider release channel. A version switch must not replace a working
+   * stable mod with a beta just because the beta is newer: mods like Voxy pin
+   * exact Sodium versions, and Sodium's newest beta breaks that pin.
+   */
+  releaseType?: 'release' | 'beta' | 'alpha'
+  /** Required dependency pins, used to keep mod-to-mod constraints intact. */
+  dependencies?: StoreDependency[]
 }
 
 export interface VersionCriteria {
   category: ContentCategory
   minecraftVersion?: string | null
   modloader?: string | null
+  /** Prefer the newest stable release when a compatible beta exists. */
+  preferStable?: boolean
 }
 
 export type VersionMissReason = 'no-versions' | 'mc-version' | 'loader' | 'file'
@@ -159,28 +175,39 @@ export function pickVersion(versions: StoreVersion[], criteria: VersionCriteria)
   const ordered = newestFirst(versions)
   const stats = {
     total: ordered.length,
-    mcMatches: ordered.filter((version) => matchesMinecraftVersion(version, criteria)).length,
+    mcMatches: 0,
     loaderMatches: 0,
   }
 
-  let firstMcMatch: { version: StoreVersion; file: StoreFile } | null = null
+  let newestCompatible: { version: StoreVersion; file: StoreFile } | null = null
+  let newestStable: { version: StoreVersion; file: StoreFile } | null = null
   let firstLoaderMatch: { version: StoreVersion; file: StoreFile } | null = null
+  let firstMcMatch: { version: StoreVersion; file: StoreFile } | null = null
 
   for (const version of ordered) {
     const file = versionFileFor(version, criteria.category)
     const mcOk = matchesMinecraftVersion(version, criteria)
     const loaderOk = matchesLoader(version, criteria)
+    if (mcOk) stats.mcMatches += 1
     if (mcOk && loaderOk) stats.loaderMatches += 1
     if (mcOk && !loaderOk && file && !firstLoaderMatch) firstLoaderMatch = { version, file }
     if (!mcOk && loaderOk && file && !firstMcMatch) firstMcMatch = { version, file }
     if (mcOk && loaderOk && file) {
-      return {
-        version,
-        file,
-        fallback: null,
-        reason: null,
-        stats: { ...stats, loaderMatches: stats.loaderMatches },
-      }
+      if (!newestCompatible) newestCompatible = { version, file }
+      if (!newestStable && version.releaseType === 'release') newestStable = { version, file }
+    }
+  }
+
+  const chosen = criteria.preferStable
+    ? newestStable ?? newestCompatible
+    : newestCompatible
+  if (chosen) {
+    return {
+      version: chosen.version,
+      file: chosen.file,
+      fallback: null,
+      reason: null,
+      stats,
     }
   }
 
@@ -217,10 +244,19 @@ export function decideUpdate(
 interface RawModrinthVersion {
   id?: string
   version_number?: string
+  version_type?: string
   date_published?: string
   game_versions?: string[]
   loaders?: string[]
+  dependencies?: { project_id?: string | null; version_id?: string | null; dependency_type?: string }[]
   files?: { url?: string; filename?: string; primary?: boolean }[]
+}
+
+function modrinthDependencyType(value: string | undefined): StoreDependency['dependencyType'] {
+  if (value === 'required' || value === 'optional' || value === 'incompatible' || value === 'embedded') {
+    return value
+  }
+  return undefined
 }
 
 export function fromModrinthVersion(raw: RawModrinthVersion): StoreVersion {
@@ -230,6 +266,16 @@ export function fromModrinthVersion(raw: RawModrinthVersion): StoreVersion {
     published: raw.date_published,
     gameVersions: raw.game_versions || [],
     loaders: raw.loaders || [],
+    releaseType: raw.version_type === 'beta' ? 'beta' : raw.version_type === 'alpha' ? 'alpha' : 'release',
+    dependencies: (raw.dependencies || [])
+      .map((dependency): StoreDependency => ({
+        ...(dependency?.project_id ? { projectId: dependency.project_id } : {}),
+        ...(dependency?.version_id ? { versionId: dependency.version_id } : {}),
+        ...(modrinthDependencyType(dependency?.dependency_type)
+          ? { dependencyType: modrinthDependencyType(dependency?.dependency_type) }
+          : {}),
+      }))
+      .filter((dependency) => Boolean(dependency.projectId || dependency.versionId)),
     files: (raw.files || [])
       .filter((file): file is { url: string; filename: string; primary?: boolean } =>
         Boolean(file?.url && file?.filename),
@@ -245,10 +291,15 @@ interface RawCurseForgeFile {
   fileDate?: string
   gameVersions?: string[]
   modLoader?: number | null
+  releaseType?: number
   downloadUrl?: string | null
 }
 
 const CURSEFORGE_LOADERS: Record<number, string> = { 1: 'forge', 4: 'fabric', 5: 'quilt', 6: 'neoforge' }
+
+function curseForgeReleaseType(value: number | undefined): 'release' | 'beta' | 'alpha' {
+  return value === 2 ? 'beta' : value === 3 ? 'alpha' : 'release'
+}
 
 export function fromCurseForgeFile(raw: RawCurseForgeFile): StoreVersion {
   const loader = raw.modLoader == null ? null : CURSEFORGE_LOADERS[raw.modLoader] ?? String(raw.modLoader)
@@ -258,6 +309,7 @@ export function fromCurseForgeFile(raw: RawCurseForgeFile): StoreVersion {
     published: raw.fileDate,
     gameVersions: raw.gameVersions || [],
     loaders: loader ? [loader] : [],
+    releaseType: curseForgeReleaseType(raw.releaseType),
     // CurseForge hides the download URL when the author blocks third-party
     // downloads; the core can still fetch those by file id, so the file stays.
     files: raw.fileName ? [{ url: raw.downloadUrl || '', filename: raw.fileName, primary: true }] : [],

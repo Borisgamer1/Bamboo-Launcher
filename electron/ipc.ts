@@ -1,6 +1,15 @@
 import { basename, join } from 'node:path'
 import type { LauncherCore } from './core'
 import { createIpcRegistrar, eventless } from './ipc-registry'
+import { createSkinsService, type SkinsService } from './skins/service'
+import { parseCosmiq } from './cosmetics/cosmiq'
+import { loadShop, shopPackageById } from './cosmetics/shop'
+import {
+  installPackage,
+  listInstalled,
+  previewInstalled,
+  removeInstalled,
+} from './cosmetics/store'
 import type { IpcMainLike } from './ipc-registry'
 import { toLegacyJavaVersion, toLegacyJavaVersions, usableJavaRecords } from './java/legacy'
 import { readLanPort, readLogTail } from './logs/tail'
@@ -21,6 +30,15 @@ function javaRecordsReader(core: LauncherCore) {
   }
 }
 
+async function instanceDirectory(core: LauncherCore, folderName: unknown): Promise<string> {
+  if (typeof folderName !== 'string' || folderName.trim().length === 0) {
+    throw new Error('Keine Instanz ausgewählt')
+  }
+  const found = await core.instanceManager.findByFolder(folderName.trim())
+  if (!found) throw new Error('Instanz nicht gefunden')
+  return found.directory
+}
+
 async function instanceLogFile(core: LauncherCore, folderName: string): Promise<string> {
   const found = await core.instanceManager.findByFolder(folderName)
   if (found) return join(found.directory, 'logs', 'latest.log')
@@ -30,6 +48,8 @@ async function instanceLogFile(core: LauncherCore, folderName: string): Promise<
 export function registerIpc(ipcMain: IpcMainLike, core: LauncherCore): void {
   const ipc = createIpcRegistrar(ipcMain)
   const legacyJavaRecords = javaRecordsReader(core)
+  let skins: SkinsService | null = null
+  const skinsService = () => (skins ??= createSkinsService(core))
   ipc.handle('bamboo:core:status', eventless(() => core.status()))
 
   ipc.handle(
@@ -134,6 +154,7 @@ export function registerIpc(ipcMain: IpcMainLike, core: LauncherCore): void {
 
   ipc.handle('bamboo:settings:get', eventless(() => core.getSettingsForRenderer()))
   ipc.handle('bamboo:settings:save', eventless((patch: unknown) => core.saveSettingsFromRenderer(patch)))
+  ipc.handle('bamboo:statistics:summary', eventless(() => core.getStatisticsSummary()))
   ipc.handle('bamboo:telemetry:get', eventless(() => core.telemetry.snapshot()))
   ipc.handle(
     'bamboo:support:bundle',
@@ -222,4 +243,44 @@ export function registerIpc(ipcMain: IpcMainLike, core: LauncherCore): void {
       return core.instances.list()
     }),
   )
+
+  // The active skin has one main-process owner. The renderer never sees a
+  // Mojang token or a filesystem path it could write to.
+  ipc.handle('bamboo:skins:snapshot', eventless(() => skinsService().snapshot()))
+  ipc.handle('bamboo:skins:save-skin', eventless((payload: unknown) => skinsService().saveSkin(payload)))
+  ipc.handle('bamboo:skins:set-skin-variant', eventless((variant: unknown) => skinsService().setSkinVariant(variant)))
+  ipc.handle('bamboo:skins:reset-skin', eventless(() => skinsService().resetSkin()))
+  ipc.handle('bamboo:skins:apply-skin', eventless(() => skinsService().applySkin()))
+  ipc.handle('bamboo:skins:select-cape', eventless((capeId: unknown) =>
+    skinsService().selectCape(capeId === null ? null : String(capeId)),
+  ))
+  ipc.handle('bamboo:skins:refresh', eventless(() => skinsService().refresh()))
+  ipc.handle('bamboo:cosmetics:list', eventless(async (folderName: unknown) =>
+    listInstalled(await instanceDirectory(core, folderName)),
+  ))
+  ipc.handle('bamboo:cosmetics:preview', eventless(async (payload: unknown) => {
+    const record = (payload ?? {}) as { folderName?: unknown; file?: unknown }
+    return previewInstalled(
+      await instanceDirectory(core, record.folderName),
+      String(record.file ?? ''),
+    )
+  }))
+  ipc.handle('bamboo:cosmetics:remove', eventless(async (payload: unknown) => {
+    const record = (payload ?? {}) as { folderName?: unknown; file?: unknown }
+    return removeInstalled(
+      await instanceDirectory(core, record.folderName),
+      String(record.file ?? ''),
+    )
+  }))
+  ipc.handle('bamboo:cosmetics:shop', eventless(() => loadShop()))
+  ipc.handle('bamboo:cosmetics:shop-preview', eventless(async (id: unknown) => {
+    const { item, bytes } = await shopPackageById(String(id ?? ''))
+    return parseCosmiq(bytes, item.id)
+  }))
+  ipc.handle('bamboo:cosmetics:install', eventless(async (payload: unknown) => {
+    const record = (payload ?? {}) as { folderName?: unknown; id?: unknown }
+    const directory = await instanceDirectory(core, record.folderName)
+    const { item, bytes } = await shopPackageById(String(record.id ?? ''))
+    return installPackage(directory, bytes, item.name)
+  }))
 }

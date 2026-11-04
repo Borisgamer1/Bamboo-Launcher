@@ -883,7 +883,7 @@ test('import-profile resolves a distribution-blocked CurseForge file from Modrin
   }
 })
 
-test('import-profile names the file when a blocked CurseForge file has no Modrinth match', async () => {
+test('import-profile reports a blocked CurseForge file with no Modrinth match as a warning', async () => {
   const dir = tempDir('import-modrinth-missing')
   const root = path.join(dir, 'game')
   const modJar = fabricJar('missing', '1.0')
@@ -907,10 +907,20 @@ test('import-profile names the file when a blocked CurseForge file has no Modrin
         fetchImpl: fetch,
       },
     )
-    assert.equal(result.success, false)
-    assert.match(result.error, /blocked-missing\.jar/)
-    assert.match(result.error, /no matching Modrinth file/)
-    assert.equal(fs.existsSync(path.join(root, 'profiles.json')), false, 'no partial profile')
+    assert.equal(result.success, true, result.error)
+    assert.ok(
+      Array.isArray(result.warnings) && result.warnings.length === 1,
+      'the unobtainable file must be reported as a warning',
+    )
+    assert.match(result.warnings[0], /blocked-missing\.jar/)
+    assert.match(result.warnings[0], /no matching Modrinth file/)
+    assert.ok(result.profile, 'the profile must still be created')
+    const gameDir = path.join(root, 'profiles', result.profile.folderName)
+    assert.equal(
+      fs.existsSync(path.join(gameDir, 'mods', file.fileName)),
+      false,
+      'the blocked file must not be placed',
+    )
     assert.equal(live.hits.get(`/mr/${file.fileName}`), undefined, 'no unverified body may be requested')
     assert.ok(live.hits.get(`/v2/version_file/${hash}`), 'the fallback must look up the manifest hash')
   } finally {

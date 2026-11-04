@@ -95,9 +95,13 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
   const importMessage =
     importTask?.detail ||
     t("Import wird vorbereitet...", "Preparing import...");
-  const requestClose = () => {
-    if (!isImporting) onClose();
-  };
+  // Closing never cancels an import: it keeps running in the footer task bar and
+  // can be watched from there.
+  const requestClose = () => onClose();
+  // The dialog itself refuses an existing instance name, so the conflict step
+  // cannot be reached with a name that is guaranteed to collide.
+  const requestedName = (targetName.trim() || preview?.title || '').toLowerCase();
+  const nameTaken = !!requestedName && instances.some((instance) => instance.name.trim().toLowerCase() === requestedName);
 
   const loadPreview = async (filePath: string) => {
     setIsLoadingPreview(true);
@@ -158,7 +162,7 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
     if (!preview) return;
     setIsCheckingConflicts(true);
     try {
-      const check = await profileImportService.checkConflicts(preview, instances);
+      const check = await profileImportService.checkConflicts(preview, instances, targetName);
       setConflictCheck(check);
       setStep("conflicts");
     } catch (err) {
@@ -216,9 +220,15 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
           `"${result.instanceName}" imported successfully!`
         ),
       });
+      const warningCount = result.warnings?.length ?? 0;
       completeBackgroundTask(
         taskId,
-        t("Import abgeschlossen", "Import completed"),
+        warningCount > 0
+          ? t(
+              `Import abgeschlossen – ${warningCount} Datei(en) nicht geladen`,
+              `Import completed – ${warningCount} file(s) not downloaded`,
+            )
+          : t("Import abgeschlossen", "Import completed"),
         IMPORT_AUTO_DISMISS_MS,
       );
     } else {
@@ -281,7 +291,7 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
         </button>
         <button
           onClick={handleCheckConflicts}
-          disabled={isCheckingConflicts}
+          disabled={isCheckingConflicts || nameTaken}
           className={`${dialogButton.info} flex items-center gap-2`}
         >
           {isCheckingConflicts ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
@@ -311,6 +321,10 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
           )}
         </button>
       </>
+    ) : step === "progress" ? (
+      <button onClick={onClose} className={dialogButton.secondary}>
+        {t("Im Hintergrund weiter", "Continue in background")}
+      </button>
     ) : step === "complete" ? (
       <button onClick={onClose} className={dialogButton.accent}>
         {t("Fertig", "Done")}
@@ -435,8 +449,17 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
                           type="text"
                           value={targetName}
                           onChange={(e) => setTargetName(e.target.value)}
-                          className="w-full bg-root border border-stroke focus:border-info/50 rounded-xl py-2.5 px-3 text-regular font-medium text-ink outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter]"
+                          aria-invalid={nameTaken}
+                          className={`w-full bg-root border rounded-xl py-2.5 px-3 text-regular font-medium text-ink outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] ${nameTaken ? 'border-danger/60 focus:border-danger' : 'border-stroke focus:border-info/50'}`}
                         />
+                        {nameTaken && (
+                          <p className="mt-1 text-micro text-danger">
+                            {t(
+                              'Dieser Name ist bereits vergeben – wähle einen anderen.',
+                              'This name is already taken – choose another.'
+                            )}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap gap-2">
@@ -504,6 +527,12 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
                       />
                     </div>
                     <span className="text-small text-ink-secondary tabular-nums">{importPercent}%</span>
+                    <p className="m-0 text-micro text-ink-tertiary text-center max-w-xs">
+                      {t(
+                        "Du kannst dieses Fenster schließen – der Import läuft unten in der Leiste weiter.",
+                        "You can close this window – the import keeps running in the bar below.",
+                      )}
+                    </p>
                   </div>
                 )}
 
@@ -546,6 +575,27 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
                         <span className="text-micro text-ink-secondary">{t("Welten importiert", "Worlds imported")}</span>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {importResult.warnings && importResult.warnings.length > 0 && (
+                  <div className="p-3 bg-warning/10 border border-warning/20 rounded-2xl flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <p className="m-0 text-small font-medium text-warning">
+                        {t(
+                          "Einige Dateien konnten nicht geladen werden:",
+                          "Some files could not be downloaded:",
+                        )}
+                      </p>
+                      <ul className="m-0 mt-1 flex list-disc flex-col gap-1 pl-4">
+                        {importResult.warnings.map((warning) => (
+                          <li key={warning} className="text-small break-words text-ink-secondary">
+                            {warning}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 )}
 

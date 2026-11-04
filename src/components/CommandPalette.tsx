@@ -11,6 +11,7 @@ import {
   Server,
   Sliders,
   UserCircle2,
+  UserRound,
   type LucideIcon,
 } from "lucide-react";
 import { TabType } from "./Sidebar";
@@ -253,6 +254,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: Puzzle,
         aliases: ["mod", "mods", "modpack", "mod-browser", "curseforge", "modrinth"],
         run: () => onNavigate("mods"),
+      },
+      {
+        id: "customize",
+        label: t.customize,
+        group: "content",
+        icon: UserRound,
+        aliases: ["customize", "anpassen", "skin", "skins", "outfit", "aussehen"],
+        run: () => onNavigate("customize"),
       },
       {
         id: "screenshots",

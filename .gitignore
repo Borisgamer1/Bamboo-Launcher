@@ -43,6 +43,12 @@ mod/build/
 !.env.example
 *.local
 
+# Shipped CurseForge key: present in local builds, never in the repository.
+/resources/curseforge-key.txt
+
+# Scratch files from local UI/Minecraft probing
+.tmp-*
+
 # OS and editor files
 .DS_Store
 Thumbs.db

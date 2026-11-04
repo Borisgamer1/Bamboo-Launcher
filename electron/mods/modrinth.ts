@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { downloadBuffer, requestText, type FetchLike, type RetryOptions } from '../download/http'
+import { LAUNCHER_VERSION } from '../launch/args'
 import { hashBuffer } from '../download/checksum'
 import { streamToFile, TRANSFER_STAGE } from '../download/stream'
 import type { Logger } from '../logger'
@@ -12,7 +13,7 @@ import { modsMetrics, type ModMetrics } from './metrics'
 import type { ModLoader, ProviderProject, ProviderVersion } from './types'
 
 const DEFAULT_BASE = 'https://api.modrinth.com/v2'
-const DEFAULT_USER_AGENT = 'BambooLauncher/0.1 (bamboo-launcher)'
+const DEFAULT_USER_AGENT = `BambooLauncher/${LAUNCHER_VERSION} (bamboo-launcher)`
 
 export interface ModrinthClientOptions {
   baseUrl?: string

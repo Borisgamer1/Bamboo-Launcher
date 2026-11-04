@@ -309,7 +309,9 @@ export class InstanceManager {
     const next = this.#instanceFile({
       ...current,
       ...patch,
-      id: current.id,
+      // The store entry is the identity; a copied legacy folder can still hold
+      // the source instance's id in its instance.json until the first launch.
+      id: found.instance.id,
       createdAt: current.createdAt,
       updatedAt: Date.now(),
     })

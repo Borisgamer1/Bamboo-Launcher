@@ -20,6 +20,7 @@ export interface CorePaths {
   accountsFile: string
   tokensFile: string
   instancesFile: string
+  statisticsFile: string
   javaFile: string
   cacheDir: string
   metaFile: string
@@ -50,6 +51,7 @@ function buildPaths(appData: string, gameRoot: string): CorePaths {
     accountsFile: join(appData, 'accounts.json'),
     tokensFile: join(appData, 'accounts.tokens.json'),
     instancesFile: join(appData, 'instances.json'),
+    statisticsFile: join(appData, 'statistics.json'),
     javaFile: join(appData, 'java.json'),
     cacheDir: join(appData, 'cache'),
     metaFile: join(appData, 'migration.json'),

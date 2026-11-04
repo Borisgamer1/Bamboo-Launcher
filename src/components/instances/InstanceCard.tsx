@@ -5,6 +5,7 @@ import type { LaunchProgress, LogAnalysisResult } from "../../electron";
 import { translations, type LanguageType } from "../../lib/translations";
 import { formatPlaytime } from "../../lib/launcherPreferences";
 import { derivePlayState } from "../../lib/usePlayState";
+import { InstanceLaunchProgress } from "./InstanceLaunchProgress";
 
 export interface InstanceCardProps {
   instance: Instance;
@@ -55,6 +56,7 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
   return (
     <div
       data-instance-card
+      data-tour="instance-card"
       tabIndex={tabIndex}
       aria-label={instance.name}
       onClick={onOpen}
@@ -133,22 +135,7 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
           {playState === "preparing" && <span className={`${badge} bg-accent-soft text-accent`}>{t.launchingState}</span>}
         </div>
 
-        {launching && (
-          <div className="shrink-0" aria-live="polite">
-            <div className="flex items-center justify-between gap-2 text-mini font-medium">
-              <span className="truncate text-ink-secondary">
-                {progress?.label || (lang === "de" ? "Wird vorbereitet…" : "Preparing…")}
-              </span>
-              <span className="shrink-0 tabular-nums text-ink">{Math.round(progress?.percent ?? 0)}%</span>
-            </div>
-            <div className="mt-1 h-1 overflow-hidden rounded-full bg-selected" aria-hidden>
-              <div
-                className="h-full rounded-full bg-accent transition-[width] duration-300 ease-[var(--ease-out)]"
-                style={{ width: `${Math.max(0, Math.min(100, progress?.percent ?? 0))}%` }}
-              />
-            </div>
-          </div>
-        )}
+        {launching && <InstanceLaunchProgress progress={progress} lang={lang} />}
 
         {analysis && analysis.findings.length > 0 && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-danger/25 bg-danger/8 px-2 py-1.5 text-mini text-danger">

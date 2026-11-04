@@ -47,6 +47,19 @@ jobs:
       - name: Build renderer and main process
         run: npm run build
 
+      # The installer ships the CurseForge key, the sources do not. The file is
+      # gitignored, so a fresh checkout has to receive it from the secret.
+      - name: Provide the bundled CurseForge key
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: |
+          if [ -z "$CURSEFORGE_API_KEY" ]; then
+            echo "Missing repository secret CURSEFORGE_API_KEY: the installer would ship without a key." >&2
+            exit 1
+          fi
+          mkdir -p resources
+          printf '%s\n' "$CURSEFORGE_API_KEY" > resources/curseforge-key.txt
+
       - name: Publish NSIS installer and update metadata
         env:
           # A PAT is only required when this workflow runs in a different repo
@@ -54,3 +67,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder --win nsis --publish always
+
+      # A release without latest.yml silently kills updates for every installed
+      # launcher (that is what happened to v0.2.1). Fail the workflow instead.
+      - name: Verify update feed
+        run: node scripts/check-update-feed.cjs --remote

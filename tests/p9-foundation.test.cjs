@@ -93,6 +93,71 @@ test('P9: a legacy launch repairs an instance that was migrated with the Java la
   }])
 })
 
+test('P9: a copied legacy folder cannot launch the source version from its stale instance.json', async () => {
+  const base = tempDir('p9-stale-copy')
+  try {
+    const { gameRoot, store, manager } = await managerFor(base)
+    const directory = path.join(gameRoot, 'profiles', 'furry_smp_kopie')
+    writeJson(path.join(directory, 'instance.json'), {
+      id: 'legacy-furry-smp',
+      name: 'Furry SMP',
+      version: '26.3',
+      versionId: 'fabric-loader-0.20.1-26.3',
+      loader: 'fabric',
+      loaderVersion: '0.20.1',
+      javaPath: '',
+      javaMode: 'auto',
+      minMemory: 0,
+      maxMemory: 8192,
+      memoryMode: 'explicit',
+      icon: '',
+      group: '',
+      lastPlayedAt: 0,
+      playTimeMs: 0,
+      createdAt: 1,
+      updatedAt: 1,
+    })
+
+    let launchedRequest
+    const handle = {
+      pid: 1,
+      plan: {},
+      exit: new Promise(() => undefined),
+      kill: async () => undefined,
+      killed: false,
+      launchId: 'launch-stale-copy',
+    }
+    await launchLegacyInstance({
+      instanceManager: manager,
+      instances: store,
+      launchInstance: async (request) => {
+        launchedRequest = request
+        return handle
+      },
+    }, {
+      folderName: 'furry_smp_kopie',
+      directory,
+      name: 'Furry SMP (Kopie)',
+      minecraftVersion: '1.21.11',
+      versionId: 'fabric-loader-0.20.1-1.21.11',
+      loader: 'fabric',
+      loaderVersion: '0.20.1',
+      javaPath: '',
+    })
+
+    assert.equal(launchedRequest.instanceId, 'legacy-furry-smp-kopie')
+    const persisted = JSON.parse(fs.readFileSync(path.join(directory, 'instance.json'), 'utf8'))
+    assert.equal(persisted.id, 'legacy-furry-smp-kopie')
+    assert.equal(persisted.version, '1.21.11')
+    assert.equal(persisted.versionId, 'fabric-loader-0.20.1-1.21.11')
+    const record = await store.get('legacy-furry-smp-kopie')
+    assert.equal(record.version, '1.21.11')
+    assert.equal(record.versionId, 'fabric-loader-0.20.1-1.21.11')
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true })
+  }
+})
+
 async function managerFor(base) {
   const gameRoot = path.join(base, 'game')
   const appData = path.join(base, 'appData')
@@ -352,11 +417,19 @@ test('P9: adopting a legacy loader profile stores both facts separately', async 
   const core = {
     instanceManager: {
       findByFolder: async () => undefined,
-      readFile: async () => {
-        throw new Error('a new instance has no file to read')
-      },
+      // The real manager falls back to the store record when the folder has no
+      // instance.json yet. The adopted values therefore need no patch.
+      readFile: async () => ({
+        id: 'legacy-adopted',
+        name: 'Adopted Fabric',
+        version: '1.20.1',
+        versionId: 'fabric-loader-0.15.0-1.20.1',
+        loader: 'fabric',
+        loaderVersion: '0.15.0',
+        javaPath: '',
+      }),
       updateFile: async () => {
-        throw new Error('a new instance has no file to update')
+        throw new Error('a matching new instance must not be patched')
       },
     },
     instances: {

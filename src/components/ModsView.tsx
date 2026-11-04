@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback, startTransition } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, startTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Puzzle, Search, ArrowLeft, X, Download, Users,
   ChevronLeft, ChevronRight, Filter, Check, RefreshCw, Plus, Package, AlertTriangle,
-  Star
+  Star, ExternalLink, Calendar
 } from "lucide-react";
 import { TabType } from "./Sidebar";
 import { Instance } from "./InstancesView";
@@ -11,6 +11,7 @@ import { translations, formatMessage, formatNumber, formatCompactNumber, Languag
 import { canRetryCurseForge, toCurseForgeFailure, type CurseForgeFailure } from "../lib/curseforge";
 import { CurseForgeFailureNotice } from "./mods/CurseForgeFailureNotice";
 import { fetchVersionMap } from "../lib/versionApi";
+import { LAUNCHER_VERSION } from "../lib/version";
 import {
   GLOBAL_BROWSER_PROJECT_TYPES,
   INSTANCE_BROWSER_PROJECT_TYPES,
@@ -352,6 +353,7 @@ const ModSearchField = React.memo(function ModSearchField({
       <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-secondary" />
       <input
         type="text"
+        data-tour="mods-search"
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={placeholder}
@@ -366,14 +368,85 @@ function cfLoaderNameToType(loader: string): number | undefined {
   return map[loader.toLowerCase()];
 }
 
+function projectPageUrl(mod: ModrinthHit, source: 'modrinth' | 'curseforge'): string {
+  if (source === 'curseforge') {
+    const kind = mod.project_type === 'modpack'
+      ? 'modpacks'
+      : mod.project_type === 'resourcepack'
+        ? 'texture-packs'
+        : mod.project_type === 'shader'
+          ? 'shaders'
+          : mod.project_type === 'datapack'
+            ? 'data-packs'
+            : 'mc-mods';
+    return `https://www.curseforge.com/minecraft/${kind}/${mod.slug}`;
+  }
+  const kind = mod.project_type === 'modpack'
+    ? 'modpack'
+    : mod.project_type === 'resourcepack'
+      ? 'resourcepack'
+      : mod.project_type === 'shader'
+        ? 'shader'
+        : mod.project_type === 'datapack'
+          ? 'datapack'
+          : 'mod';
+  return `https://modrinth.com/${kind}/${mod.slug}`;
+}
+
+interface SavedBrowserState {
+  page: number
+  scrollTop: number
+  search: string
+  source: 'modrinth' | 'curseforge'
+  sortIndex: 'relevance' | 'downloads' | 'follows' | 'newest' | 'updated'
+  selectedVersion: string
+  selectedCategory: string
+  selectedProjectType: string
+  pageSize: ModsPageSize
+}
+
+function browserStateKey(instanceId?: string): string {
+  return `bamboo-browser-state:${instanceId ?? 'global'}`
+}
+
+function readBrowserState(instanceId?: string): SavedBrowserState | null {
+  try {
+    const raw = sessionStorage.getItem(browserStateKey(instanceId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<SavedBrowserState>
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      page: Number.isFinite(parsed.page) ? Math.max(1, Number(parsed.page)) : 1,
+      scrollTop: Number.isFinite(parsed.scrollTop) ? Math.max(0, Number(parsed.scrollTop)) : 0,
+      search: typeof parsed.search === 'string' ? parsed.search : '',
+      source: parsed.source === 'curseforge' ? 'curseforge' : 'modrinth',
+      sortIndex: ['relevance', 'downloads', 'follows', 'newest', 'updated'].includes(String(parsed.sortIndex))
+        ? (parsed.sortIndex as SavedBrowserState['sortIndex'])
+        : 'downloads',
+      selectedVersion: typeof parsed.selectedVersion === 'string' ? parsed.selectedVersion : 'all',
+      selectedCategory: typeof parsed.selectedCategory === 'string' ? parsed.selectedCategory : 'all',
+      selectedProjectType: typeof parsed.selectedProjectType === 'string' ? parsed.selectedProjectType : 'all',
+      pageSize: parsed.pageSize === PAGE_SIZE_INFINITE || typeof parsed.pageSize === 'number'
+        ? (parsed.pageSize as ModsPageSize)
+        : readSavedPageSize(),
+    }
+  } catch {
+    return null
+  }
+}
+
 export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery: initialSearch, instances = [], setInstances, fromInstanceId, onClearInstance, lang }: ModsViewProps) {
   const { addToast } = useToast();
   const isGlobal = !fromInstanceId;
   const contextInstance = fromInstanceId ? instances.find(i => i.id === fromInstanceId) : null;
-  const [search, setSearch] = useState(initialSearch);
-  const [source, setSource] = useState<"modrinth" | "curseforge">(readProjectSource);
-  const [pageSize, setPageSize] = useState<ModsPageSize>(readSavedPageSize);
-  const [page, setPage] = useState(1);
+  // The browser is unmounted when the instance is opened and mounted again on
+  // the way back. Keep the visible page and scroll offset so that round trip
+  // returns to the same spot instead of resetting to the first result.
+  const [initialBrowserState] = useState(() => readBrowserState(fromInstanceId));
+  const [search, setSearch] = useState(() => initialSearch || initialBrowserState?.search || '');
+  const [source, setSource] = useState<"modrinth" | "curseforge">(() => initialBrowserState?.source ?? readProjectSource());
+  const [pageSize, setPageSize] = useState<ModsPageSize>(() => initialBrowserState?.pageSize ?? readSavedPageSize());
+  const [page, setPage] = useState(() => initialBrowserState?.page ?? 1);
   const [totalHits, setTotalHits] = useState(0);
   const [hits, setHits] = useState<ModrinthHit[]>([]);
   const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
@@ -393,10 +466,11 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
     worlds: t.projectTypeWorlds,
     plugin: t.projectTypePlugins,
   };
-  const [sortIndex, setSortIndex] = useState<"relevance" | "downloads" | "follows" | "newest" | "updated">("downloads");
-  const [selectedVersion, setSelectedVersion] = useState<string>(() => contextInstance?.minecraftVersion || "all");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [sortIndex, setSortIndex] = useState<"relevance" | "downloads" | "follows" | "newest" | "updated">(() => initialBrowserState?.sortIndex ?? "downloads");
+  const [selectedVersion, setSelectedVersion] = useState<string>(() => initialBrowserState?.selectedVersion ?? contextInstance?.minecraftVersion ?? "all");
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => initialBrowserState?.selectedCategory ?? "all");
   const [selectedProjectType, setSelectedProjectType] = useState<string>(() => {
+    if (initialBrowserState) return initialBrowserState.selectedProjectType;
     const stored = readProjectType();
     // Browsing for an instance offers instance content only (no modpacks/plugins).
     return !isGlobal && stored !== "all" && !isInstanceCategory(stored) ? "mod" : stored;
@@ -422,26 +496,71 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
     try {
       const storedType = sessionStorage.getItem("bamboo-project-type");
       const storedSource = sessionStorage.getItem("bamboo-project-source");
-      if (storedType) {
-        const nextType = !isGlobal && storedType !== "all" && !isInstanceCategory(storedType) ? "mod" : storedType;
-        setSelectedProjectType(nextType);
-        setPage(1);
+      if (!initialBrowserState) {
+        if (storedType) {
+          const nextType = !isGlobal && storedType !== "all" && !isInstanceCategory(storedType) ? "mod" : storedType;
+          setSelectedProjectType(nextType);
+          setPage(1);
+        }
+        if (storedSource === "curseforge" || storedSource === "modrinth") setSource(storedSource);
+        if (!isGlobal && contextInstance?.minecraftVersion) {
+          setSelectedVersion(contextInstance.minecraftVersion);
+        }
       }
-      if (storedSource === "curseforge" || storedSource === "modrinth") setSource(storedSource);
       sessionStorage.removeItem("bamboo-project-type");
       sessionStorage.removeItem("bamboo-project-source");
     } catch {
       // Session storage is optional; entry intent simply does not apply.
     }
-    if (!isGlobal && contextInstance?.minecraftVersion) {
-      setSelectedVersion(contextInstance.minecraftVersion);
-    }
   }
 
   const resultsRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const pendingScrollRef = useRef<number | null>(initialBrowserState?.scrollTop ?? null);
+  const scrollTopRef = useRef(initialBrowserState?.scrollTop ?? 0);
+  const persistBrowserState = useCallback(() => {
+    try {
+      sessionStorage.setItem(browserStateKey(fromInstanceId), JSON.stringify({
+        page,
+        scrollTop: scrollTopRef.current,
+        search,
+        source,
+        sortIndex,
+        selectedVersion,
+        selectedCategory,
+        selectedProjectType,
+        pageSize,
+      } satisfies SavedBrowserState));
+    } catch {
+      // Restoring the position is best effort; browsing must not fail with it.
+    }
+  }, [
+    page,
+    fromInstanceId,
+    search,
+    source,
+    sortIndex,
+    selectedVersion,
+    selectedCategory,
+    selectedProjectType,
+    pageSize,
+  ]);
 
   useEffect(() => {
+    persistBrowserState();
+    return persistBrowserState;
+  }, [persistBrowserState]);
+
+  const openModDetail = (mod: ModrinthHit) => {
+    // The detail view replaces the results list, so the scroll container is
+    // unmounted. Keep the offset until the list is mounted again on close.
+    pendingScrollRef.current = scrollTopRef.current;
+    setSelectedMod(mod);
+  };
+
+  useEffect(() => {
+    // A restored scroll offset is applied below once the results have loaded.
+    if (pendingScrollRef.current !== null) return;
     if (resultsRef.current) {
       resultsRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -466,6 +585,34 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
 
   const queryKey = [search, source, page, pageSize, sortIndex, selectedVersion, selectedCategory, selectedProjectType].join("\u0000");
   const isLoading = loadedQueryKey !== queryKey;
+
+  // Restore the offset as soon as the rows are in the DOM. A layout effect runs
+  // before the first paint and does not depend on an animation frame, so the
+  // position also survives a backgrounded or heavily throttled window.
+  useLayoutEffect(() => {
+    // Do not burn the saved offset on the empty frame between "loading" and
+    // the committed results; wait until the rows actually exist.
+    if (selectedMod || isLoading || hits.length === 0 || pendingScrollRef.current === null) return;
+    const target = pendingScrollRef.current;
+    let frame = 0;
+    let corrections = 0;
+    const apply = () => {
+      const results = resultsRef.current;
+      if (!results) return;
+      results.scrollTop = target;
+      scrollTopRef.current = results.scrollTop;
+      if (results.scrollTop >= target || corrections >= 3) {
+        pendingScrollRef.current = null;
+        return;
+      }
+      // Rows can still settle after the first paint; correct the remaining
+      // offset once the browser runs the next frame.
+      corrections += 1;
+      frame = requestAnimationFrame(apply);
+    };
+    apply();
+    return () => cancelAnimationFrame(frame);
+  }, [selectedMod, isLoading, hits.length]);
 
   const fetchMods = useCallback(async (append = false) => {
     if (append) {
@@ -590,6 +737,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
 
   useEffect(() => {
     if (pageSize !== PAGE_SIZE_INFINITE) return;
+    if (selectedMod) return;
     const root = resultsRef.current;
     const target = sentinelRef.current;
     if (!root || !target) return;
@@ -601,9 +749,27 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [pageSize, loadMore]);
+  }, [pageSize, loadMore, selectedMod]);
 
-  const handleFilterChange = () => setPage(1);
+  // A restored offset belongs to the query it was saved with. Every new
+  // search, filter or page starts at the top and must not inherit it.
+  const resetListScroll = useCallback(() => {
+    pendingScrollRef.current = null;
+    const results = resultsRef.current;
+    if (!results) return;
+    results.scrollTop = 0;
+    scrollTopRef.current = 0;
+  }, []);
+
+  const handleFilterChange = () => {
+    resetListScroll();
+    setPage(1);
+  };
+
+  const handlePageChange = (next: number) => {
+    resetListScroll();
+    setPage(next);
+  };
 
   const handleSourceChange = (next: "modrinth" | "curseforge") => {
     setSource(next);
@@ -619,9 +785,10 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
   };
 
   const handleQueryChange = useCallback((value: string) => {
+    resetListScroll();
     setPage(1);
     setSearch(value);
-  }, []);
+  }, [resetListScroll]);
 
   const isModCompatibleWithInstance = (mod: ModrinthHit, inst: Instance): boolean => {
     if (mod.project_type === "worlds") return true;
@@ -657,7 +824,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
         return files.map(fromCurseForgeFile);
       }
       const res = await fetch(`https://api.modrinth.com/v2/project/${mod.project_id}/version`, {
-        headers: { 'User-Agent': 'BambooLauncher/0.2.0' },
+        headers: { 'User-Agent': `BambooLauncher/${LAUNCHER_VERSION}` },
       });
       if (!res.ok) return [];
       const data = await res.json();
@@ -948,7 +1115,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
   const fetchDependencies = async (mod: ModrinthHit, inst: Instance): Promise<{ projectId: string; slug: string }[]> => {
     try {
       const res = await fetch(`https://api.modrinth.com/v2/project/${mod.project_id}/version`, {
-        headers: { 'User-Agent': 'BambooLauncher/0.2.0' },
+        headers: { 'User-Agent': `BambooLauncher/${LAUNCHER_VERSION}` },
       });
       if (!res.ok) return [];
       const raw = (await res.json()) as ModrinthVersion[];
@@ -1028,11 +1195,27 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
     } catch { console.warn('[Mods] Failed to install dependency'); }
   };
 
-  const installModToInstance = async (mod: ModrinthHit, inst: Instance, forcedVersion?: string) => {
+  const installModToInstance = async (
+    mod: ModrinthHit,
+    inst: Instance,
+    forcedVersion?: string,
+    onProgress?: (percent: number) => void,
+  ): Promise<boolean> => {
     setInstallingModId(mod.project_id);
     setInstallProgress(0);
     let backgroundTaskId = "";
     let installFailure = "";
+    let simulated = 4;
+    const report = (percent: number) => {
+      simulated = percent;
+      setInstallProgress(percent);
+      onProgress?.(percent);
+    };
+    report(4);
+    const ticker = window.setInterval(() => {
+      simulated = Math.min(90, simulated + Math.max(1, Math.round((90 - simulated) * 0.1)));
+      report(simulated);
+    }, 400);
     try {
       const category = projectTypeToCategory(mod.project_type) ?? 'mods';
       const picked = await resolveInstallPick(mod, inst, category, forcedVersion);
@@ -1068,7 +1251,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
         }
       }
 
-      setInstallProgress(60);
+      report(Math.max(simulated, 45));
 
       const folderName = instanceFolderKeyOf(inst);
       if (category === 'worlds') {
@@ -1103,23 +1286,44 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
       }
       const result = await window.electronAPI?.mods.download?.(payload);
 
-      setInstallProgress(90);
+      report(92);
 
       if (result?.success) {
+        // Switching versions replaces the existing entry and removes the old
+        // file; the list must not end up with two versions of the same project.
+        const previous = (inst.content || []).find(
+          (item) => item.projectId === mod.project_id || item.id === mod.slug,
+        );
+        if (previous?.fileName && previous.fileName !== file.filename && category !== 'worlds') {
+          try {
+            await window.electronAPI?.mods.deleteContentFile?.({
+              folderName,
+              fileName: previous.fileName,
+              type: category,
+            });
+          } catch {
+            // A missing old file never blocks the replacement.
+          }
+        }
         if (setInstances) {
           setInstances(prev => prev.map(i => {
             if (i.id !== inst.id) return i;
+            const sameProject = (item: NonNullable<Instance['content']>[number]) =>
+              item.projectId === mod.project_id || item.id === mod.slug;
+            const content = (i.content || []).filter((item) => !(item.type === category && sameProject(item)));
             const base = {
               ...i,
-              installedMods: category === 'mods' ? [...(i.installedMods || []), mod.slug] : i.installedMods,
-              modCount: category === 'mods' ? (i.modCount || 0) + 1 : i.modCount,
+              installedMods: category === 'mods'
+                ? [...new Set([...((i.installedMods || []).filter((slug) => slug !== previous?.id)), mod.slug])]
+                : i.installedMods,
+              modCount: category === 'mods' ? content.filter((item) => item.type === 'mods').length + 1 : i.modCount,
             };
             // Worlds live in saves/ and are listed from disk, not from the
             // instance's content list.
             if (category === 'worlds') return base;
             return {
               ...base,
-              content: [...(i.content || []), {
+              content: [...content, {
                 id: mod.slug,
                 name: mod.title,
                 fileName: file.filename,
@@ -1160,18 +1364,21 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
       } else {
         installFailure = lang === 'de' ? 'Installation fehlgeschlagen' : 'Installation failed';
       }
-      setInstallProgress(100);
+      if (!installFailure) report(100);
     } catch (e) {
       installFailure = e instanceof Error ? e.message : "Installation fehlgeschlagen";
       addToast({ type: "error", message: installFailure });
     } finally {
+      if (ticker) window.clearInterval(ticker);
       if (backgroundTaskId) {
         if (installFailure) failBackgroundTask(backgroundTaskId, installFailure);
         else completeBackgroundTask(backgroundTaskId);
       }
       setInstallingModId(null);
       setInstallProgress(0);
+      onProgress?.(installFailure ? 0 : 100);
     }
+    return !installFailure;
   };
 
   const handleOpenInstancePicker = (mod: ModrinthHit) => {
@@ -1370,7 +1577,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
             <button
               key={pt.id}
               onClick={() => { setSelectedProjectType(pt.id); handleFilterChange(); }}
-              className={`px-3 py-1.5 rounded-lg text-micro font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer border ${
+              className={`px-3 py-1.5 rounded-lg text-small font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer border ${
                 isSelected
                   ? `${accent.bgLight} ${accent.text} ${accent.border}`
                   : "bg-surface/20 border-stroke text-ink-secondary hover:text-ink hover:border-rim"
@@ -1399,7 +1606,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
                   <button
                     key={cat.id}
                     onClick={() => { setSelectedCategory(cat.id); handleFilterChange(); }}
-                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-micro font-medium text-left transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer ${
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-small font-medium text-left transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer ${
                       isSelected
                         ? "bg-accent/10 text-accent border-accent/20"
                         : "text-ink-secondary hover:text-ink hover:bg-hover"
@@ -1475,14 +1682,14 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
                 <div className="flex items-center gap-0.5">
                   <button
                     disabled={page === 1}
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    onClick={() => handlePageChange(Math.max(1, page - 1))}
                     className="p-1 bg-root border border-stroke hover:border-rim text-ink-secondary hover:text-ink rounded-lg transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </button>
                   <button
                     disabled={page === totalPages}
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
                     className="p-1 bg-root border border-stroke hover:border-rim text-ink-secondary hover:text-ink rounded-lg transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -1492,7 +1699,11 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
             )}
           </div>
 
-          <div ref={resultsRef} className="relative flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar">
+          <div
+            ref={resultsRef}
+            onScroll={(event) => { scrollTopRef.current = event.currentTarget.scrollTop; }}
+            className="relative flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar"
+          >
             <div className="flex flex-col gap-2">
               {isLoading ? (
                 <ModSkeletonList count={MOD_SKELETON_ROWS} label={t.queryingStore} />
@@ -1506,7 +1717,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
                 return (
                   <div
                     key={mod.project_id}
-                    onClick={() => setSelectedMod(mod)}
+                    onClick={() => openModDetail(mod)}
                     className={`mod-result-row bg-surface border rounded-2xl px-5 py-2.5 flex items-center gap-4 group cursor-pointer transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] duration-[var(--t-base)] ease-[var(--ease-out)] hover:shadow-xl text-left relative overflow-hidden min-h-[96px] shrink-0 ${accent.bgLight} ${accent.border}`}
                   >
                     <div className="w-14 h-14 rounded-2xl bg-surface border border-stroke flex items-center justify-center shrink-0 overflow-hidden relative shadow-md">
@@ -1546,7 +1757,16 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
                       </div>
                     </div>
 
-                    <div className="shrink-0 pl-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="shrink-0 pl-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => window.electronAPI?.system.openExternal?.(projectPageUrl(mod, source))}
+                        className="h-8 w-8 rounded-lg border border-stroke text-ink-tertiary hover:text-ink hover:bg-hover transition-colors cursor-pointer flex items-center justify-center"
+                        title={lang === 'de' ? 'Im Browser öffnen' : 'Open in browser'}
+                        aria-label={lang === 'de' ? 'Im Browser öffnen' : 'Open in browser'}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
                       {showInstallBtn ? (
                         <button
                           type="button"
@@ -1662,7 +1882,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
                 <div className="flex items-center gap-1">
                   <button
                     disabled={page === 1}
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    onClick={() => handlePageChange(Math.max(1, page - 1))}
                     className="p-1.5 bg-root border border-stroke hover:border-rim text-ink-secondary hover:text-ink rounded-lg transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
@@ -1672,7 +1892,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
                   </span>
                   <button
                     disabled={page === totalPages}
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
                     className="p-1.5 bg-root border border-stroke hover:border-rim text-ink-secondary hover:text-ink rounded-lg transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -1872,7 +2092,12 @@ interface ModDetailWindowProps {
   accent: AccentClasses;
   onClose: () => void;
   instances: Instance[];
-  installModToInstance: (mod: ModrinthHit, inst: Instance, forcedVersion?: string) => Promise<void>;
+  installModToInstance: (
+    mod: ModrinthHit,
+    inst: Instance,
+    forcedVersion?: string,
+    onProgress?: (percent: number) => void,
+  ) => Promise<boolean>;
   fullWindow?: boolean;
   lang: LanguageType;
 }
@@ -1895,8 +2120,24 @@ const ModDetailWindow: React.FC<ModDetailWindowProps> = ({
   const [showIncompWarning, setShowIncompWarning] = useState(false);
   const [incompVer, setIncompVer] = useState<ModDetailVersion | null>(null);
   const [incompInst, setIncompInst] = useState<Instance | null>(null);
+  const [versionProgress, setVersionProgress] = useState<{ version: string; percent: number } | null>(null);
+  const [installedVersionNumber, setInstalledVersionNumber] = useState<string | null>(() => {
+    const entry = contextInstance?.content?.find(
+      (item) => item.projectId === mod.project_id || item.id === mod.slug,
+    );
+    return entry?.versionNumber ?? null;
+  });
 
   const isCurseforge = source === "curseforge";
+  const detailTypeLabel: Record<ProjectType, string> = {
+    mod: tr.projectTypeMods,
+    modpack: tr.projectTypeModpacks,
+    resourcepack: tr.projectTypeResourcePacks,
+    shader: tr.projectTypeShaders,
+    datapack: tr.projectTypeDataPacks,
+    worlds: tr.projectTypeWorlds,
+    plugin: tr.projectTypePlugins,
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -1938,8 +2179,8 @@ const ModDetailWindow: React.FC<ModDetailWindowProps> = ({
           }
         } else {
           const [projectRes, versionsRes] = await Promise.all([
-            fetch(`https://api.modrinth.com/v2/project/${mod.project_id}`, { headers: { 'User-Agent': 'BambooLauncher/0.2.0' } }),
-            fetch(`https://api.modrinth.com/v2/project/${mod.project_id}/version`, { headers: { 'User-Agent': 'BambooLauncher/0.2.0' } }),
+            fetch(`https://api.modrinth.com/v2/project/${mod.project_id}`, { headers: { 'User-Agent': `BambooLauncher/${LAUNCHER_VERSION}` } }),
+            fetch(`https://api.modrinth.com/v2/project/${mod.project_id}/version`, { headers: { 'User-Agent': `BambooLauncher/${LAUNCHER_VERSION}` } }),
           ]);
           if (projectRes.ok) {
             const p = (await projectRes.json()) as ModDetail;
@@ -2009,6 +2250,7 @@ const ModDetailWindow: React.FC<ModDetailWindowProps> = ({
   };
 
   const handleInstallVersion = (ver: ModDetailVersion) => {
+    if (versionProgress || installedVersionNumber === ver.version_number) return;
     const incompatible = !isVersionInstallable(ver);
 
     if (incompatible && contextInstance) {
@@ -2019,24 +2261,39 @@ const ModDetailWindow: React.FC<ModDetailWindowProps> = ({
       setInstallVer(ver);
       setShowInstallPicker(true);
     } else if (contextInstance) {
-      installModToInstance(mod, contextInstance, ver.version_number);
+      void installVersionInto(contextInstance, ver);
     }
   };
 
+  async function installVersionInto(inst: Instance, ver: ModDetailVersion): Promise<void> {
+    setVersionProgress({ version: ver.version_number, percent: 2 });
+    try {
+      const ok = await installModToInstance(mod, inst, ver.version_number, (percent) =>
+        setVersionProgress({ version: ver.version_number, percent }),
+      );
+      if (ok) setInstalledVersionNumber(ver.version_number);
+    } finally {
+      setVersionProgress(null);
+    }
+  }
+
   const handleInstallFromPicker = async (inst: Instance) => {
     if (installVer) {
+      const version = installVer;
       setShowInstallPicker(false);
-      await installModToInstance(mod, inst, installVer.version_number);
       setInstallVer(null);
+      await installVersionInto(inst, version);
     }
   };
 
   const handleIncompConfirm = async () => {
     if (incompVer && incompInst) {
+      const version = incompVer;
+      const inst = incompInst;
       setShowIncompWarning(false);
-      await installModToInstance(mod, incompInst, incompVer.version_number);
       setIncompVer(null);
       setIncompInst(null);
+      await installVersionInto(inst, version);
     }
   };
 
@@ -2044,47 +2301,95 @@ const ModDetailWindow: React.FC<ModDetailWindowProps> = ({
 
   const detailContent = (
     <>
-      <div className="px-6 pt-6 pb-4 border-b border-hairline flex items-start justify-between gap-4 shrink-0">
-        <div className="flex items-center gap-4 min-w-0 flex-1">
-          <div className="w-14 h-14 rounded-2xl bg-surface border border-stroke overflow-hidden shrink-0 shadow-lg">
-            <img
-              src={project?.icon_url || mod.icon_url}
-              alt={project?.title || mod.title}
-              className="w-full h-full object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-            {(!project?.icon_url && !mod.icon_url) && (
-              <div className="w-full h-full flex items-center justify-center">
-                <Package className="w-7 h-7 text-ink-tertiary" />
-              </div>
-            )}
-          </div>
-          <div className="text-left min-w-0 flex-1">
-            <h2 className="text-title3 font-semibold text-ink truncate">
-              {project?.title || mod.title}
-            </h2>
-            <p className="text-small text-ink-secondary mt-0.5">{formatMessage(tr.byAuthor, { author: project?.author || mod.author })}</p>
-            <div className="flex items-center gap-3 mt-1.5 text-micro text-ink-tertiary">
-              <span className="flex items-center gap-1">
-                <Download className="w-3.5 h-3.5" />
-                {formatCompactNumber(project?.downloads ?? mod.downloads, lang)}
-              </span>
-              {/* CurseForge only exposes a 0-5 rating here, not a follower count. */}
-              {!isCurseforge && (
-                <span className="flex items-center gap-1">
-                  <Star className="w-3.5 h-3.5" />
-                  {formatCompactNumber(mod.follows, lang)}
-                </span>
+      <div className="px-6 pt-6 pb-5 border-b border-hairline shrink-0">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-4 min-w-0 flex-1">
+            <div className="w-16 h-16 rounded-2xl bg-surface border border-stroke overflow-hidden shrink-0 shadow-lg">
+              <img
+                src={project?.icon_url || mod.icon_url}
+                alt={project?.title || mod.title}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+              {(!project?.icon_url && !mod.icon_url) && (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Package className="w-7 h-7 text-ink-tertiary" />
+                </div>
               )}
             </div>
+            <div className="text-left min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-title3 font-semibold text-ink truncate">
+                  {project?.title || mod.title}
+                </h2>
+                <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-micro font-medium ${accent.border} ${accent.text} ${accent.bgLight}`}>
+                  {detailTypeLabel[mod.project_type as ProjectType] || mod.project_type}
+                </span>
+                {installedVersionNumber && (
+                  <span className="shrink-0 rounded-md border border-success/25 bg-success/10 px-1.5 py-0.5 text-micro font-medium text-success">
+                    {tr.installed}
+                  </span>
+                )}
+              </div>
+              <p className="text-small text-ink-secondary mt-0.5">{formatMessage(tr.byAuthor, { author: project?.author || mod.author })}</p>
+              <p className="mt-1.5 line-clamp-2 max-w-[70ch] text-micro leading-5 text-ink-secondary">
+                {project?.description || mod.description}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-micro text-ink-tertiary">
+                <span className="flex items-center gap-1">
+                  <Download className="w-3.5 h-3.5" />
+                  {formatCompactNumber(project?.downloads ?? mod.downloads, lang)}
+                </span>
+                {/* CurseForge only exposes a 0-5 rating here, not a follower count. */}
+                {!isCurseforge && (
+                  <span className="flex items-center gap-1">
+                    <Star className="w-3.5 h-3.5" />
+                    {formatCompactNumber(mod.follows, lang)}
+                  </span>
+                )}
+                {mod.date_modified && (
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5" />
+                    {new Date(mod.date_modified).toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-US')}
+                  </span>
+                )}
+                <span>{source === 'modrinth' ? 'Modrinth' : 'CurseForge'}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => window.electronAPI?.system.openExternal?.(projectPageUrl(mod, source))}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-stroke bg-surface px-3 text-micro font-medium text-ink-secondary hover:border-rim hover:text-ink transition-colors cursor-pointer"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              {lang === 'de' ? 'Im Browser öffnen' : 'Open in browser'}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl bg-surface hover:bg-hover border border-stroke text-ink-secondary hover:text-ink transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="p-2 rounded-xl bg-surface hover:bg-hover border border-stroke text-ink-secondary hover:text-ink transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer shrink-0"
-        >
-          <X className="w-5 h-5" />
-        </button>
+
+        {mod.categories.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 pl-20">
+            {mod.categories.slice(0, 6).map((category) => (
+              <span key={category} className="rounded-md border border-stroke bg-root/40 px-1.5 py-0.5 text-micro font-medium capitalize text-ink-secondary">
+                {category.replace(/-/g, ' ')}
+              </span>
+            ))}
+            {mod.client_side === 'required' && (
+              <span className="rounded-md border border-hairline px-1.5 py-0.5 text-micro text-ink-tertiary">{lang === 'de' ? 'Client' : 'Client'}</span>
+            )}
+            {mod.server_side === 'required' && (
+              <span className="rounded-md border border-hairline px-1.5 py-0.5 text-micro text-ink-tertiary">{lang === 'de' ? 'Server' : 'Server'}</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex border-b border-hairline shrink-0 px-6">
@@ -2196,23 +2501,41 @@ const ModDetailWindow: React.FC<ModDetailWindowProps> = ({
                     return new Date(b.date_published).getTime() - new Date(a.date_published).getTime();
                   }).map(ver => {
                     const incompatible = !isVersionInstallable(ver);
+                    const installed = installedVersionNumber === ver.version_number;
+                    const installingThis = versionProgress?.version === ver.version_number;
+                    const installBusy = versionProgress !== null;
 
                     return (
                       <div
                         key={ver.version_number}
-                        className={`bg-surface/30 border rounded-xl p-4 flex items-center justify-between gap-4 transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] ${
-                          incompatible
-                            ? "border-hairline opacity-50"
-                            : `border-hairline ${accent.cardHover || 'hover:border-rim'}`
+                        className={`relative overflow-hidden bg-surface/30 border rounded-xl p-4 flex items-center justify-between gap-4 transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] ${
+                          installed
+                            ? "border-success/35 bg-success/5"
+                            : incompatible
+                              ? "border-hairline opacity-60"
+                              : `border-hairline ${accent.cardHover || 'hover:border-rim'}`
                         }`}
                       >
-                        <div className="flex-1 min-w-0 text-left">
+                        {installingThis && (
+                          <span
+                            aria-hidden
+                            className="absolute inset-y-0 left-0 bg-accent/10 transition-[width] duration-300 ease-[var(--ease-out)]"
+                            style={{ width: `${versionProgress?.percent ?? 0}%` }}
+                          />
+                        )}
+                        <div className="relative flex-1 min-w-0 text-left">
                           <div className="flex items-center gap-2">
                             <span className="text-small font-medium text-ink">
                               {ver.version_number}
                             </span>
                             {incompatible && (
                               <AlertTriangle className="w-4 h-4 text-warning shrink-0" aria-label={tr.incompatibleWithInstance} />
+                            )}
+                            {installed && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-success/25 bg-success/10 px-1.5 py-0.5 text-[11px] font-semibold text-success">
+                                <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                {tr.installed}
+                              </span>
                             )}
                           </div>
                           <div className="flex items-center gap-2 mt-1 text-micro text-ink-tertiary">
@@ -2223,16 +2546,29 @@ const ModDetailWindow: React.FC<ModDetailWindowProps> = ({
                             <span>{ver.game_versions.slice(0, 3).join(', ')}{ver.game_versions.length > 3 ? ' ...' : ''}</span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleInstall(ver)}
- className={`shrink-0 px-4 py-2 rounded-xl text-micro font-semibold transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer shadow-lg ${
-                            incompatible
-                              ? "bg-warning/10 text-warning border border-warning/20 hover:bg-warning/20"
-                              : `${accent.bg} text-accent-contrast ${accent.glow}`
-                          }`}
-                        >
-                          {incompatible ? `⚠️ ${tr.install}` : tr.install}
-                        </button>
+                        {installed ? (
+                          <span className="relative shrink-0 rounded-xl border border-success/25 bg-success/10 px-4 py-2 text-micro font-semibold text-success">
+                            {tr.installed}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleInstall(ver)}
+                            disabled={installBusy}
+                            className={`relative shrink-0 px-4 py-2 rounded-xl text-micro font-semibold transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer shadow-lg tabular-nums disabled:cursor-not-allowed disabled:opacity-60 ${
+                              incompatible
+                                ? "bg-warning/10 text-warning border border-warning/20 hover:bg-warning/20"
+                                : `${accent.bg} text-accent-contrast ${accent.glow}`
+                            }`}
+                          >
+                            {installingThis
+                              ? `${versionProgress?.percent ?? 0}%`
+                              : incompatible
+                                ? `⚠️ ${installedVersionNumber ? tr.changeVersion : tr.install}`
+                                : installedVersionNumber
+                                  ? tr.changeVersion
+                                  : tr.install}
+                          </button>
+                        )}
                       </div>
                     );
                   })}

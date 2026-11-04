@@ -47,32 +47,6 @@ export async function launchLegacyInstance(
 
   if (found) {
     instanceId = found.instance.id
-    const file = await core.instanceManager.readFile(instanceId)
-    const javaPath = request.javaPath === undefined
-      ? undefined
-      : normalizeJavaPath(request.javaPath)
-    const patch: Partial<InstanceFile> = {}
-    if (
-      (file.versionId || file.version) !== request.versionId ||
-      file.version !== minecraftVersion ||
-      file.loader !== request.loader ||
-      file.loaderVersion !== request.loaderVersion
-    ) {
-      patch.version = minecraftVersion
-      patch.versionId = request.versionId
-      patch.loader = request.loader
-      patch.loaderVersion = request.loaderVersion
-    }
-    // Migration used to copy the UI's "Automatisch" label into javaPath, where
-    // the launch core treats it as an executable. The launch request owns this
-    // choice, so an automatic start repairs an already-migrated instance.
-    if (javaPath !== undefined && String(file.javaPath ?? '') !== javaPath) {
-      patch.javaPath = javaPath
-      patch.javaMode = javaPath ? 'pinned' : 'auto'
-    }
-    if (Object.keys(patch).length > 0) {
-      await core.instanceManager.updateFile(instanceId, patch)
-    }
   } else {
     const record = await core.instances.upsert({
       id: `legacy-${slugify(request.folderName) || 'profile'}`,
@@ -88,6 +62,37 @@ export async function launchLegacyInstance(
       javaPath: normalizeJavaPath(request.javaPath),
     })
     instanceId = record.id
+  }
+
+  // A copied legacy profile can carry the source instance's `instance.json`,
+  // which still names the old version and profile id. The launch request is the
+  // authority, so repair the on-disk file on every start - not only when a store
+  // record already existed (a copied folder had none until the first launch).
+  const file = await core.instanceManager.readFile(instanceId)
+  const javaPath = request.javaPath === undefined
+    ? undefined
+    : normalizeJavaPath(request.javaPath)
+  const patch: Partial<InstanceFile> = {}
+  if (
+    (file.versionId || file.version) !== request.versionId ||
+    file.version !== minecraftVersion ||
+    file.loader !== request.loader ||
+    file.loaderVersion !== request.loaderVersion
+  ) {
+    patch.version = minecraftVersion
+    patch.versionId = request.versionId
+    patch.loader = request.loader
+    patch.loaderVersion = request.loaderVersion
+  }
+  // Migration used to copy the UI's "Automatisch" label into javaPath, where
+  // the launch core treats it as an executable. The launch request owns this
+  // choice, so an automatic start repairs an already-migrated instance.
+  if (javaPath !== undefined && String(file.javaPath ?? '') !== javaPath) {
+    patch.javaPath = javaPath
+    patch.javaMode = javaPath ? 'pinned' : 'auto'
+  }
+  if (Object.keys(patch).length > 0) {
+    await core.instanceManager.updateFile(instanceId, patch)
   }
 
   return core.launchInstance(

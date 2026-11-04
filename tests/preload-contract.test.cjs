@@ -63,11 +63,11 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
 
   assert.deepEqual(Object.keys(api).sort(), [
     'auth',
+    'cosmetics',
     'dialogs',
     'icons',
     'instances',
     'java',
-    'join',
     'launch',
     'loaders',
     'logs',
@@ -76,6 +76,8 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
     'screenshots',
     'servers',
     'settings',
+    'skins',
+    'statistics',
     'system',
     'tasks',
     'updates',
@@ -85,6 +87,7 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
 
   await api.settings.get()
   await api.settings.save({ currentTheme: 'bamboo', lang: 'en' })
+  await api.statistics.summary()
   await api.instances.list()
   await api.instances.create({ folderName: 'demo', options: {} })
   await api.instances.updateLaunchSettings('demo', { maxMemory: 4096 })
@@ -108,6 +111,9 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
   await api.dialogs.open({ properties: ['openFile'] })
   api.window.minimize()
   await api.auth.status()
+  await api.skins.snapshot()
+  await api.cosmetics.list('demo')
+  await api.cosmetics.shop()
   api.system.copy('hello')
   await api.screenshots.collect()
   await api.screenshots.delete({
@@ -127,6 +133,7 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
     { mode: 'sync', channel: 'get-icons', args: [] },
     { mode: 'invoke', channel: 'get-settings', args: [] },
     { mode: 'invoke', channel: 'save-settings', args: [{ currentTheme: 'bamboo', lang: 'en' }] },
+    { mode: 'invoke', channel: 'bamboo:statistics:summary', args: [] },
     { mode: 'invoke', channel: 'bamboo:instances:list', args: [] },
     { mode: 'invoke', channel: 'create-instance', args: [{ folderName: 'demo', options: {} }] },
     {
@@ -166,6 +173,9 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
     { mode: 'invoke', channel: 'show-open-dialog', args: [{ properties: ['openFile'] }] },
     { mode: 'send', channel: 'window-minimize', args: [] },
     { mode: 'invoke', channel: 'bamboo:auth:status', args: [] },
+    { mode: 'invoke', channel: 'bamboo:skins:snapshot', args: [] },
+    { mode: 'invoke', channel: 'bamboo:cosmetics:list', args: ['demo'] },
+    { mode: 'invoke', channel: 'bamboo:cosmetics:shop', args: [] },
     { mode: 'send', channel: 'copy-to-clipboard', args: ['hello'] },
     { mode: 'invoke', channel: 'collect-all-screenshots', args: [] },
     {
@@ -219,19 +229,12 @@ test('the preload surface has no flat legacy methods and no deleted methods', ()
   for (const name of removed) assert.equal(api[name], undefined, `${name} must not exist on the bridge`)
 })
 
-test('listeners and buffered deep links still flow through the namespaced surface', () => {
+test('listeners flow through the namespaced surface', () => {
   const { api, emit } = loadBridge()
   const closed = []
-  const invites = []
 
   const unsubscribe = api.launch.onClosed((data) => closed.push(data))
   emit('game-closed', { code: 0, profileName: 'Demo', folderName: 'demo' })
   assert.deepEqual(closed, [{ code: 0, profileName: 'Demo', folderName: 'demo' }])
   unsubscribe()
-
-  // A link delivered before the renderer subscribes must be replayed.
-  emit('deep-link-invite', { v: 1, host: '127.0.0.1', port: 25565 })
-  const off = api.join.onInvite((payload) => invites.push(payload))
-  assert.deepEqual(invites, [{ v: 1, host: '127.0.0.1', port: 25565 }])
-  off()
 })

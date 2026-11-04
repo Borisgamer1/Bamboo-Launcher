@@ -129,7 +129,6 @@ export interface InstancesState {
   setActiveInstance: Dispatch<SetStateAction<string>>
   profilesLoaded: boolean
   legacyCoversDetected: boolean
-  totalPlaytime: number
 }
 
 export function useInstances(): InstancesState {
@@ -171,8 +170,6 @@ export function useInstances(): InstancesState {
     }
   }, [])
 
-  const totalPlaytime = instances.reduce((sum, instance) => sum + (instance.playTimeMs || 0), 0)
-
   return {
     instances,
     setInstances,
@@ -180,6 +177,5 @@ export function useInstances(): InstancesState {
     setActiveInstance,
     profilesLoaded,
     legacyCoversDetected,
-    totalPlaytime,
   }
 }

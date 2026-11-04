@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Boxes,
+  BarChart3,
   Check,
   Coffee,
   Download,
@@ -9,17 +9,12 @@ import {
   Info,
   Keyboard,
   Languages,
-  Layers,
-  MemoryStick,
-  Monitor,
   Palette,
-  RefreshCw,
   RotateCcw,
   Search,
-  Settings2,
   ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
+  Trash2,
   Upload,
   UserRound,
   Wrench,
@@ -37,10 +32,11 @@ import {
 } from '../lib/launcherPreferences'
 import {
   DEFAULT_GAME_OPTIONS,
-  GAME_OPTIONS,
   MINECRAFT_LANGUAGES,
 } from '../lib/gameOptions'
-import { ALL_KEYBIND_ACTIONS, DEFAULT_KEYBINDS, keybindConflicts } from '../lib/keybinds'
+import { DEFAULT_KEYBINDS, keybindConflicts } from '../lib/keybinds'
+import { prepareInstanceCover } from '../lib/instanceCovers'
+import { PRESET_BLUR, PRESET_BRIGHTNESS } from '../data/themes'
 import {
   SETTINGS_TARGET_EVENT,
   clearSettingsTarget,
@@ -49,12 +45,13 @@ import {
 import { KeybindsPanel } from './settings/KeybindsPanel'
 import { AccountsPanel } from './settings/AccountsPanel'
 import { GameOptionsPanel } from './settings/GameOptionsPanel'
+import { FontSettingsCard } from './settings/FontSettingsCard'
+import { StatisticsSettingsTab } from './settings/StatisticsSettingsTab'
 import {
-  Badge,
   Button,
   ConfirmButton,
-  SelectField,
   Segmented,
+  SelectField,
   SettingsCard,
   SettingsRow,
   Slider,
@@ -64,13 +61,15 @@ import {
 } from './settings/SettingsPrimitives'
 import { cx, t } from './settings/settingsUtils'
 import { useToast } from './Toast'
+import { useStatistics } from '../hooks/useStatistics'
 import type { AccountSession } from '../lib/accountSession'
+import type { ThemeMode } from '../hooks/useTheme'
+import type { LauncherFont } from '../lib/launcherFont'
+import type { Instance } from './InstancesView'
 import type { UpdateStatus } from '../electron'
 import { LAUNCHER_VERSION } from '../lib/version'
 
-type TabId = 'general' | 'appearance' | 'game' | 'language' | 'advanced' | 'about' | 'accounts'
-
-type GamePanelId = 'java' | 'game' | 'controls' | 'defaults'
+type TabId = 'general' | 'appearance' | 'java' | 'gameOptions' | 'keybinds' | 'language' | 'advanced' | 'statistics' | 'about' | 'accounts'
 
 type LegacySectionId =
   | 'accounts'
@@ -83,6 +82,7 @@ type LegacySectionId =
   | 'controls'
   | 'defaults'
   | 'advanced'
+  | 'statistics'
   | 'about'
 
 interface TabItem {
@@ -109,11 +109,25 @@ const TABS: TabItem[] = [
     keywords: 'theme hintergrund particles blur akzent accent design',
   },
   {
-    id: 'game',
-    label: { de: 'Spiel', en: 'Game' },
-    description: { de: 'Java, Spieloptionen, Steuerung und Instanz-Standards', en: 'Java, game options, controls and instance defaults' },
+    id: 'java',
+    label: { de: 'Java & Speicher', en: 'Java & memory' },
+    description: { de: 'Arbeitsspeicher, Java-Pfad und JVM-Argumente', en: 'Memory, Java path and JVM arguments' },
+    icon: Coffee,
+    keywords: 'ram memory java jvm speicher arbeitsspeicher',
+  },
+  {
+    id: 'gameOptions',
+    label: { de: 'Spieloptionen', en: 'Game options' },
+    description: { de: 'Video, Audio, Steuerung, Chat und Barrierefreiheit', en: 'Video, audio, controls, chat and accessibility' },
     icon: Gamepad2,
-    keywords: 'ram memory java jvm video audio sound keybind tasten keyboard instanz default vollbild fullscreen sprache minecraft',
+    keywords: 'video audio sound grafik spieloptionen options maus mausempfindlichkeit mouse sensitivity fov sichtweite chat',
+  },
+  {
+    id: 'keybinds',
+    label: { de: 'Tastenbelegungen', en: 'Key-Binds' },
+    description: { de: 'Tastenbelegung im Tastatur-Layout', en: 'Keybindings in the keyboard layout' },
+    icon: Keyboard,
+    keywords: 'steuerung controls keybinds tasten keyboard tastatur belegung',
   },
   {
     id: 'language',
@@ -128,6 +142,13 @@ const TABS: TabItem[] = [
     description: { de: 'Sichern, Importieren und Zurücksetzen', en: 'Backup, import and reset' },
     icon: Wrench,
     keywords: 'erweitert advanced export import backup sichern zurücksetzen reset sicherheit security tokens',
+  },
+  {
+    id: 'statistics',
+    label: { de: 'Statistiken', en: 'Statistics' },
+    description: { de: 'Spielzeit, Blöcke und Distanz', en: 'Playtime, blocks and distance' },
+    icon: BarChart3,
+    keywords: 'statistiken statistics spielzeit playtime blöcke blocks distanz distance gelaufen mined placed sessions ledger',
   },
   {
     id: 'about',
@@ -145,37 +166,28 @@ const TABS: TabItem[] = [
   },
 ]
 
-interface GamePanel {
-  id: GamePanelId
+interface SettingsGroup {
+  id: string
   label: { de: string; en: string }
-  description: { de: string; en: string }
-  icon: React.ElementType
+  tabs: TabId[]
 }
 
-const GAME_PANELS: GamePanel[] = [
+/** Sidebar grouping only: the tab order, labels and contents stay untouched. */
+const SETTINGS_GROUPS: SettingsGroup[] = [
   {
-    id: 'java',
-    label: { de: 'Java & Speicher', en: 'Java & memory' },
-    description: { de: 'RAM, Java-Pfad und JVM-Argumente', en: 'RAM, Java path and JVM arguments' },
-    icon: Coffee,
+    id: 'launcher',
+    label: { de: 'Launcher', en: 'Launcher' },
+    tabs: ['general', 'appearance'],
   },
   {
-    id: 'game',
-    label: { de: 'Spieloptionen', en: 'Game options' },
-    description: { de: 'Video, Audio, Sprache, Chat und mehr', en: 'Video, audio, language, chat and more' },
-    icon: Gamepad2,
+    id: 'in-game',
+    label: { de: 'In-Game', en: 'In-Game' },
+    tabs: ['java', 'gameOptions', 'keybinds', 'language', 'accounts'],
   },
   {
-    id: 'controls',
-    label: { de: 'Steuerung', en: 'Controls' },
-    description: { de: 'Tastenbelegung im Tastatur-Layout', en: 'Keybinds in a keyboard layout' },
-    icon: Keyboard,
-  },
-  {
-    id: 'defaults',
-    label: { de: 'Instanz-Standards', en: 'Instance defaults' },
-    description: { de: 'Was neue Instanzen erben', en: 'What new instances inherit' },
-    icon: Boxes,
+    id: 'advanced',
+    label: { de: 'Erweitert', en: 'Advanced' },
+    tabs: ['advanced', 'statistics', 'about'],
   },
 ]
 
@@ -194,18 +206,32 @@ const TAB_COPY: Record<TabId, { title: { de: string; en: string }; desc: { de: s
       en: 'Themes, background and effects – all in one place, live without a restart.',
     },
   },
-  game: {
-    title: { de: 'Spiel', en: 'Game' },
+  java: {
+    title: { de: 'Java & Speicher', en: 'Java & memory' },
     desc: {
-      de: 'Alles, was im Spiel landet: Java und RAM, Spieloptionen, Steuerung und die Standards für neue Instanzen.',
-      en: 'Everything that reaches the game: Java and RAM, game options, controls and the defaults for new instances.',
+      de: 'Arbeitsspeicher und Java.',
+      en: 'Memory and Java.',
+    },
+  },
+  gameOptions: {
+    title: { de: 'Spieloptionen', en: 'Game options' },
+    desc: {
+      de: 'Video, Audio, Steuerung, Chat und Barrierefreiheit.',
+      en: 'Video, audio, controls, chat and accessibility.',
+    },
+  },
+  keybinds: {
+    title: { de: 'Tastenbelegungen', en: 'Key-Binds' },
+    desc: {
+      de: 'Tastenbelegung im gewählten Tastatur-Layout.',
+      en: 'Keybindings in the selected keyboard layout.',
     },
   },
   language: {
     title: { de: 'Sprache', en: 'Language' },
     desc: {
-      de: 'Sprache der Oberfläche und die Sprache, die neue Instanzen im Spiel verwenden.',
-      en: 'The interface language and the language new instances use in-game.',
+      de: 'Oberfläche und Spiel.',
+      en: 'Interface and game.',
     },
   },
   advanced: {
@@ -213,6 +239,13 @@ const TAB_COPY: Record<TabId, { title: { de: string; en: string }; desc: { de: s
     desc: {
       de: 'Sichere deine Konfiguration, stelle sie wieder her oder setze sie auf den Standard zurück.',
       en: 'Back up your configuration, restore it or reset it to defaults.',
+    },
+  },
+  statistics: {
+    title: { de: 'Statistiken', en: 'Statistics' },
+    desc: {
+      de: 'Deine gesamte Spielzeit, Blöcke und Distanz – auch nach dem Löschen einer Instanz.',
+      en: 'Your total playtime, blocks and distance – even after deleting an instance.',
     },
   },
   about: {
@@ -231,30 +264,32 @@ const TAB_COPY: Record<TabId, { title: { de: string; en: string }; desc: { de: s
   },
 }
 
-function resolveLegacySection(requested: string | null): { tab: TabId; panel: GamePanelId } {
+function resolveLegacySection(requested: string | null): TabId {
   const legacy = requested as LegacySectionId | null
   switch (legacy) {
     case 'appearance':
     case 'themes':
-      return { tab: 'appearance', panel: 'java' }
+      return 'appearance'
     case 'language':
-      return { tab: 'language', panel: 'java' }
+      return 'language'
     case 'advanced':
-      return { tab: 'advanced', panel: 'java' }
+      return 'advanced'
+    case 'statistics':
+      return 'statistics'
     case 'about':
-      return { tab: 'about', panel: 'java' }
+      return 'about'
     case 'java':
-      return { tab: 'game', panel: 'java' }
+      return 'java'
     case 'game':
-      return { tab: 'game', panel: 'game' }
+      return 'gameOptions'
     case 'controls':
-      return { tab: 'game', panel: 'controls' }
+      return 'keybinds'
     case 'defaults':
-      return { tab: 'game', panel: 'defaults' }
+      return 'java'
     case 'accounts':
-      return { tab: 'accounts', panel: 'java' }
+      return 'accounts'
     default:
-      return { tab: 'general', panel: 'java' }
+      return 'general'
   }
 }
 
@@ -264,6 +299,12 @@ export interface SettingsViewProps {
   themeId: string
   setThemeId: (themeId: string) => void
   themes: ThemeDefinition[]
+  mode: ThemeMode
+  setMode: (mode: ThemeMode) => void
+  customAccent: string
+  setCustomAccent: (accent: string) => void
+  customBg: string
+  setCustomBg: (bg: string) => void
   preferences: LauncherPreferences
   setPreferences: React.Dispatch<React.SetStateAction<LauncherPreferences>>
   showBgImage: boolean
@@ -276,12 +317,18 @@ export interface SettingsViewProps {
   setBgBrightness: (value: number) => void
   bgBlur: number
   setBgBlur: (value: number) => void
-  totalPlaytimeMs?: number
+  launcherFont: LauncherFont
+  setLauncherFont: (font: LauncherFont) => void
+  statisticsEnabled: boolean
+  setStatisticsEnabled: (enabled: boolean) => void
   initialSection?: TabId
+  setInstances: React.Dispatch<React.SetStateAction<Instance[]>>
   accountSession: AccountSession
   updateStatus?: UpdateStatus | null
   onCheckForUpdates?: () => void
   onInstallUpdate?: () => void
+  onRestartTour?: () => void
+  onOpenChangelog?: () => void
 }
 
 function themeBackground(theme: ThemeDefinition): string | undefined {
@@ -298,6 +345,12 @@ export function SettingsView({
   themeId,
   setThemeId,
   themes,
+  mode,
+  setMode,
+  customAccent,
+  setCustomAccent,
+  customBg,
+  setCustomBg,
   preferences,
   setPreferences,
   showBgImage,
@@ -310,12 +363,18 @@ export function SettingsView({
   setBgBrightness,
   bgBlur,
   setBgBlur,
-  totalPlaytimeMs = 0,
+  launcherFont,
+  setLauncherFont,
+  statisticsEnabled,
+  setStatisticsEnabled,
   initialSection = 'general',
+  setInstances,
   accountSession,
   updateStatus,
   onCheckForUpdates,
   onInstallUpdate,
+  onRestartTour,
+  onOpenChangelog,
 }: SettingsViewProps) {
   const L = lang as Lang
   const { addToast } = useToast()
@@ -330,40 +389,43 @@ export function SettingsView({
         : updateStatus?.state === 'downloading'
           ? t(L, `Version ${updateStatus.version ?? ''} wird geladen … ${updateStatus.percent ?? 0}%`, `Downloading version ${updateStatus.version ?? ''} … ${updateStatus.percent ?? 0}%`)
           : updateStatus?.state === 'not-available'
-            ? t(L, 'Du verwendest die neueste Version.', 'You are on the latest version.')
+            ? t(L, 'Keine Updates gefunden.', 'No updates found.')
             : updateStatus?.state === 'error'
               ? t(L, 'Update-Prüfung fehlgeschlagen. Später erneut versuchen.', 'Update check failed. Try again later.')
               : updateStatus?.state === 'disabled'
                 ? t(L, 'Updates werden nur in der installierten App geprüft.', 'Updates are checked in the installed app only.')
                 : t(L, 'Updates werden automatisch alle 6 Stunden geprüft.', 'Updates are checked automatically every 6 hours.')
-  const [initialView] = useState(() => resolveLegacySection(readSettingsTarget() ?? initialSection))
-  const [tab, setTab] = useState<TabId>(initialView.tab)
-  const [gamePanel, setGamePanel] = useState<GamePanelId>(initialView.panel)
+  const [tab, setTab] = useState<TabId>(() => resolveLegacySection(readSettingsTarget() ?? initialSection))
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const applyRequestedSection = () => {
       const requested = readSettingsTarget()
       if (!requested) return
       clearSettingsTarget()
-      const next = resolveLegacySection(requested)
-      setTab(next.tab)
-      setGamePanel(next.panel)
+      setTab(resolveLegacySection(requested))
+      scrollRef.current?.scrollTo({ top: 0 })
     }
     applyRequestedSection()
     window.addEventListener(SETTINGS_TARGET_EVENT, applyRequestedSection)
     return () => window.removeEventListener(SETTINGS_TARGET_EVENT, applyRequestedSection)
   }, [])
-  const openTab = (next: TabId) => setTab(next)
-  const openGame = (panel: GamePanelId) => {
-    setGamePanel(panel)
-    setTab('game')
+  const openTab = (next: TabId) => {
+    setTab(next)
+    scrollRef.current?.scrollTo({ top: 0 })
   }
   const [navQuery, setNavQuery] = useState('')
   const [javaVersions, setJavaVersions] = useState<{ path: string; version: number; verStr: string }[]>([])
   const [scanningJava, setScanningJava] = useState(false)
   const [themeQuery, setThemeQuery] = useState('')
+  const [accentDraft, setAccentDraft] = useState(customAccent)
+  const [uploadingBackground, setUploadingBackground] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  // The settings sidebar and the tab share one aggregate, so the client stays
+  // here and the tab receives its snapshot.
+  const statistics = useStatistics()
   const importRef = useRef<HTMLInputElement>(null)
+  const backgroundInputRef = useRef<HTMLInputElement>(null)
   const firstSignature = useRef(true)
 
   const signature = useMemo(
@@ -377,6 +439,7 @@ export function SettingsView({
         showGlow,
         bgBrightness,
         bgBlur,
+        launcherFont,
       }),
     [
       preferences,
@@ -387,6 +450,7 @@ export function SettingsView({
       showGlow,
       bgBrightness,
       bgBlur,
+      launcherFont,
     ],
   )
 
@@ -408,6 +472,54 @@ export function SettingsView({
     setPreferences((current) => updater(current))
   }
 
+  const updateCustomAccent = (value: string) => {
+    const next = value.startsWith('#') ? value : `#${value}`
+    setAccentDraft(next)
+    if (/^#[0-9a-f]{6}$/i.test(next)) setCustomAccent(next.toLowerCase())
+  }
+
+  const readBackgroundFile = (file: File): Promise<string | null> =>
+    new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(file)
+    })
+
+  const handleBackgroundFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file || !file.type.startsWith('image/')) return
+
+    setUploadingBackground(true)
+    try {
+      const dataUrl = await readBackgroundFile(file)
+      if (!dataUrl) {
+        addToast({ type: 'error', message: t(L, 'Bild konnte nicht geladen werden.', 'Could not load the image.') })
+        return
+      }
+      setCustomBg(await prepareInstanceCover(dataUrl))
+      setShowBgImage(true)
+    } finally {
+      setUploadingBackground(false)
+    }
+  }
+
+  const applyFullscreen = (value: boolean) => {
+    updatePreferences((current) => ({
+      ...current,
+      instanceDefaults: {
+        ...current.instanceDefaults,
+        window: { ...current.instanceDefaults.window, fullscreen: value },
+      },
+    }))
+    setInstances((current) =>
+      current.map((instance) =>
+        instance.fullscreen === value ? instance : { ...instance, fullscreen: value },
+      ),
+    )
+  }
+
   const filteredTabs = useMemo(() => {
     const query = navQuery.trim().toLocaleLowerCase()
     if (!query) return TABS
@@ -418,7 +530,9 @@ export function SettingsView({
     )
   }, [navQuery])
 
-  const totalPlaytime = totalPlaytimeMs
+  const totalPlaytime = statistics.summary
+    ? formatPlaytime(statistics.summary.playTimeMs, L)
+    : '—'
   const keybindConflictCount = keybindConflicts(preferences.keybinds).size
 
   const scanJava = async (force = false) => {
@@ -467,54 +581,30 @@ export function SettingsView({
     }
   }
 
-  const copy = TAB_COPY[tab]
-  const activeGamePanel = GAME_PANELS.find((panel) => panel.id === gamePanel) ?? GAME_PANELS[0]
+  const copy =
+    tab === 'accounts' && accountSession.account
+      ? {
+          title: TAB_COPY.accounts.title,
+          desc: {
+            de: `Angemeldet als ${accountSession.account.username}. Dieses Konto wird für Online-Spiel und Realms verwendet.`,
+            en: `Signed in as ${accountSession.account.username}. This account is used for online play and Realms.`,
+          },
+        }
+      : TAB_COPY[tab]
+  const tabIndex = TABS.findIndex((entry) => entry.id === tab) + 1
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-hairline bg-root/35 px-5 pb-4 pt-5 min-[900px]:px-7">
-        <div className="mx-auto flex w-full max-w-[1200px] items-start gap-3.5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-accent/25 bg-accent/10 text-accent shadow-[var(--inset-rim)]">
-            <Settings2 className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="m-0 text-micro font-medium uppercase tracking-label text-accent">
-              Bamboo Launcher
-            </p>
-            <h1 className="m-0 mt-0.5 text-title2 font-semibold tracking-tight text-ink">
-              {t(L, 'Einstellungen', 'Settings')}
-            </h1>
-            <p className="m-0 mt-0.5 text-small text-ink-secondary">
-              {t(
-                L,
-                'Alles, was deinen Launcher und deine Instanzen ausmacht – an einem Ort.',
-                'Everything that shapes your launcher and your instances – in one place.',
-              )}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5 pt-1">
-            <span
-              className={cx(
-                'inline-flex items-center gap-1.5 text-micro font-medium transition-opacity',
-                saveState === 'idle' ? 'text-ink-tertiary' : saveState === 'saved' ? 'text-success' : 'text-ink-secondary',
-              )}
-            >
-              {saveState === 'saved' ? <Check className="h-3.5 w-3.5" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
-              {saveState === 'saved'
-                ? t(L, 'Gespeichert', 'Saved')
-                : saveState === 'saving'
-                  ? t(L, 'Wird gespeichert …', 'Saving …')
-                  : t(L, 'Automatisch gespeichert', 'Autosaved')}
-            </span>
-            <Badge>v{LAUNCHER_VERSION}</Badge>
-          </div>
-        </div>
-      </div>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[1240px] flex-col px-5 py-5 min-[900px]:flex-row min-[900px]:gap-10 min-[900px]:px-8 min-[900px]:py-8">
+          <aside className="w-full shrink-0 min-[900px]:w-[232px]">
+            <div className="flex flex-col gap-5 min-[900px]:sticky min-[900px]:top-0">
+              <div className="px-1">
+                <span className="text-small font-medium text-ink">
+                  {t(L, 'Einstellungen', 'Settings')}
+                </span>
+              </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-5 px-5 py-5 min-[900px]:flex-row min-[900px]:gap-7 min-[900px]:px-7">
-          <aside className="w-full shrink-0 min-[900px]:w-[218px]">
-            <div className="min-[900px]:sticky min-[900px]:top-0 flex flex-col gap-3">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-quaternary" />
                 <input
@@ -523,67 +613,106 @@ export function SettingsView({
                   onChange={(event) => setNavQuery(event.target.value)}
                   placeholder={t(L, 'Einstellungen suchen …', 'Search settings …')}
                   aria-label={t(L, 'Einstellungen suchen', 'Search settings')}
-                  className="h-8 w-full rounded-lg border border-stroke bg-root/45 pl-8 pr-2 text-mini text-ink outline-none placeholder:text-ink-quaternary transition-colors focus:border-accent/50"
+                  className="h-9 w-full rounded-md border border-hairline bg-canvas pl-8 pr-2 text-mini text-ink outline-none placeholder:text-ink-quaternary transition-colors hover:border-rim focus:border-accent/50"
                 />
               </div>
 
-              <nav className="flex flex-row gap-2 overflow-x-auto pb-1 min-[900px]:flex-col min-[900px]:gap-0.5 min-[900px]:overflow-visible min-[900px]:pb-0">
-                {filteredTabs.map((item) => {
-                  const Icon = item.icon
-                  const active = item.id === tab
+              <nav className="flex flex-row gap-2 overflow-x-auto pb-1 min-[900px]:flex-col min-[900px]:gap-5 min-[900px]:overflow-visible min-[900px]:pb-0">
+                {SETTINGS_GROUPS.map((group) => {
+                  const items = group.tabs
+                    .map((id) => filteredTabs.find((entry) => entry.id === id))
+                    .filter((entry): entry is TabItem => Boolean(entry))
+                  if (items.length === 0) return null
                   return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => openTab(item.id)}
-                      aria-current={active ? 'page' : undefined}
-                      title={item.description[L]}
-                      className={cx(
-                        'group relative flex h-8 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2 text-small font-medium transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] cursor-pointer',
-                        active
-                          ? 'bg-accent/12 text-accent'
-                          : 'text-ink-secondary hover:bg-hover hover:text-ink',
-                      )}
+                    <div
+                      key={group.id}
+                      className="flex shrink-0 flex-row gap-1 min-[900px]:flex-col min-[900px]:gap-0.5"
                     >
-                      {active && (
-                        <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-accent" />
-                      )}
-                      <Icon className={cx('h-4 w-4 shrink-0', active ? 'text-accent' : 'text-ink-tertiary')} />
-                      <span className="truncate">{item.label[L]}</span>
-                      {item.id === 'game' && keybindConflictCount > 0 && (
-                        <span className="ml-auto hidden h-4 min-w-4 items-center justify-center rounded-full bg-danger/15 px-1 text-[10px] font-semibold text-danger min-[900px]:inline-flex">
-                          {keybindConflictCount}
-                        </span>
-                      )}
-                    </button>
+                      <p className="hidden px-2.5 pb-1.5 text-micro font-medium text-ink-tertiary min-[900px]:block">
+                        {group.label[L]}
+                      </p>
+                      {items.map((item) => {
+                        const Icon = item.icon
+                        const active = item.id === tab
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            data-tour={`settings-tab-${item.id}`}
+                            onClick={() => openTab(item.id)}
+                            aria-current={active ? 'page' : undefined}
+                            title={item.description[L]}
+                            className={cx(
+                              'group relative flex h-9 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-2.5 text-small font-medium transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] cursor-pointer',
+                              active
+                                ? 'bg-hover text-ink'
+                                : 'text-ink-secondary hover:bg-hover hover:text-ink',
+                            )}
+                          >
+                            {active && (
+                              <span className="absolute left-0 top-1/2 h-4 w-px -translate-y-1/2 bg-accent" />
+                            )}
+                            <Icon className={cx('h-[18px] w-[18px] shrink-0', active ? 'text-accent' : 'text-ink-tertiary')} />
+                            <span className="truncate">{item.label[L]}</span>
+                            {item.id === 'keybinds' && keybindConflictCount > 0 && (
+                              <span className="ml-auto font-mono text-micro tabular-nums text-danger">
+                                {keybindConflictCount}
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
                   )
                 })}
                 {filteredTabs.length === 0 && (
-                  <p className="px-2 py-4 text-mini text-ink-tertiary">
+                  <p className="px-2.5 py-4 text-mini text-ink-tertiary">
                     {t(L, 'Kein Bereich gefunden.', 'No section found.')}
                   </p>
                 )}
               </nav>
 
-              <div className="hidden rounded-xl border border-hairline bg-root/30 px-3 py-2.5 min-[900px]:block">
-                <p className="m-0 text-micro font-medium uppercase tracking-label text-ink-tertiary">
+              <div className="hidden border-t border-hairline pt-4 min-[900px]:block">
+                <p className="m-0 text-micro text-ink-tertiary">
                   {t(L, 'Spielzeit', 'Playtime')}
                 </p>
-                <p className="m-0 mt-1 text-small font-medium text-ink">
-                  {formatPlaytime(totalPlaytime, L)}
+                <p className="m-0 mt-1 font-mono text-small font-medium tabular-nums text-ink">
+                  {totalPlaytime}
                 </p>
                 <p className="m-0 mt-0.5 text-micro text-ink-quaternary">
-                  {t(L, 'Über alle Instanzen', 'Across all instances')}
+                  {t(L, 'Aus dem globalen Ledger', 'From the global ledger')}
                 </p>
               </div>
             </div>
           </aside>
 
-          <div className="min-w-0 flex-1">
-            <div className="mb-4">
-              <h2 className="m-0 text-title3 font-semibold tracking-tight text-ink">{copy.title[L]}</h2>
-              <p className="m-0 mt-1 max-w-[70ch] text-small text-ink-secondary">{copy.desc[L]}</p>
-            </div>
+          <div className="min-w-0 flex-1 pb-10">
+            <header className="mb-6 border-b border-hairline pb-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-3">
+                    <span className="font-mono text-micro tabular-nums text-ink-quaternary">
+                      {String(tabIndex).padStart(2, '0')}
+                    </span>
+                    <h1 className="m-0 text-title2 font-medium tracking-[-0.02em] text-ink">{copy.title[L]}</h1>
+                  </div>
+                  <p className="m-0 mt-1 max-w-[70ch] text-small leading-5 text-ink-secondary">{copy.desc[L]}</p>
+                </div>
+                <span
+                  className={cx(
+                    'flex shrink-0 items-center gap-2 text-micro font-medium',
+                    saveState === 'idle' ? 'text-ink-tertiary' : saveState === 'saved' ? 'text-accent' : 'text-ink-secondary',
+                  )}
+                >
+                  <span className={cx('h-1.5 w-1.5 rounded-full', saveState === 'saved' ? 'bg-accent' : 'bg-current')} />
+                  {saveState === 'saved'
+                    ? t(L, 'Gespeichert', 'Saved')
+                    : saveState === 'saving'
+                      ? t(L, 'Wird gespeichert …', 'Saving …')
+                      : t(L, 'Automatisch gesichert', 'Autosaved')}
+                </span>
+              </div>
+            </header>
 
             {tab === 'accounts' && (
               <AccountsPanel lang={L} session={accountSession} />
@@ -592,7 +721,7 @@ export function SettingsView({
             {tab === 'general' && (
               <div className="flex flex-col gap-4">
                 <SettingsCard
-                  title={t(L, 'Start & Verhalten', 'Startup & behavior')}
+                  title={t(L, 'Beim Start', 'On launch')}
                   description={t(
                     L,
                     'Was passiert, wenn Minecraft startet oder beendet wird.',
@@ -633,6 +762,16 @@ export function SettingsView({
                       />
                     }
                   />
+                </SettingsCard>
+
+                <SettingsCard
+                  title={t(L, 'Verhalten', 'Behavior')}
+                  description={t(
+                    L,
+                    'Was Bamboo im Alltag zeigt und vor dem Löschen bestätigt.',
+                    'What Bamboo shows day to day and confirms before deleting.',
+                  )}
+                >
                   <SettingsRow
                     title={t(L, 'Spielzeit anzeigen', 'Show playtime')}
                     description={t(
@@ -672,122 +811,217 @@ export function SettingsView({
             )}
 
             {tab === 'appearance' && (
-              <div className="flex flex-col gap-4">
-                <SectionHeading
-                  icon={<Sparkles className="h-3.5 w-3.5" />}
-                  title={t(L, 'Themes', 'Themes')}
-                  desc={t(
-                    L,
-                    'Jedes Theme bringt eine eigene Akzentfarbe, Hintergrund und Partikel mit.',
-                    'Every theme ships its own accent color, background and particles.',
-                  )}
-                />
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone="accent">{themes.length} Themes</Badge>
-                  <span className="text-mini text-ink-tertiary">
-                    {t(L, 'Themes werden lokal mit dem Launcher ausgeliefert.', 'Themes ship locally with the launcher.')}
-                  </span>
-                  <div className="relative ml-auto">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-quaternary" />
-                    <input
-                      type="search"
-                      value={themeQuery}
-                      onChange={(event) => setThemeQuery(event.target.value)}
-                      placeholder={t(L, 'Themes suchen …', 'Search themes …')}
-                      className="h-8 w-48 rounded-lg border border-stroke bg-root/45 pl-8 pr-2 text-mini text-ink outline-none placeholder:text-ink-quaternary focus:border-accent/50"
+              <div className="flex flex-col gap-6">
+                <FontSettingsCard lang={lang} value={launcherFont} onChange={setLauncherFont} />
+
+                <section>
+                  <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <h3 className="m-0 text-small font-medium text-ink">{t(L, 'Themes', 'Themes')}</h3>
+                      <p className="m-0 mt-0.5 max-w-[62ch] text-mini leading-5 text-ink-secondary">
+                        {t(
+                          L,
+                          'Jedes Theme bringt eine eigene Akzentfarbe, einen Hintergrund und Partikel mit.',
+                          'Every theme ships its own accent color, background and particles.',
+                        )}
+                      </p>
+                    </div>
+                    <Segmented<ThemeMode>
+                      value={mode}
+                      onChange={setMode}
+                      className="self-start"
+                      options={[
+                        { value: 'preset', label: t(L, 'Presets', 'Presets') },
+                        { value: 'custom', label: t(L, 'Eigene Farben', 'Custom') },
+                      ]}
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {themes
-                    .filter((theme) =>
-                      `${theme.name} ${theme.desc} ${theme.accentLabel}`
-                        .toLocaleLowerCase()
-                        .includes(themeQuery.trim().toLocaleLowerCase()),
-                    )
-                    .map((theme) => {
-                      const active = theme.id === themeId
-                      const bg = themeBackground(theme)
-                      return (
-                        <button
-                          key={theme.id}
-                          type="button"
-                          onClick={() => setThemeId(theme.id)}
-                          className={cx(
-                            'group relative overflow-hidden rounded-[var(--r-xl)] border text-left transition-[border-color,transform,box-shadow] duration-[var(--t-quick)] ease-[var(--ease-out)] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
-                            active
-                              ? 'border-accent/60 shadow-[0_0_0_1px_color-mix(in_srgb,var(--accent)_45%,transparent)]'
-                              : 'border-stroke hover:-translate-y-px hover:border-rim',
-                          )}
-                        >
-                          <div className="relative h-[104px] overflow-hidden bg-root">
-                            {bg ? (
-                              <img
-                                src={bg}
-                                alt=""
-                                loading="lazy"
-                                className="h-full w-full object-cover opacity-70 transition-transform duration-500 group-hover:scale-[1.03]"
-                                onError={(event) => {
-                                  (event.target as HTMLImageElement).style.display = 'none'
-                                }}
-                              />
-                            ) : (
-                              <div
-                                className="h-full w-full"
-                                style={{
-                                  background: `radial-gradient(circle at 25% 20%, ${theme.accent}55, transparent 55%), linear-gradient(135deg, ${theme.accent}22, transparent 70%)`,
-                                }}
-                              />
-                            )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/20 to-transparent" />
-                            <span
-                              className="absolute left-3 top-3 h-5 w-5 rounded-full border-2 border-white/30 shadow-lg"
-                              style={{ backgroundColor: theme.accent }}
-                            />
-                            {active && (
-                              <span className="absolute right-3 top-3 inline-flex h-5 items-center gap-1 rounded-full bg-accent px-2 text-[10px] font-semibold text-accent-contrast">
-                                <Check className="h-3 w-3" />
-                                {t(L, 'Aktiv', 'Active')}
-                              </span>
-                            )}
-                          </div>
-                          <div className="px-3 pb-3 pt-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <h3 className="m-0 truncate text-small font-medium text-ink">{theme.name}</h3>
-                              <span className="shrink-0 text-micro text-ink-quaternary">{theme.accentLabel}</span>
-                            </div>
-                            <p className="m-0 mt-0.5 line-clamp-2 min-h-8 text-micro leading-4 text-ink-secondary">
-                              {theme.desc || t(L, 'Bamboo Theme', 'Bamboo theme')}
-                            </p>
-                          </div>
-                        </button>
-                      )
-                    })}
-                </div>
+                {mode === 'preset' ? (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="text-micro text-ink-tertiary">
+                        {themes.length} Themes · {t(L, 'lokal mit dem Launcher ausgeliefert', 'shipped locally with the launcher')}
+                      </span>
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-quaternary" />
+                        <input
+                          type="search"
+                          value={themeQuery}
+                          onChange={(event) => setThemeQuery(event.target.value)}
+                          placeholder={t(L, 'Themes suchen …', 'Search themes …')}
+                          className="h-8 w-52 rounded-md border border-hairline bg-canvas pl-8 pr-2 text-mini text-ink outline-none placeholder:text-ink-quaternary transition-colors hover:border-rim focus:border-accent/50"
+                        />
+                      </div>
+                    </div>
 
-                {themes.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-stroke px-4 py-10 text-center">
-                    <Sparkles className="mx-auto h-5 w-5 text-ink-tertiary" />
-                    <p className="m-0 mt-2 text-small font-medium text-ink">
-                      {t(L, 'Noch keine Themes geladen', 'No themes loaded yet')}
-                    </p>
-                    <p className="m-0 mt-1 text-mini text-ink-secondary">
-                      {t(L, 'Sobald die Content-Sammlung synchronisiert ist, erscheinen sie hier.', 'They appear here once the content collection has synced.')}
-                    </p>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {themes
+                          .filter((theme) =>
+                            `${theme.name} ${theme.desc} ${theme.accentLabel}`
+                              .toLocaleLowerCase()
+                              .includes(themeQuery.trim().toLocaleLowerCase()),
+                          )
+                          .map((theme) => {
+                            const active = theme.id === themeId
+                            const bg = themeBackground(theme)
+                            return (
+                              <button
+                                key={theme.id}
+                                type="button"
+                                onClick={() => setThemeId(theme.id)}
+                                className={cx(
+                                  'group overflow-hidden rounded-[10px] border bg-canvas text-left transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+                                  active ? 'border-accent/50' : 'border-hairline hover:border-rim',
+                                )}
+                              >
+                                <div className="relative h-[124px] overflow-hidden bg-root">
+                                  {bg ? (
+                                    <img
+                                      src={bg}
+                                      alt=""
+                                      loading="lazy"
+                                      className="h-full w-full object-cover"
+                                      onError={(event) => {
+                                        (event.target as HTMLImageElement).style.display = 'none'
+                                      }}
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center">
+                                      <span
+                                        className="h-8 w-8 rounded-full"
+                                        style={{ backgroundColor: theme.accent }}
+                                      />
+                                    </div>
+                                  )}
+                                  <span
+                                    className="absolute inset-x-0 top-0 h-[3px]"
+                                    style={{ backgroundColor: theme.accent }}
+                                  />
+                                  {active && (
+                                    <span className="absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-root/85 ring-1 ring-white/15">
+                                      <Check className="h-3.5 w-3.5 text-accent" />
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="px-3.5 py-2.5">
+                                  <div className="flex items-baseline justify-between gap-2">
+                                    <h3 className="m-0 truncate text-small font-medium text-ink">{theme.name}</h3>
+                                    <span className="shrink-0 font-mono text-micro text-ink-quaternary">{theme.accent}</span>
+                                  </div>
+                                  <p className="m-0 mt-0.5 line-clamp-2 min-h-8 text-micro leading-4 text-ink-secondary">
+                                    {theme.desc?.[L] || t(L, 'Bamboo Theme', 'Bamboo theme')}
+                                  </p>
+                                </div>
+                              </button>
+                            )
+                          })}
+                      </div>
+
+                      {themes.length === 0 && (
+                        <div className="rounded-lg border border-hairline bg-canvas px-5 py-8 text-center">
+                          <p className="m-0 text-small font-medium text-ink">
+                            {t(L, 'Noch keine Themes geladen', 'No themes loaded yet')}
+                          </p>
+                          <p className="m-0 mt-1 text-mini text-ink-secondary">
+                            {t(L, 'Sobald die Content-Sammlung synchronisiert ist, erscheinen sie hier.', 'They appear here once the content collection has synced.')}
+                          </p>
+                        </div>
+                      )}
                   </div>
-                )}
-                <SettingsCard
-                  title={t(L, 'Hintergrund', 'Background')}
+                ) : (
+                  <div className="flex flex-col gap-4">                    <SettingsCard
+                      title={t(L, 'Eigenes Farbschema', 'Custom scheme')}
+                      description={t(L, 'Eigene Akzentfarbe für die gesamte Oberfläche.', 'Your own accent color for the whole interface.')}
+                    >
+                    <SettingsRow
+                      title={t(L, 'Akzentfarbe', 'Accent color')}
+                      description={t(L, 'Wird sofort übernommen und gespeichert.', 'Applied and saved immediately.')}
+                      control={
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={customAccent}
+                            onChange={(event) => {
+                              setCustomAccent(event.target.value)
+                              setAccentDraft(event.target.value)
+                            }}
+                            aria-label={t(L, 'Akzentfarbe wählen', 'Choose accent color')}
+                            className="h-9 w-10 cursor-pointer rounded-md border border-hairline bg-root p-0.5"
+                          />
+                          <TextField
+                            value={accentDraft}
+                            onChange={updateCustomAccent}
+                            mono
+                            className="w-28"
+                            ariaLabel={t(L, 'Akzentfarbe als Hex-Wert', 'Accent color as hex value')}
+                          />
+                        </div>
+                      }
+                    />
+                    <SettingsRow
+                      title={t(L, 'Hintergrundbild', 'Background image')}
+                      description={
+                        customBg
+                          ? t(L, 'Eigenes Bild ist aktiv.', 'Your own image is active.')
+                          : t(L, 'PNG, JPG oder WebP.', 'PNG, JPG or WebP.')
+                      }
+                      control={
+                        <div className="flex items-center gap-2">
+                          {customBg && (
+                            <img
+                              src={customBg}
+                              alt=""
+                              className="h-9 w-16 rounded-md border border-hairline object-cover"
+                            />
+                          )}
+                          <input
+                            ref={backgroundInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleBackgroundFile}
+                            aria-label={t(L, 'Hintergrundbild auswählen', 'Choose background image')}
+                          />
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon={<Upload className="h-3 w-3" />}
+                            onClick={() => backgroundInputRef.current?.click()}
+                            disabled={uploadingBackground}
+                          >
+                            {uploadingBackground
+                              ? t(L, 'Lädt …', 'Loading …')
+                              : customBg
+                                ? t(L, 'Ändern', 'Change')
+                                : t(L, 'Bild wählen', 'Choose image')}
+                          </Button>
+                          {customBg && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={<Trash2 className="h-3 w-3" />}
+                              onClick={() => setCustomBg('')}
+                            >
+                              {t(L, 'Entfernen', 'Remove')}
+                            </Button>
+                          )}
+                        </div>
+                      }
+                    />
+                    </SettingsCard>
+
+                    <SettingsCard
+                      title={t(L, 'Hintergrund', 'Background')}
                   description={t(
                     L,
-                    'Das Theme-Bild liegt hinter allen Ansichten.',
-                    'The theme artwork sits behind every view.',
+                    'Dein Hintergrundbild liegt hinter allen Ansichten.',
+                    'Your background image sits behind every view.',
                   )}
                 >
                   <SettingsRow
-                    title={t(L, 'Theme-Hintergrund anzeigen', 'Show theme background')}
-                    description={t(L, 'Blendet das Hintergrundbild des aktiven Themes ein.', 'Shows the active theme artwork.')}
+                    title={t(L, 'Hintergrundbild anzeigen', 'Show background image')}
+                    description={t(L, 'Blendet dein eigenes Hintergrundbild ein.', 'Shows your own background image.')}
                     control={<Toggle checked={showBgImage} onChange={setShowBgImage} label={t(L, 'Hintergrund', 'Background')} />}
                   />
                   <SettingsRow
@@ -848,14 +1082,17 @@ export function SettingsView({
                       setShowBgImage(true)
                       setShowParticles(true)
                       setShowGlow(true)
-                      setBgBrightness(35)
-                      setBgBlur(0)
+                      setBgBrightness(PRESET_BRIGHTNESS)
+                      setBgBlur(PRESET_BLUR)
                       addToast({ type: 'success', message: t(L, 'Darstellung zurückgesetzt.', 'Appearance reset.') })
                     }}
                   >
                     {t(L, 'Darstellung zurücksetzen', 'Reset appearance')}
                   </Button>
                 </div>
+                  </div>
+                )}
+                </section>
               </div>
             )}
 
@@ -863,56 +1100,41 @@ export function SettingsView({
               <div className="flex flex-col gap-4">
                 <SettingsCard
                   title={t(L, 'Launcher-Sprache', 'Launcher language')}
-                  description={t(L, 'Gilt sofort für die gesamte Oberfläche.', 'Applies to the whole interface immediately.')}
+                  description={t(L, 'Gilt sofort für alle Ansichten.', 'Applies to every view immediately.')}
                 >
-                  <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
-                    {[
-                      { id: 'de' as const, title: 'Deutsch', desc: t(L, 'Deutsche Oberfläche', 'German interface'), flag: 'DE' },
-                      { id: 'en' as const, title: 'English', desc: t(L, 'Englische Oberfläche', 'English interface'), flag: 'EN' },
-                    ].map((option) => {
-                      const active = lang === option.id
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setLang(option.id)}
-                          className={cx(
-                            'flex items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors duration-[var(--t-quick)] cursor-pointer',
-                            active
-                              ? 'border-accent/45 bg-accent/8'
-                              : 'border-stroke bg-root/30 hover:border-rim hover:bg-hover',
-                          )}
-                        >
-                          <span
-                            className={cx(
-                              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-micro font-semibold',
-                              active ? 'border-accent/30 bg-accent/15 text-accent' : 'border-stroke bg-raised text-ink-secondary',
-                            )}
-                          >
-                            {option.flag}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-small font-medium text-ink">{option.title}</span>
-                            <span className="block text-micro text-ink-secondary">{option.desc}</span>
-                          </span>
-                          {active && <Check className="h-4 w-4 shrink-0 text-accent" />}
-                        </button>
-                      )
-                    })}
-                  </div>
+                  {[
+                    { id: 'de' as const, title: 'Deutsch', tag: 'DE' },
+                    { id: 'en' as const, title: 'English', tag: 'EN' },
+                  ].map((option) => {
+                    const active = lang === option.id
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setLang(option.id)}
+                        className="flex w-full items-center gap-4 border-t border-hairline px-5 py-3.5 text-left transition-colors duration-[var(--t-quick)] hover:bg-hover first:border-t-0 cursor-pointer"
+                      >
+                        <span className="w-6 shrink-0 font-mono text-micro tabular-nums text-ink-tertiary">
+                          {option.tag}
+                        </span>
+                        <span className="min-w-0 flex-1 text-small font-medium text-ink">{option.title}</span>
+                        {active && <Check className="h-4 w-4 shrink-0 text-accent" />}
+                      </button>
+                    )
+                  })}
                 </SettingsCard>
 
                 <SettingsCard
                   title={t(L, 'Minecraft-Sprache', 'Minecraft language')}
                   description={t(
                     L,
-                    'Wird beim Start in die options.txt der Instanz übernommen – auch bei bestehenden Instanzen.',
-                    'Applied to the instance options.txt on every launch, including existing instances.',
+                    'Wird beim ersten Start einer Instanz in die options.txt geschrieben.',
+                    'Written to options.txt on an instance’s first launch.',
                   )}
                 >
                   <SettingsRow
                     title={t(L, 'Spielsprache', 'In-game language')}
-                    description={t(L, 'Die Sprache von Menüs, Untertiteln und Meldungen im Spiel.', 'The language of in-game menus, subtitles and messages.')}
                     control={
                       <SelectField
                         value={preferences.instanceDefaults.minecraftLanguage}
@@ -935,50 +1157,22 @@ export function SettingsView({
               </div>
             )}
 
-            {tab === 'game' && (
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap gap-1 rounded-xl border border-stroke bg-surface/50 p-1">
-                  {GAME_PANELS.map((panel) => {
-                    const Icon = panel.icon
-                    const active = panel.id === gamePanel
-                    return (
-                      <button
-                        key={panel.id}
-                        type="button"
-                        onClick={() => openGame(panel.id)}
-                        aria-pressed={active}
-                        className={cx(
-                          'flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-mini font-medium transition-colors duration-[var(--t-quick)] cursor-pointer',
-                          active ? 'bg-accent/12 text-accent' : 'text-ink-secondary hover:bg-hover hover:text-ink',
-                        )}
-                      >
-                        <Icon className={cx('h-3.5 w-3.5', active ? 'text-accent' : 'text-ink-tertiary')} />
-                        {panel.label[L]}
-                      </button>
-                    )
-                  })}
-                </div>
-                <p className="m-0 px-1 text-mini text-ink-secondary">{activeGamePanel.description[L]}</p>
-              </div>
-            )}
-
-            {tab === 'game' && gamePanel === 'java' && (
-              <div className="mt-4 flex flex-col gap-4">
+            {tab === 'java' && (
+              <div className="flex flex-col gap-4">
                 <SettingsCard
                   title={t(L, 'Arbeitsspeicher', 'Memory')}
-                  description={t(L, 'Standard-RAM für neue Instanzen.', 'Default RAM for new instances.')}
-                  action={<Badge tone="accent">{gb(preferences.instanceDefaults.ramMb)}</Badge>}
+                  description={t(L, 'Gilt als Standard für neue Instanzen.', 'The default for new instances.')}
                 >
                   <SettingsRow
                     title={t(L, 'Maximaler RAM (-Xmx)', 'Maximum RAM (-Xmx)')}
                     description={
                       preferences.instanceDefaults.ramMb > 12288
-                        ? t(L, 'Über 12 GB können bei modded Minecraft GC-Lags verursachen.', 'Above 12 GB can cause GC stalls in modded Minecraft.')
-                        : t(L, 'Empfohlen: 4–8 GB für Modpacks, 2–4 GB für Vanilla.', 'Recommended: 4–8 GB for modpacks, 2–4 GB for vanilla.')
+                        ? t(L, 'Über 12 GB kann GC-Lags verursachen.', 'Above 12 GB can cause GC stalls.')
+                        : t(L, '4–8 GB empfohlen.', '4–8 GB recommended.')
                     }
                     badge={
                       preferences.instanceDefaults.ramMb < 2048 ? (
-                        <Badge tone="warning">{t(L, 'Sehr wenig', 'Very low')}</Badge>
+                        <span className="text-micro text-warning">{t(L, 'Sehr wenig', 'Very low')}</span>
                       ) : undefined
                     }
                     control={
@@ -1007,7 +1201,7 @@ export function SettingsView({
                   />
                   <SettingsRow
                     title={t(L, 'Minimaler RAM (-Xms)', 'Minimum RAM (-Xms)')}
-                    description={t(L, 'Startgröße der Java-Heap. Meist reicht 1 GB.', 'Initial Java heap size. Usually 1 GB is enough.')}
+                    description={t(L, 'Meist reicht 1 GB.', 'Usually 1 GB is enough.')}
                     control={
                       <div className="w-[300px] max-w-[46vw]">
                         <Slider
@@ -1030,7 +1224,6 @@ export function SettingsView({
 
                 <SettingsCard
                   title={t(L, 'Java', 'Java')}
-                  description={t(L, 'Wird für neue Instanzen verwendet, sofern sie auf „Automatisch“ stehen.', 'Used for new instances that are set to “Automatic”.')}
                   action={
                     <Button
                       variant="secondary"
@@ -1045,7 +1238,6 @@ export function SettingsView({
                 >
                   <SettingsRow
                     title={t(L, 'Java-Installation', 'Java installation')}
-                    description={t(L, 'Der Launcher erkennt fehlende Versionen und schlägt die passende Java-Version vor.', 'The launcher detects missing versions and suggests the right Java runtime.')}
                     control={
                       <SelectField
                         value={preferences.instanceDefaults.javaPath}
@@ -1073,21 +1265,22 @@ export function SettingsView({
                   />
                   <SettingsRow
                     title={t(L, 'JVM-Argumente', 'JVM arguments')}
-                    description={t(L, 'Optional. Werden an jeden Start angehängt, z. B. -XX:+UseG1GC.', 'Optional. Appended to every launch, e.g. -XX:+UseG1GC.')}
+                    description={t(L, 'Optional, z. B. -XX:+UseG1GC.', 'Optional, e.g. -XX:+UseG1GC.')}
                     control={
-                      <TextField
-                        value={preferences.instanceDefaults.jvmArgs}
-                        onChange={(value) =>
-                          updatePreferences((current) => ({
-                            ...current,
-                            instanceDefaults: { ...current.instanceDefaults, jvmArgs: value },
-                          }))
-                        }
-                        placeholder="-XX:+UseG1GC -XX:+ParallelRefProcEnabled"
-                        mono
-                        className="w-[300px] max-w-[46vw]"
-                        ariaLabel={t(L, 'JVM-Argumente', 'JVM arguments')}
-                      />
+                      <div className="w-[420px] max-w-[46vw]">
+                        <TextField
+                          value={preferences.instanceDefaults.jvmArgs}
+                          onChange={(value) =>
+                            updatePreferences((current) => ({
+                              ...current,
+                              instanceDefaults: { ...current.instanceDefaults, jvmArgs: value },
+                            }))
+                          }
+                          placeholder="-XX:+UseG1GC -XX:+ParallelRefProcEnabled"
+                          mono
+                          ariaLabel={t(L, 'JVM-Argumente', 'JVM arguments')}
+                        />
+                      </div>
                     }
                   />
                 </SettingsCard>
@@ -1108,39 +1301,17 @@ export function SettingsView({
               </div>
             )}
 
-            {tab === 'game' && gamePanel === 'game' && (
-              <div className="mt-4 flex flex-col gap-4">
-                <SettingsCard
-                  title={t(L, 'Spielsprache', 'In-game language')}
-                  description={t(
-                    L,
-                    'Gilt für Menüs, Untertitel und Meldungen im Spiel.',
-                    'Applies to in-game menus, subtitles and messages.',
-                  )}
-                >
+            {tab === 'gameOptions' && (
+              <div className="flex flex-col gap-4">
+                <SettingsCard title={t(L, 'Fenster', 'Window')}>
                   <SettingsRow
-                    icon={<Languages className="h-3.5 w-3.5" />}
-                    title={t(L, 'Minecraft-Sprache', 'Minecraft language')}
-                    description={t(
-                      L,
-                      'Wird beim Start in die options.txt der Instanz übernommen – auch bei bestehenden Instanzen.',
-                      'Applied to the instance options.txt on every launch, including existing instances.',
-                    )}
+                    title={t(L, 'Im Vollbild starten', 'Start in fullscreen')}
+                    description={t(L, 'Gilt beim ersten Start einer Instanz.', 'Applies to an instance’s first launch.')}
                     control={
-                      <SelectField
-                        value={preferences.instanceDefaults.minecraftLanguage}
-                        onChange={(value) =>
-                          updatePreferences((current) => ({
-                            ...current,
-                            instanceDefaults: { ...current.instanceDefaults, minecraftLanguage: value },
-                          }))
-                        }
-                        options={MINECRAFT_LANGUAGES.map((entry) => ({
-                          value: entry.code,
-                          label: entry.name,
-                        }))}
-                        className="w-52"
-                        ariaLabel={t(L, 'Minecraft-Sprache', 'Minecraft language')}
+                      <Toggle
+                        checked={preferences.instanceDefaults.window.fullscreen}
+                        onChange={applyFullscreen}
+                        label={t(L, 'Vollbild', 'Fullscreen')}
                       />
                     }
                   />
@@ -1157,15 +1328,15 @@ export function SettingsView({
                   onReplace={(values) => updatePreferences((current) => ({ ...current, gameOptions: values }))}
                   note={t(
                     L,
-                    'Diese Werte gelten als Standard. Angepasste Werte werden beim Start in die options.txt übernommen – Werte auf Standard lassen dem Spiel freie Hand.',
-                    'These are the defaults. Customised values are applied to options.txt on every launch; values left at their default stay under your control in-game.',
+                    'Wird beim ersten Start einer Instanz übernommen. Spätere Änderungen im Spiel bleiben erhalten.',
+                    'Applied on an instance’s first launch. Later in-game changes are kept.',
                   )}
                 />
               </div>
             )}
 
-            {tab === 'game' && gamePanel === 'controls' && (
-              <div className="mt-4">
+            {tab === 'keybinds' && (
+              <div>
               <KeybindsPanel
                 key={preferences.keybindLayout}
                 lang={L}
@@ -1199,8 +1370,8 @@ export function SettingsView({
                   'Bound keys are green. If several actions share a key it turns red – Minecraft allows it, but it can be surprising in-game.',
                 )}
                 footer={
-                  <div className="flex items-start gap-2 rounded-[var(--r-lg)] border border-stroke bg-root/30 px-3 py-2.5 text-mini leading-5 text-ink-secondary">
-                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-ink-tertiary" />
+                  <div className="flex items-start gap-2.5 px-1 text-mini leading-5 text-ink-tertiary">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0" />
                     <span>
                       {t(
                         L,
@@ -1214,232 +1385,32 @@ export function SettingsView({
               </div>
             )}
 
-            {tab === 'game' && gamePanel === 'defaults' && (
-              <div className="mt-4 flex flex-col gap-4">
-                <SettingsCard
-                  title={t(L, 'Neue Instanzen', 'New instances')}
-                  description={t(L, 'Wird beim Erstellen einer Instanz übernommen.', 'Applied when an instance is created.')}
-                >
-                  <SettingsRow
-                    icon={<MemoryStick className="h-3.5 w-3.5" />}
-                    title={t(L, 'Arbeitsspeicher', 'Memory')}
-                    description={gb(preferences.instanceDefaults.ramMb)}
-                    control={
-                      <Button variant="secondary" size="sm" onClick={() => openGame('java')}>
-                        {t(L, 'Ändern', 'Change')}
-                      </Button>
-                    }
-                  />
-                  <SettingsRow
-                    icon={<Coffee className="h-3.5 w-3.5" />}
-                    title={t(L, 'Java', 'Java')}
-                    description={
-                      preferences.instanceDefaults.javaPath
-                        ? preferences.instanceDefaults.javaPath.split(/[\\/]/).pop() || preferences.instanceDefaults.javaPath
-                        : t(L, 'Automatisch (empfohlen)', 'Automatic (recommended)')
-                    }
-                    control={
-                      <Button variant="secondary" size="sm" onClick={() => openGame('java')}>
-                        {t(L, 'Ändern', 'Change')}
-                      </Button>
-                    }
-                  />
-                  <SettingsRow
-                    icon={<Languages className="h-3.5 w-3.5" />}
-                    title={t(L, 'Minecraft-Sprache', 'Minecraft language')}
-                    description={
-                      MINECRAFT_LANGUAGES.find((entry) => entry.code === preferences.instanceDefaults.minecraftLanguage)?.name ||
-                      preferences.instanceDefaults.minecraftLanguage
-                    }
-                    control={
-                      <Button variant="secondary" size="sm" onClick={() => openGame('game')}>
-                        {t(L, 'Ändern', 'Change')}
-                      </Button>
-                    }
-                  />
-                  <SettingsRow
-                    title={t(L, 'Im Vollbild starten', 'Start in fullscreen')}
-                    description={t(L, 'Neue Instanzen starten direkt im Vollbildmodus.', 'New instances start in fullscreen mode.')}
-                    control={
-                      <Toggle
-                        checked={preferences.instanceDefaults.window.fullscreen}
-                        onChange={(value) =>
-                          updatePreferences((current) => ({
-                            ...current,
-                            instanceDefaults: {
-                              ...current.instanceDefaults,
-                              window: { ...current.instanceDefaults.window, fullscreen: value },
-                            },
-                          }))
-                        }
-                        label={t(L, 'Vollbild', 'Fullscreen')}
-                      />
-                    }
-                  />
-                  <SettingsRow
-                    title={t(L, 'Fensterauflösung', 'Window resolution')}
-                    description={t(
-                      L,
-                      'Standard nutzt die Auflösung des Desktops.',
-                      'Default uses the desktop resolution.',
-                    )}
-                    control={
-                      <div className="flex flex-col items-end gap-2">
-                        <Segmented
-                          value={preferences.instanceDefaults.window.mode}
-                          onChange={(mode) =>
-                            updatePreferences((current) => ({
-                              ...current,
-                              instanceDefaults: {
-                                ...current.instanceDefaults,
-                                window: { ...current.instanceDefaults.window, mode },
-                              },
-                            }))
-                          }
-                          size="sm"
-                          options={[
-                            { value: 'default', label: t(L, 'Desktop', 'Desktop') },
-                            { value: 'custom', label: t(L, 'Benutzerdefiniert', 'Custom') },
-                          ]}
-                        />
-                        {preferences.instanceDefaults.window.mode === 'custom' && (
-                          <div className="flex items-center gap-1.5">
-                            <TextField
-                              value={String(preferences.instanceDefaults.window.width)}
-                              onChange={(value) => {
-                                const parsed = Number.parseInt(value, 10)
-                                if (!Number.isFinite(parsed)) return
-                                updatePreferences((current) => ({
-                                  ...current,
-                                  instanceDefaults: {
-                                    ...current.instanceDefaults,
-                                    window: {
-                                      ...current.instanceDefaults.window,
-                                      width: Math.max(320, Math.min(7680, parsed)),
-                                    },
-                                  },
-                                }))
-                              }}
-                              inputClassName="w-16 text-center"
-                              ariaLabel={t(L, 'Breite', 'Width')}
-                            />
-                            <span className="text-micro text-ink-quaternary">×</span>
-                            <TextField
-                              value={String(preferences.instanceDefaults.window.height)}
-                              onChange={(value) => {
-                                const parsed = Number.parseInt(value, 10)
-                                if (!Number.isFinite(parsed)) return
-                                updatePreferences((current) => ({
-                                  ...current,
-                                  instanceDefaults: {
-                                    ...current.instanceDefaults,
-                                    window: {
-                                      ...current.instanceDefaults.window,
-                                      height: Math.max(240, Math.min(4320, parsed)),
-                                    },
-                                  },
-                                }))
-                              }}
-                              inputClassName="w-16 text-center"
-                              ariaLabel={t(L, 'Höhe', 'Height')}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    }
-                  />
-                </SettingsCard>
-
-                <SettingsCard title={t(L, 'Was Instanzen erben', 'What instances inherit')}>
-                  <SettingsRow
-                    icon={<Keyboard className="h-3.5 w-3.5" />}
-                    title={t(L, 'Tastenbelegung', 'Keybinds')}
-                    description={t(
-                      L,
-                      `${ALL_KEYBIND_ACTIONS.length} Aktionen · ${keybindConflictCount} Konflikte`,
-                      `${ALL_KEYBIND_ACTIONS.length} actions · ${keybindConflictCount} conflicts`,
-                    )}
-                    control={
-                      <Button variant="secondary" size="sm" onClick={() => openGame('controls')}>
-                        {t(L, 'Bearbeiten', 'Edit')}
-                      </Button>
-                    }
-                  />
-                  <SettingsRow
-                    icon={<Gamepad2 className="h-3.5 w-3.5" />}
-                    title={t(L, 'Spieloptionen', 'Game options')}
-                    description={t(
-                      L,
-                      `${GAME_OPTIONS.filter((option) => preferences.gameOptions[option.key] !== option.defaultValue).length} von ${GAME_OPTIONS.length} angepasst`,
-                      `${GAME_OPTIONS.filter((option) => preferences.gameOptions[option.key] !== option.defaultValue).length} of ${GAME_OPTIONS.length} customized`,
-                    )}
-                    control={
-                      <Button variant="secondary" size="sm" onClick={() => openGame('game')}>
-                        {t(L, 'Bearbeiten', 'Edit')}
-                      </Button>
-                    }
-                  />
-                  <SettingsRow
-                    icon={<Monitor className="h-3.5 w-3.5" />}
-                    title={t(L, 'Fenster & Vollbild', 'Window & fullscreen')}
-                    description={t(
-                      L,
-                      preferences.instanceDefaults.window.mode === 'custom'
-                        ? `${preferences.instanceDefaults.window.width} × ${preferences.instanceDefaults.window.height}`
-                        : t(L, 'Desktop-Auflösung', 'Desktop resolution'),
-                      preferences.instanceDefaults.window.mode === 'custom'
-                        ? `${preferences.instanceDefaults.window.width} × ${preferences.instanceDefaults.window.height}`
-                        : 'Desktop resolution',
-                    )}
-                    control={
-                      <Badge tone={preferences.instanceDefaults.window.fullscreen ? 'accent' : 'neutral'}>
-                        {preferences.instanceDefaults.window.fullscreen ? t(L, 'Vollbild', 'Fullscreen') : t(L, 'Fenster', 'Window')}
-                      </Badge>
-                    }
-                  />
-                </SettingsCard>
-
-                <div className="flex justify-end">
-                  <ConfirmButton
-                    onConfirm={() => {
-                      updatePreferences((current) => ({
-                        ...current,
-                        instanceDefaults: { ...DEFAULT_PREFERENCES.instanceDefaults },
-                        keybinds: { ...DEFAULT_KEYBINDS },
-                        gameOptions: { ...DEFAULT_GAME_OPTIONS },
-                      }))
-                      addToast({ type: 'success', message: t(L, 'Instanz-Standards zurückgesetzt.', 'Instance defaults reset.') })
-                    }}
-                    confirmLabel={t(L, 'Wirklich zurücksetzen?', 'Really reset?')}
-                    variant="secondary"
-                    icon={<RotateCcw className="h-3 w-3" />}
-                  >
-                    {t(L, 'Alle Instanz-Standards zurücksetzen', 'Reset all instance defaults')}
-                  </ConfirmButton>
-                </div>
-              </div>
-            )}
-
             {tab === 'advanced' && (
               <div className="flex flex-col gap-4">
                 <SettingsCard
-                  title={t(L, 'Sichern & Wiederherstellen', 'Backup & restore')}
-                  description={t(L, 'Die Datei enthält nur Launcher-Einstellungen – keine Konten oder Tokens.', 'The file only contains launcher settings – no accounts or tokens.')}
+                  title={t(L, 'Sicherung', 'Backup')}
+                  description={t(
+                    L,
+                    'Einstellungen als JSON-Datei sichern und wieder einlesen.',
+                    'Save settings as a JSON file and read them back in.',
+                  )}
                 >
                   <SettingsRow
-                    icon={<Download className="h-3.5 w-3.5" />}
                     title={t(L, 'Einstellungen exportieren', 'Export settings')}
-                    description={t(L, 'Als lesbare JSON-Datei speichern.', 'Save as a readable JSON file.')}
+                    description={t(
+                      L,
+                      'Enthält Profilwerte, Tastenbelegung und Spieloptionen.',
+                      'Includes profile values, keybinds and game options.',
+                    )}
                     control={
-                      <Button variant="secondary" size="sm" onClick={exportPreferences} icon={<Download className="h-3 w-3" />}>
+                      <Button variant="secondary" size="sm" onClick={exportPreferences} icon={<Download className="h-3.5 w-3.5" />}>
                         {t(L, 'Exportieren', 'Export')}
                       </Button>
                     }
                   />
                   <SettingsRow
-                    icon={<Upload className="h-3.5 w-3.5" />}
                     title={t(L, 'Einstellungen importieren', 'Import settings')}
-                    description={t(L, 'Eine zuvor exportierte Datei auswählen.', 'Choose a previously exported file.')}
+                    description={t(L, 'Liest eine zuvor exportierte Datei ein.', 'Reads a previously exported file.')}
                     control={
                       <>
                         <input
@@ -1453,7 +1424,7 @@ export function SettingsView({
                             event.target.value = ''
                           }}
                         />
-                        <Button variant="secondary" size="sm" onClick={() => importRef.current?.click()} icon={<Upload className="h-3 w-3" />}>
+                        <Button variant="secondary" size="sm" onClick={() => importRef.current?.click()} icon={<Upload className="h-3.5 w-3.5" />}>
                           {t(L, 'Importieren', 'Import')}
                         </Button>
                       </>
@@ -1461,9 +1432,25 @@ export function SettingsView({
                   />
                 </SettingsCard>
 
+                <div className="flex items-start gap-3 px-1">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-ink-tertiary" />
+                  <p className="m-0 text-mini leading-5 text-ink-secondary">
+                    {t(
+                      L,
+                      'Microsoft-Tokens bleiben im OS-Tresor. Exporte enthalten keine Konten oder Tokens.',
+                      'Microsoft tokens stay in the OS secret store. Exports contain no accounts or tokens.',
+                    )}
+                  </p>
+                </div>
+
                 <SettingsCard
                   title={t(L, 'Zurücksetzen', 'Reset')}
-                  description={t(L, 'Setzt RAM, Java, Keybinds, Spieloptionen und Verhalten auf den Launcher-Standard zurück.', 'Restores RAM, Java, keybinds, game options and behavior to launcher defaults.')}
+                  description={t(
+                    L,
+                    'RAM, Java, Tastenbelegung, Spieloptionen und Verhalten zurücksetzen.',
+                    'Reset RAM, Java, keybinds, game options and behavior.',
+                  )}
+                  className="border-danger/25"
                 >
                   <SettingsRow
                     title={t(L, 'Alle Launcher-Einstellungen zurücksetzen', 'Reset all launcher settings')}
@@ -1475,73 +1462,77 @@ export function SettingsView({
                           addToast({ type: 'success', message: t(L, 'Einstellungen zurückgesetzt.', 'Settings reset.') })
                         }}
                         confirmLabel={t(L, 'Wirklich zurücksetzen?', 'Really reset?')}
-                        icon={<RotateCcw className="h-3 w-3" />}
+                        icon={<RotateCcw className="h-3.5 w-3.5" />}
                       >
                         {t(L, 'Zurücksetzen', 'Reset')}
                       </ConfirmButton>
                     }
                   />
                 </SettingsCard>
-
-                <SettingsCard title={t(L, 'Sicherheit', 'Security')}>
-                  <SettingsRow
-                    icon={<ShieldCheck className="h-3.5 w-3.5" />}
-                    title={t(L, 'Tokens bleiben im Betriebssystem-Tresor', 'Tokens stay in the OS secret store')}
-                    description={t(
-                      L,
-                      'Microsoft-Tokens werden niemals in settings.json oder in Exporten gespeichert.',
-                      'Microsoft tokens are never written to settings.json or exports.',
-                    )}
-                    control={<Badge tone="success">{t(L, 'Aktiv', 'Active')}</Badge>}
-                  />
-                </SettingsCard>
               </div>
+            )}
+
+            {tab === 'statistics' && (
+              <StatisticsSettingsTab
+                lang={lang}
+                statistics={statistics}
+                statisticsEnabled={statisticsEnabled}
+                setStatisticsEnabled={setStatisticsEnabled}
+              />
             )}
 
             {tab === 'about' && (
               <div className="flex flex-col gap-4">
-                <div className="overflow-hidden rounded-[var(--r-xl)] border border-stroke bg-surface/65">
-                  <div className="relative flex items-center gap-4 border-b border-hairline bg-gradient-to-br from-accent/12 via-transparent to-transparent px-5 py-5">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-accent/25 bg-accent/10">
-                      <Layers className="h-7 w-7 text-accent" />
-                    </div>
-                    <div>
-                      <h3 className="m-0 text-title3 font-semibold text-ink">Bamboo Launcher</h3>
+                <section className="overflow-hidden rounded-[var(--r-xl)] border border-hairline bg-canvas">
+                  <div className="flex flex-wrap items-center gap-5 px-5 py-5">
+                    <img
+                      src="./images/bamboo-logo.png"
+                      alt=""
+                      className="h-14 w-14 shrink-0 rounded-lg border border-hairline object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline gap-2.5">
+                        <h3 className="m-0 text-title3 font-medium text-ink">Bamboo Launcher</h3>
+                        <span className="font-mono text-micro tabular-nums text-ink-quaternary">v{LAUNCHER_VERSION}</span>
+                      </div>
                       <p className="m-0 mt-1 text-small text-ink-secondary">
-                        {t(L, 'Ein moderner, schneller Minecraft-Launcher.', 'A modern, fast Minecraft launcher.')}
+                        {t(
+                          L,
+                          'Minecraft-Profile, Mods und Konten an einem Ort.',
+                          'Minecraft profiles, mods and accounts in one place.',
+                        )}
                       </p>
                     </div>
-                    <Badge tone="accent" className="ml-auto">
-                      v{LAUNCHER_VERSION}
-                    </Badge>
                   </div>
-                  <div className="grid grid-cols-1 gap-px bg-hairline sm:grid-cols-3">
+                  <div className="grid grid-cols-1 border-t border-hairline sm:grid-cols-3">
                     {[
                       { label: t(L, 'Plattform', 'Platform'), value: navigator.userAgent.includes('Windows') ? 'Windows' : 'Desktop' },
-                      { label: t(L, 'Electron', 'Electron'), value: '30' },
+                      { label: 'Electron', value: '30' },
                       { label: t(L, 'Oberfläche', 'Interface'), value: 'React 19' },
-                    ].map((entry) => (
-                      <div key={entry.label} className="bg-surface px-4 py-3">
-                        <p className="m-0 text-micro font-medium uppercase tracking-label text-ink-tertiary">{entry.label}</p>
-                        <p className="m-0 mt-1 text-small font-medium text-ink">{entry.value}</p>
+                    ].map((entry, index) => (
+                      <div
+                        key={entry.label}
+                        className={cx('px-5 py-3', index > 0 && 'border-t border-hairline sm:border-l sm:border-t-0')}
+                      >
+                        <p className="m-0 text-micro text-ink-tertiary">{entry.label}</p>
+                        <p className="m-0 mt-0.5 text-small font-medium text-ink">{entry.value}</p>
                       </div>
                     ))}
                   </div>
-                </div>
+                </section>
 
                 <SettingsCard title={t(L, 'Updates', 'Updates')}>
                   <SettingsRow
-                    icon={<RefreshCw className={updateBusy ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />}
                     title={t(L, 'Launcher-Updates', 'Launcher updates')}
                     description={updateSummary}
                     control={
                       updateReady ? (
-                        <Button variant="ghost" size="sm" onClick={() => void onInstallUpdate?.()}>
+                        <Button variant="primary" size="sm" onClick={() => void onInstallUpdate?.()}>
                           {t(L, 'Neu starten', 'Restart now')}
                         </Button>
                       ) : (
                         <Button
-                          variant="ghost"
+                          variant="secondary"
                           size="sm"
                           onClick={() => void onCheckForUpdates?.()}
                           disabled={!onCheckForUpdates || updateBusy}
@@ -1549,6 +1540,27 @@ export function SettingsView({
                           {t(L, 'Prüfen', 'Check')}
                         </Button>
                       )
+                    }
+                  />
+                </SettingsCard>
+
+                <SettingsCard title={t(L, 'Einführung', 'Introduction')}>
+                  <SettingsRow
+                    title={t(L, 'Tour erneut starten', 'Start the tour again')}
+                    description={t(L, 'Führt durch die wichtigsten Bereiche des Launchers.', 'Walks through the launcher’s main areas.')}
+                    control={
+                      <Button variant="ghost" size="sm" onClick={() => onRestartTour?.()} disabled={!onRestartTour}>
+                        {t(L, 'Starten', 'Start')}
+                      </Button>
+                    }
+                  />
+                  <SettingsRow
+                    title={t(L, 'Was ist neu', "What's new")}
+                    description={t(L, 'Änderungen der aktuellen Version.', 'Changes in the current version.')}
+                    control={
+                      <Button variant="ghost" size="sm" onClick={() => onOpenChangelog?.()} disabled={!onOpenChangelog}>
+                        {t(L, 'Ansehen', 'View')}
+                      </Button>
                     }
                   />
                 </SettingsCard>
@@ -1561,7 +1573,7 @@ export function SettingsView({
                       <Button
                         variant="ghost"
                         size="sm"
-                        icon={<ExternalLink className="h-3 w-3" />}
+                        icon={<ExternalLink className="h-3.5 w-3.5" />}
                         onClick={() => window.electronAPI?.system.openExternal?.('https://modrinth.com')}
                       >
                         modrinth.com
@@ -1575,7 +1587,7 @@ export function SettingsView({
                       <Button
                         variant="ghost"
                         size="sm"
-                        icon={<ExternalLink className="h-3 w-3" />}
+                        icon={<ExternalLink className="h-3.5 w-3.5" />}
                         onClick={() => window.electronAPI?.system.openExternal?.('https://www.curseforge.com/minecraft')}
                       >
                         curseforge.com
@@ -1584,15 +1596,9 @@ export function SettingsView({
                   />
                 </SettingsCard>
 
-                <div className="flex items-start gap-2 rounded-[var(--r-lg)] border border-stroke bg-root/30 px-3 py-2.5 text-mini leading-5 text-ink-secondary">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-ink-tertiary" />
-                  <span>
-                    {t(
-                      L,
-                      'Bamboo ist ein Community-Projekt und steht in keiner offiziellen Verbindung zu Mojang, Microsoft, Modrinth oder CurseForge.',
-                      'Bamboo is a community project and is not affiliated with Mojang, Microsoft, Modrinth or CurseForge.',
-                    )}
-                  </span>
+                <div className="flex flex-col items-center gap-1 border-t border-hairline pb-1 pt-4 text-center">
+                  <p className="m-0 text-small font-medium text-ink-secondary">Made by Borisgamer</p>
+                  <p className="m-0 text-micro text-ink-quaternary">© 2026 Bamboo Launcher</p>
                 </div>
               </div>
             )}
@@ -1603,24 +1609,3 @@ export function SettingsView({
   )
 }
 
-function SectionHeading({
-  icon,
-  title,
-  desc,
-}: {
-  icon: React.ReactNode
-  title: string
-  desc?: string
-}) {
-  return (
-    <div className="flex items-start gap-2.5 pt-1">
-      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-stroke bg-root/40 text-ink-tertiary">
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <h3 className="m-0 text-small font-semibold tracking-tight text-ink">{title}</h3>
-        {desc ? <p className="m-0 mt-0.5 text-mini leading-5 text-ink-secondary">{desc}</p> : null}
-      </div>
-    </div>
-  )
-}

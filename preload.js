@@ -15,26 +15,6 @@ try {
   report('warn', 'preload: icon cache unavailable', { error: error.message });
 }
 
-// P12: keep a flushed join payload until a renderer listener exists. This is
-// the cold-start race the old pendingDeepLink logic lost; the main-process
-// queue is already gone by the time this buffer is needed.
-const deepLinkCallbacks = new Set()
-const pendingDeepLinks = []
-ipcRenderer.on('deep-link-invite', (_event, payload) => {
-  if (deepLinkCallbacks.size === 0) {
-    pendingDeepLinks.push(payload)
-    if (pendingDeepLinks.length > 5) pendingDeepLinks.shift()
-    return
-  }
-  for (const callback of deepLinkCallbacks) {
-    try {
-      callback(payload)
-    } catch (error) {
-      report('error', 'preload: deep-link listener failed', { error: error.message });
-    }
-  }
-})
-
 const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args)
 const send = (channel, ...args) => ipcRenderer.send(channel, ...args)
 const subscribe = (channel, callback) => {
@@ -75,6 +55,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     flushBeforeCloseComplete: () => send('app:flush-before-close-done'),
   },
 
+  statistics: {
+    summary: () => invoke('bamboo:statistics:summary'),
+  },
+
   instances: {
     list: () => invoke('bamboo:instances:list'),
     create: (data) => invoke('create-instance', data),
@@ -86,6 +70,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openProfileFolder: (name) => invoke('open-profile-folder', name),
     listWorlds: (folderName) => invoke('list-instance-worlds', folderName),
     repair: (data) => invoke('repair-profile', data),
+    changeVersion: (data) => invoke('change-instance-version', data),
     updateLaunchSettings: (folderName, patch) =>
       invoke('bamboo:instances:update-launch', folderName, patch),
     getProfiles: () => invoke('get-profiles'),
@@ -103,6 +88,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     uploadLocal: (data) => invoke('upload-local-mod', data),
     listContentFiles: (data) => invoke('list-content-files', data),
     hashContentFiles: (data) => invoke('hash-content-files', data),
+    identifyContentFiles: (data) => invoke('identify-content-files', data),
     deleteContentFile: (data) => invoke('delete-content-file', data),
     onUploadProgress: (callback) => subscribe('upload-progress', callback),
     onModpackProgress: (callback) => subscribe('modpack-install-progress', callback),
@@ -135,25 +121,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onStatus: (callback) => subscribe('bamboo:auth:changed', callback),
   },
 
-  join: {
-    buildLink: (payload) => invoke('build-invite-link', payload),
-    prepare: (payload) => invoke('bamboo:join:prepare', payload),
-    confirm: (offerId) => invoke('bamboo:join:confirm', offerId),
-    onInvite: (callback) => {
-      deepLinkCallbacks.add(callback)
-      while (pendingDeepLinks.length > 0) {
-        try {
-          callback(pendingDeepLinks.shift())
-        } catch (error) {
-          report('error', 'preload: buffered deep-link listener failed', { error: error.message });
-        }
-      }
-      return () => deepLinkCallbacks.delete(callback)
-    },
+  skins: {
+    snapshot: () => invoke('bamboo:skins:snapshot'),
+    saveSkin: (payload) => invoke('bamboo:skins:save-skin', payload),
+    setSkinVariant: (variant) => invoke('bamboo:skins:set-skin-variant', variant),
+    resetSkin: () => invoke('bamboo:skins:reset-skin'),
+    applySkin: () => invoke('bamboo:skins:apply-skin'),
+    selectCape: (capeId) => invoke('bamboo:skins:select-cape', capeId),
+    refresh: () => invoke('bamboo:skins:refresh'),
+  },
+
+  cosmetics: {
+    list: (folderName) => invoke('bamboo:cosmetics:list', folderName),
+    preview: (payload) => invoke('bamboo:cosmetics:preview', payload),
+    remove: (payload) => invoke('bamboo:cosmetics:remove', payload),
+    shop: () => invoke('bamboo:cosmetics:shop'),
+    shopPreview: (id) => invoke('bamboo:cosmetics:shop-preview', id),
+    install: (payload) => invoke('bamboo:cosmetics:install', payload),
   },
 
   window: {
     minimize: () => send('window-minimize'),
+    maximize: () => send('window-maximize'),
+    isMaximized: () => invoke('window-is-maximized'),
+    onMaximizedChange: (callback) => subscribe('window-maximized-change', callback),
     focus: () => send('window-focus'),
     close: () => send('window-close'),
   },

@@ -22,11 +22,22 @@ export const AccountSchema = z
   })
   .catchall(z.unknown())
 
+export const OnboardingSchema = z
+  .object({
+    tourDone: z.boolean().catch(false).default(false),
+    lastSeenVersion: z.string().catch('').default(''),
+  })
+  .default({ tourDone: false, lastSeenVersion: '' })
+
+export type OnboardingSettings = z.infer<typeof OnboardingSchema>
+
 export interface Settings {
   currentTheme: string
   lang: string
   telemetryEnabled: boolean
+  statisticsEnabled: boolean
   jvmPreset: JvmPresetSelection
+  onboarding: OnboardingSettings
   [key: string]: unknown
 }
 
@@ -35,7 +46,9 @@ export const SettingsSchema = z
     currentTheme: z.string().catch('dark').default('dark'),
     lang: z.string().catch('de').default('de'),
     telemetryEnabled: z.boolean().catch(false).default(false),
+    statisticsEnabled: z.boolean().catch(true).default(true),
     jvmPreset: z.enum(JVM_PRESET_SELECTIONS).catch('auto').default('auto'),
+    onboarding: OnboardingSchema,
   })
   .catchall(z.unknown())
 

@@ -39,6 +39,8 @@ export interface StartLaunchRequest
   repairMissing?: boolean
   track?: boolean
   loaderVersion?: string
+  instanceId?: string
+  instanceName?: string
   onEvent?: (event: LaunchEvent) => void
   spawnImpl?: SpawnLike
   killImpl?: (pid: number) => Promise<void> | void
@@ -321,6 +323,8 @@ export class LaunchService {
             loader: request.loader ?? 'vanilla',
             loaderVersion: request.loaderVersion ?? '',
             instancePath: plan.gameDirectory,
+            ...(request.instanceId ? { instanceId: request.instanceId } : {}),
+            ...(request.instanceName ? { instanceName: request.instanceName } : {}),
             javaPath: plan.javaPath,
             gameRoot: this.#getGameRoot(),
             account: request.account.name,
@@ -361,6 +365,8 @@ export class LaunchService {
         loader: request.loader ?? 'vanilla',
         loaderVersion: request.loaderVersion ?? '',
         instancePath: request.gameDirectory,
+        ...(request.instanceId ? { instanceId: request.instanceId } : {}),
+        ...(request.instanceName ? { instanceName: request.instanceName } : {}),
         javaPath: request.javaPath ?? '',
         gameRoot: this.#getGameRoot(),
         account: request.account.name,

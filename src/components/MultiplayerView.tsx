@@ -6,7 +6,6 @@ import {
   Plus,
   Search,
   Users,
-  Wifi,
   Globe,
   X,
   PlusCircle,
@@ -14,10 +13,6 @@ import {
   Trash2,
   LogIn,
   Settings as SettingsIcon,
-  Share2,
-  Copy,
-  ExternalLink,
-  ShieldCheck,
   Check
 } from "lucide-react";
 import { TabType } from "./Sidebar";
@@ -26,11 +21,6 @@ import { requestSettingsTarget } from "../lib/settingsNavigation";
 import { Account } from "./TopBar";
 import { Instance } from "./InstancesView";
 import { MOTION, EASE, motionSafe, staggerDelay } from "../lib/motionTokens";
-import { Dialog } from "./Dialog";
-import { dialogButton } from "./dialogSupport";
-import { useToast } from "./Toast";
-import { JoinSheet } from "./join/JoinSheet";
-import type { JoinOffer } from "../electron";
 
 export interface ServerItem {
   id: string;
@@ -55,9 +45,6 @@ interface MultiplayerViewProps {
   setServers: React.Dispatch<React.SetStateAction<ServerItem[]>>;
   onLaunchGame?: (instanceName: string, folderName?: string) => void;
   activeAccount?: Account;
-  joinOffer?: JoinOffer | null;
-  onCloseJoin?: () => void;
-  onJoinLaunched?: (instanceName: string, folderName?: string) => void;
 }
 
 const formatMOTD = (text: string) => {
@@ -123,12 +110,8 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
   setServers,
   onLaunchGame,
   activeAccount,
-  joinOffer,
-  onCloseJoin,
-  onJoinLaunched,
 }) => {
   const t = translations[lang];
-  const { addToast } = useToast();
   const orderedInstances = React.useMemo(
     () => [...instances].sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0)),
     [instances],
@@ -142,20 +125,15 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
   const [joiningServer, setJoiningServer] = useState<ServerItem | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>("");
   const [launchStep, setLaunchStep] = useState<"idle" | "launching" | "connecting">("idle");
-  const [inviteTarget, setInviteTarget] = useState<ServerItem | null>(null);
-  const [inviteProfileId, setInviteProfileId] = useState<string>("");
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [inviteServer, setInviteServer] = useState<string>("");
 
   const [searchedServerStatus, setSearchedServerStatus] = useState<ServerItem | null>(null);
   const [isSearchingIP, setIsSearchingIP] = useState(false);
 
   const serversRef = React.useRef(servers);
+  const autoPingedRef = React.useRef(false);
   React.useEffect(() => {
     serversRef.current = servers;
   }, [servers]);
-  const autoRefreshBusyRef = React.useRef(false);
-  const autoRefreshTickRef = React.useRef(0);
 
   const updateSearch = (value: string) => {
     setSearch(value);
@@ -202,40 +180,15 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
     setServers(prev => prev.map(s => byId.get(s.id) ?? s));
   }, [pingServer, setServers]);
 
-  /**
-   * Silent status refresh that reuses pingServer. Offline servers are skipped
-   * on the regular cadence so a dead address is not pinged every cycle.
-   */
-  const refreshServerStatuses = React.useCallback(async (includeOffline: boolean) => {
-    if (autoRefreshBusyRef.current) return;
-    const current = serversRef.current;
-    const targets = current.filter(s => includeOffline || s.online !== false);
-    if (targets.length === 0) return;
-    autoRefreshBusyRef.current = true;
-    try {
-      const refreshed = await Promise.all(targets.map(s => pingServer(s)));
-      const byId = new Map(refreshed.map(s => [s.id, s]));
-      setServers(prev => prev.map(s => byId.get(s.id) ?? s));
-    } finally {
-      autoRefreshBusyRef.current = false;
-    }
-  }, [pingServer, setServers]);
-
-  useEffect(() => {
+  // Opening the view refreshes every saved server exactly once. The ref guard
+  // also absorbs React's development double-effect; nothing polls afterwards.
+  React.useEffect(() => {
+    if (autoPingedRef.current) return;
+    autoPingedRef.current = true;
     void pingAllServers();
   }, [pingAllServers]);
 
-  useEffect(() => {
-    const AUTO_REFRESH_MS = 30000;
-    const OFFLINE_RETRY_EVERY = 4;
-    const timer = setInterval(() => {
-      autoRefreshTickRef.current += 1;
-      const includeOffline = autoRefreshTickRef.current % OFFLINE_RETRY_EVERY === 0;
-      void refreshServerStatuses(includeOffline);
-    }, AUTO_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [refreshServerStatuses]);
-
+  // Typing an address is an explicit one-off lookup, debounced rather than polled.
   useEffect(() => {
     const isIPPattern = search.includes(".") || search.toLowerCase() === "localhost";
 
@@ -374,108 +327,14 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
     }
   };
 
-  const splitServerAddress = (value: string): { host: string; port: number } => {
-    const trimmed = value.trim();
-    if (trimmed.startsWith("[")) {
-      const end = trimmed.indexOf("]");
-      if (end > 0) {
-        const host = trimmed.slice(1, end);
-        const port = Number(trimmed.slice(end + 1).replace(/^:/, ""));
-        return { host, port: Number.isInteger(port) && port > 0 && port < 65536 ? port : 25565 };
-      }
-    }
-    const colon = trimmed.lastIndexOf(":");
-    if (colon > 0 && trimmed.indexOf(":") === colon) {
-      const port = Number(trimmed.slice(colon + 1));
-      if (Number.isInteger(port) && port > 0 && port < 65536) {
-        return { host: trimmed.slice(0, colon), port };
-      }
-    }
-    return { host: trimmed, port: 25565 };
-  };
-
-  const buildInvite = async (server: ServerItem, profileId: string): Promise<string | null> => {
-    const { host, port } = splitServerAddress(server.ip);
-    try {
-      const link = await window.electronAPI?.join.buildLink?.({
-        v: 1,
-        host,
-        port,
-        profile: profileId,
-        ...(server.name ? { name: [...server.name].slice(0, 64).join("") } : {}),
-      });
-      if (!link) throw new Error(lang === "de" ? "Kein Link erstellt." : "No link created.");
-      setInviteLink(link);
-      return link;
-    } catch (error) {
-      setInviteLink(null);
-      addToast({ type: "error", message: (error as Error).message });
-      return null;
-    }
-  };
-
-  const handleCreateInvite = async (server: ServerItem) => {
-    const preferred = instances.some(inst => inst.id === selectedInstanceId)
-      ? selectedInstanceId
-      : instances[0]?.id ?? "";
-    setInviteTarget(server);
-    setInviteServer(server.name);
-    setInviteProfileId(preferred);
-    setInviteLink(null);
-    if (preferred) await buildInvite(server, preferred);
-  };
-
-  const closeInvite = () => {
-    setInviteTarget(null);
-    setInviteLink(null);
-  };
-
-  const selectInviteProfile = (profileId: string) => {
-    setInviteProfileId(profileId);
-    if (inviteTarget && profileId) void buildInvite(inviteTarget, profileId);
-  };
-
-  const copyInvite = () => {
-    if (!inviteLink) return;
-    window.electronAPI?.system.copy?.(inviteLink);
-    addToast({
-      type: "success",
-      message: lang === "de" ? "Einladungslink kopiert." : "Invite link copied.",
-    });
-  };
-
-  const shareInvite = () => {
-    if (!inviteLink) return;
-    window.electronAPI?.system.copy?.(inviteLink);
-    window.electronAPI?.system.openExternal?.("discord://");
-    addToast({
-      type: "info",
-      message: lang === "de"
-        ? "Link kopiert. Discord wird geöffnet, falls verfügbar."
-        : "Link copied. Discord opens if available.",
-    });
-  };
-
   const filteredServers = servers.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
     s.ip.toLowerCase().includes(search.toLowerCase())
   );
+  const isPingingAny = servers.some(s => s.isPinging);
 
   const isOfflineUser = !activeAccount || activeAccount.type === "Offline" || activeAccount.username === "BambooPlayer";
   const hasMicrosoftAccount = activeAccount?.type === "Microsoft";
-
-  const joinSheet = (
-    <JoinSheet
-      key={joinOffer ? "open" : "closed"}
-      open={!!joinOffer}
-      offer={joinOffer ?? null}
-      lang={lang}
-      offline={isOfflineUser}
-      onClose={() => onCloseJoin?.()}
-      onLaunched={(instance) => onJoinLaunched?.(instance.name, instance.folderName)}
-      onOpenInstances={() => setActiveTab("singleplayer")}
-    />
-  );
 
   if (isOfflineUser && !hasMicrosoftAccount) {
     return (
@@ -516,7 +375,6 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
           </div>
         </motion.div>
       </div>
-      {joinSheet}
       </>
     );
   }
@@ -526,22 +384,17 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-surface border border-hairline rounded-2xl p-6 shadow-2xl">
         <div className="flex items-center gap-4">
-          <div>
-            <h2 className="text-title2 font-semibold text-ink flex items-center gap-2">
-              {t.multiplayerServers}
-            </h2>
-            <p className="text-small text-ink-secondary mt-1">{t.multiplayerDesc}</p>
-          </div>
+          <h2 className="text-title2 font-semibold text-ink">{t.multiplayerServers}</h2>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={pingAllServers}
-            className="p-3 bg-surface/60 hover:bg-hover border border-stroke hover:border-rim text-ink rounded-2xl text-small font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer flex items-center gap-1.5"
-            title="Refresh All Server Statuses"
+            className="h-10 w-10 flex items-center justify-center border border-stroke bg-surface/60 hover:bg-hover hover:border-rim text-ink-secondary hover:text-ink rounded-xl transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer"
+            title={t.refreshList}
+            aria-label={t.refreshList}
           >
-            <RefreshCw className="w-4 h-4 animate-spin-slow" />
-            {t.refreshList}
+            <RefreshCw className={`w-4 h-4 ${isPingingAny ? "animate-spin" : ""}`} />
           </button>
           <button
             onClick={() => setAddModalOpen(true)}
@@ -678,8 +531,12 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
                       <span className="text-danger font-medium">
                         {lang === "de" ? "Server ist offline oder nicht erreichbar." : "Server is offline or unreachable."}
                       </span>
-                    ) : (
+                    ) : server.online === true ? (
                       formatMOTD(server.motd)
+                    ) : (
+                      <span className="text-ink-tertiary italic">
+                        {lang === "de" ? "Status unbekannt – zum Aktualisieren …" : "Status unknown – refresh to check …"}
+                      </span>
                     )}
                   </p>
                 </div>
@@ -691,44 +548,41 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
                     <div className="flex items-center gap-1.5 justify-end text-ink">
                       <Users className="w-4 h-4 text-ink-secondary" />
                       <span className="text-regular font-medium">
-                        {server.isPinging ? "..." : server.online === false ? "—" : server.onlinePlayers.toLocaleString()}
+                        {server.isPinging || server.online !== true ? "—" : server.onlinePlayers.toLocaleString()}
                       </span>
                       <span className="text-small text-ink-tertiary font-medium">
-                        / {server.isPinging ? "..." : server.online === false ? "—" : server.maxPlayers.toLocaleString()}
+                        / {server.isPinging || server.online !== true ? "—" : server.maxPlayers.toLocaleString()}
                       </span>
                     </div>
                     <div className="w-28 h-1 bg-surface rounded-full overflow-hidden mt-1.5">
                       <div
                         className="h-full theme-bg rounded-full theme-glow transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] duration-[var(--t-out)] ease-[var(--ease-out)]"
-                        style={{ width: server.isPinging || server.online === false ? "0%" : `${(server.onlinePlayers / (server.maxPlayers || 100)) * 100}%` }}
+                        style={{ width: server.isPinging || server.online !== true ? "0%" : `${(server.onlinePlayers / (server.maxPlayers || 100)) * 100}%` }}
                       />
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-center justify-center bg-surface/40 border border-hairline px-3 py-1.5 rounded-xl">
-                    <Wifi className={`w-4.5 h-4.5 ${
-                      server.isPinging
-                        ? "text-ink-tertiary"
-                        : server.ping < 35
-                        ? "theme-text"
-                        : server.ping < 80
-                        ? "text-warning"
-                        : "text-danger"
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5">
+                    <span className={`h-1.5 w-1.5 rounded-full ${
+                      server.isPinging || server.online === undefined
+                        ? "bg-ink-quaternary"
+                        : server.online === false
+                        ? "bg-danger"
+                        : "bg-success"
                     }`} />
-                    <span className={`text-micro font-medium mt-0.5 ${server.online === false && !server.isPinging ? "text-danger" : "text-ink"}`}>
-                      {server.isPinging ? "..." : server.online === false ? (lang === "de" ? "offline" : "offline") : `${server.ping}ms`}
+                    <span className={`text-micro font-medium ${server.online === false && !server.isPinging ? "text-danger" : "text-ink-secondary"}`}>
+                      {server.isPinging
+                        ? "…"
+                        : server.online === true
+                          ? (lang === "de" ? "online" : "online")
+                          : server.online === false
+                            ? (lang === "de" ? "offline" : "offline")
+                            : (lang === "de" ? "unbekannt" : "unknown")}
                     </span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => void handleCreateInvite(server)}
-                    className="p-3 bg-surface/40 hover:bg-selected border border-stroke hover:border-rim text-ink-secondary hover:text-ink rounded-xl transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer"
-                    title={lang === "de" ? "Einladungslink erstellen" : "Create invite link"}
-                  >
-                    <Share2 className="w-4 h-4" />
-                  </button>
                   <button
                     onClick={() => {
                       setEditingServer(server);
@@ -1056,68 +910,6 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {joinSheet}
-
-      <Dialog
-        open={!!inviteTarget}
-        onClose={closeInvite}
-        title={lang === "de" ? "Server-Einladung" : "Server invitation"}
-        titleId="server-invite-dialog-title"
-        closeLabel={lang === "de" ? "Schließen" : "Close"}
-        icon={<ShieldCheck className="h-4 w-4" />}
-        tone="info"
-        footer={
-          <button onClick={closeInvite} className={dialogButton.secondary}>
-            {lang === "de" ? "Schließen" : "Close"}
-          </button>
-        }
-      >
-        <p className="m-0 text-small text-ink-secondary">
-          {lang === "de"
-            ? `Teile diesen Link für ${inviteServer}. Der Empfänger sieht Host, Port und Instanz vor dem Beitritt.`
-            : `Share this link for ${inviteServer}. The recipient sees host, port and instance before joining.`}
-        </p>
-        <label className="mt-3 block text-micro font-medium uppercase tracking-label text-ink-secondary" htmlFor="server-invite-profile">
-          {lang === "de" ? "Instanz" : "Instance"}
-        </label>
-        <select
-          id="server-invite-profile"
-          value={inviteProfileId}
-          onChange={(event) => selectInviteProfile(event.target.value)}
-          className="mt-1 w-full rounded-xl border border-stroke bg-root/40 px-3 py-2 text-small text-ink outline-none"
-        >
-          {instances.map(inst => (
-            <option key={inst.id} value={inst.id}>
-              {inst.name} · MC {inst.minecraftVersion}
-            </option>
-          ))}
-        </select>
-        {instances.length === 0 && (
-          <p className="mt-2 mb-0 text-mini text-warning">
-            {lang === "de"
-              ? "Erstelle zuerst eine Instanz: der Link muss eine Instanz benennen, sonst kann der Empfänger nicht direkt beitreten."
-              : "Create an instance first: the link must name one, otherwise the recipient cannot join directly."}
-          </p>
-        )}
-        <input
-          readOnly
-          value={inviteLink ?? ""}
-          onFocus={(event) => event.currentTarget.select()}
-          className="mt-3 w-full rounded-xl border border-stroke bg-root/40 px-3 py-2 font-mono text-mini text-ink outline-none"
-          aria-label={lang === "de" ? "Einladungslink" : "Invite link"}
-        />
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" onClick={copyInvite} disabled={!inviteLink} className={dialogButton.accent}>
-            <Copy className="mr-1 inline h-3 w-3" />
-            {lang === "de" ? "Kopieren" : "Copy"}
-          </button>
-          <button type="button" onClick={shareInvite} disabled={!inviteLink} className={dialogButton.secondary}>
-            <ExternalLink className="mr-1 inline h-3 w-3" />
-            {lang === "de" ? "In Discord teilen" : "Share in Discord"}
-          </button>
-        </div>
-      </Dialog>
 
     </div>
   );

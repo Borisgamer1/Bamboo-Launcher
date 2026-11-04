@@ -1,5 +1,57 @@
 # Bamboo Launcher
 
+**A New Highly Improved Minecraft Mod Launcher with tons of Features.**
+
+Discord: <https://discord.gg/DXzNcTGJD> · Website: <https://bamboolauncher.pages.dev>
+
+> Der Quellcode ist einsehbar und darf frei genutzt und für dich selbst gebaut werden. Er ist
+> aber **kein Open Source**: Verkaufen, Weiterverbreiten, Verändern und Forks sind nicht erlaubt.
+> Die vollständigen Bedingungen stehen in [`LICENSE`](LICENSE).
+
+## Was ist neu – v0.2.2 (Beta)
+
+**Neu**
+
+- Neun Themes: Bamboo Forest, End City, Snowy Lands, Nether Fortress, Obsidian Portal, Warden
+  Valley, Copper Trials, Underwater Paradise und Cherry Blossom — plus Custom-Modus mit eigener
+  Akzentfarbe, eigenem Hintergrundbild und Effekt-Reglern.
+- Statistiken: Spielzeit, abgebaute und gesetzte Blöcke, jede Distanzart einzeln, Mobs, Tode und
+  Sprünge — pro Minecraft-Version gruppiert und einklappbar. Die Spielzeit bleibt erhalten, auch
+  wenn eine Instanz gelöscht wird.
+- Einführung beim ersten Start: Willkommensbildschirm, geführte Tour über den echten Launcher
+  (Seitenleiste, Konto, Instanz anlegen, Mod-Browser, Einstellungen) und ein echter Java-Scan.
+  „Was ist neu“ erscheint einmal pro Version, der Changelog liegt unter Einstellungen → Über.
+- Mod-Details: Beschreibung, Metadaten, Versionswechsel und „Im Browser öffnen“ direkt neben den
+  anderen Aktionen.
+- Versionsliste mit Installationsfortschritt: eine andere Version ersetzt die installierte,
+  statt sie zu verdoppeln.
+
+**Besser**
+
+- Einstellungen neu sortiert: Launcher, In-Game und System als Untertitel, Java & Speicher,
+  Spieloptionen und Key-Binds als eigene Tabs. Vollbild und Mausempfindlichkeit wirken jetzt
+  wirklich beim Start.
+- Instanz-Kopfzeile aufgeräumt: Updates sind der auffälligste Knopf und nennen die betroffenen
+  Mods, Hochladen ist ein Icon, Neu laden ein leiser Knopf.
+- Mods, Inhalte und Instanzen sind nach Namen sortiert.
+- Import ohne Java-Meldung (Java wird beim Start geprüft), und das Import-Fenster lässt sich
+  schließen, während der Import weiterläuft.
+- Eigene Mods aktivieren zeigt vorher eine Warnung, entsperrt danach alles und verschwindet
+  dauerhaft.
+- Der Mod-Browser merkt sich Seite und Position, wenn du eine Instanz öffnest.
+
+**Behoben**
+
+- Die Großansicht eines Screenshots wird oben nicht mehr abgeschnitten.
+- Der Server-Status aktualisiert nur noch auf Knopfdruck, ist schneller und zeigt keinen Ping.
+
+**Entfernt**
+
+- Das Mehrspieler-Sharing samt Einladungen und Join-Links.
+- Der Punkt am Skin im Kontomenü.
+
+## About this repository
+
 Bamboo Launcher is a local-first Minecraft launcher for Windows. An Electron shell hosts a
 React/TypeScript renderer and a TypeScript main process that manages instances, mod loaders
 (Vanilla, Fabric, Forge, NeoForge), Java runtimes, mods and modpacks (Modrinth and CurseForge),
@@ -11,8 +63,15 @@ services the features use: Mojang/Fabric metadata and asset CDNs, Modrinth, Curs
 Microsoft/Xbox sign-in, optional Discord rich presence, and the image hosts used for avatars and
 placeholder art.
 
-Current version: `0.2.1`. Packaging target: Windows x64, NSIS installer. Releases are published
-to GitHub and installed versions update themselves; see `RELEASING.md`.
+This repository holds the launcher itself. The companion cosmetics runtime is a separate project
+and is not part of this repository. The launcher manages the runtime's `.cosmiq` packages: it
+renders them on the player, installs packages from a GitHub catalog into
+`<instance>/bamboo/cosmetics` and deletes them. Equipping happens in game; see
+[`docs/cosmetics-shop.md`](docs/cosmetics-shop.md).
+
+Current version: `0.2.3` (in development; the last published build is `0.2.2`). Packaging target:
+Windows x64, NSIS installer. Release notes live in [`CHANGELOG.md`](CHANGELOG.md). Releases are
+published to GitHub and installed versions update themselves; see [`RELEASING.md`](RELEASING.md).
 
 ## Stack and requirements
 
@@ -67,8 +126,8 @@ src/                    React renderer
 public/images/          bundled theme background images
 tests/                  node:test suites, fixtures only (no live Minecraft)
 scripts/                offline guard, launch dry-run, support-bundle E2E
-resources/              icon, CurseForge key file, instance templates
-mod/                    standalone Fabric cosmetics Gradle project (not part of the app build)
+resources/              icon, instance templates, bundled cosmetic-shop catalog
+mod/                    standalone Fabric cosmetics project (kept out of this repository)
 website/                static legal/marketing pages (not part of the app build)
 ```
 
@@ -185,8 +244,10 @@ can be changed later; `%APPDATA%\.minecraft` is not modified.
 | `BAMBOO_MS_CLIENT_ID` | Overrides the built-in Microsoft OAuth client id |
 
 CurseForge support reads its API key from `resources/curseforge-key.txt` at runtime and returns a
-structured `missing-key` error when the file is absent. The file is tracked in this repository,
-so treat it as a shipped credential and rotate it if it has been shared.
+structured `missing-key` error when the file is absent. That file is **not** part of this
+repository: a checkout you build yourself needs its own key at that path. Release builds write the
+key from the `CURSEFORGE_API_KEY` repository secret before packaging, so the installer still ships
+with one while the sources do not.
 
 ## Tests and what they cover
 
@@ -210,22 +271,20 @@ handling, log analysis, join payloads, support-bundle redaction and UI helpers.
   during the shell smoke test, but nothing beyond that connection was verified.
 - No macOS or Linux packaging target exists.
 
-## Repository and documentation status
+## Repository notes
 
-- The launcher still has no server or database dependency; the former `server/` tree, the News
-  view and the cosmetics/friends UI were removed. Content themes now come only from the local
-  catalog described above.
-- [`SUMMARY.md`](SUMMARY.md) is stale: it documents the deleted PostgreSQL backend, friends
-  service and cosmetics UI. Do not treat it as current.
-- `FEATURE_ARCHITECTURE_SPEC.md` in the repository root is a historical design specification. It
-  still matches much of the architecture but references removed cosmetics work; treat it as
-  history, not as a contract.
-- The `.gitignore` rules now hide only build output, caches, Gradle output, local runtime data and
-  local `.env*` files; launcher source, tests, CI configuration, docs and bundled resources are
-  visible to git again. Nothing has been committed, so a fresh clone stays incomplete until the
-  newly visible sources are added and the pending deletions (`server/`, old one-off scripts) are
-  committed.
+- The launcher has no server and no database; all state lives in the Electron userData directory.
+- [`SUMMARY.md`](SUMMARY.md) is stale: it documents the deleted PostgreSQL backend, the friends
+  service and an older cosmetics UI. Do not treat it as current.
+- `FEATURE_ARCHITECTURE_SPEC.md` is a historical design specification. It still matches much of
+  the architecture but is history, not a contract.
 
 ## License
 
-MIT, as declared in `package.json`.
+Source-available, **not** open source. You may use Bamboo Launcher for free — including in
+monetized videos and streams — and build it for your own use. Selling it, redistributing it,
+publishing modified versions and creating forks are not allowed. The full terms are in
+[`LICENSE`](LICENSE).
+
+Bundled third-party components keep their own licenses. Bamboo Launcher is not affiliated with
+Mojang Studios or Microsoft.

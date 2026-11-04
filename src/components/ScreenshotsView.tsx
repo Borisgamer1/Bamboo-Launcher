@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera,
@@ -308,20 +309,22 @@ export const ScreenshotsView: React.FC<ScreenshotsViewProps> = ({ lang }) => {
         )}
       </div>
 
+      {createPortal(
       <AnimatePresence>
         {lightboxIndex !== null && screenshots[lightboxIndex] && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: motionSafe({ duration: MOTION.instant, ease: EASE.out }) }}
-            className="fixed inset-0 bg-root/97 flex flex-col items-center justify-center p-6 z-50 select-none"
+            className="fixed inset-0 z-[120] flex flex-col select-none pt-[42px]"
+            style={{ backgroundColor: "color-mix(in srgb, var(--bg-base, #0b0d0b) 97%, transparent)" }}
             onClick={() => setLightboxIndex(null)}
           >
             <div
-              className="absolute top-6 left-6 right-6 flex items-center justify-between z-50 pointer-events-auto"
+              className="relative z-50 flex w-full shrink-0 flex-col gap-3 px-6 py-4 pointer-events-auto sm:flex-row sm:items-center sm:justify-between"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="text-left max-w-[60%]">
+              <div className="min-w-0 text-left sm:max-w-[60%]">
                 <h3 className="text-large font-semibold text-ink truncate">
                   {screenshotDate(screenshots[lightboxIndex].date, lang, true)}
                 </h3>
@@ -330,7 +333,7 @@ export const ScreenshotsView: React.FC<ScreenshotsViewProps> = ({ lang }) => {
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <button
                   onClick={(e) => handleCopyPath(screenshots[lightboxIndex], e)}
                   className="bg-surface hover:bg-hover border border-stroke p-2.5 rounded-xl text-ink-secondary hover:text-ink transition-colors cursor-pointer flex items-center gap-1.5 text-small font-medium"
@@ -354,43 +357,47 @@ export const ScreenshotsView: React.FC<ScreenshotsViewProps> = ({ lang }) => {
               </div>
             </div>
 
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigateLightbox("prev");
-              }}
-              className="absolute left-6 w-14 h-14 rounded-2xl bg-surface/60 hover:bg-selected border border-stroke text-ink-secondary hover:text-ink flex items-center justify-center transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer z-50"
-            >
-              <ChevronLeft className="w-8 h-8" />
-            </button>
+            <div className="relative flex min-h-0 w-full flex-1 items-center justify-center px-6 pb-6">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigateLightbox("prev");
+                }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-14 h-14 rounded-2xl bg-surface/60 hover:bg-selected border border-stroke text-ink-secondary hover:text-ink flex items-center justify-center transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer z-50"
+              >
+                <ChevronLeft className="w-8 h-8" />
+              </button>
 
-            <motion.div
-              key={lightboxIndex}
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95, transition: motionSafe({ duration: MOTION.instant, ease: EASE.out }) }}
-              transition={motionSafe({ duration: MOTION.base, ease: EASE.out })}
-              className="max-w-5xl max-h-[70vh] w-full h-full flex items-center justify-center p-4 z-40 pointer-events-none"
-            >
-              <img
-                src={imageDataUrls[screenshots[lightboxIndex].id] || ''}
-                alt={screenshotDate(screenshots[lightboxIndex].date, lang)}
-                className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl border border-stroke pointer-events-auto"
-              />
-            </motion.div>
+              <motion.div
+                key={lightboxIndex}
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95, transition: motionSafe({ duration: MOTION.instant, ease: EASE.out }) }}
+                transition={motionSafe({ duration: MOTION.base, ease: EASE.out })}
+                className="flex h-full w-full max-w-5xl items-center justify-center p-4 z-40 pointer-events-none"
+              >
+                <img
+                  src={imageDataUrls[screenshots[lightboxIndex].id] || ''}
+                  alt={screenshotDate(screenshots[lightboxIndex].date, lang)}
+                  className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl border border-stroke pointer-events-auto"
+                />
+              </motion.div>
 
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigateLightbox("next");
-              }}
-              className="absolute right-6 w-14 h-14 rounded-2xl bg-surface/60 hover:bg-selected border border-stroke text-ink-secondary hover:text-ink flex items-center justify-center transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer z-50"
-            >
-              <ChevronRight className="w-8 h-8" />
-            </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigateLightbox("next");
+                }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-14 h-14 rounded-2xl bg-surface/60 hover:bg-selected border border-stroke text-ink-secondary hover:text-ink flex items-center justify-center transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer z-50"
+              >
+                <ChevronRight className="w-8 h-8" />
+              </button>
+            </div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+      )}
 
       <AnimatePresence>
         {contextMenu && (

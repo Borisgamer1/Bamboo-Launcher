@@ -155,7 +155,7 @@ export const BackgroundTaskBar: React.FC = () => {
 
       {expanded && extra > 0 ? (
         <div className="absolute bottom-full right-0 z-[90] mb-2 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-[var(--r-lg)] border border-rim bg-glass p-1.5 shadow-[var(--shadow-menu)] backdrop-blur-[18px] backdrop-saturate-[1.25]">
-          <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-label text-ink-quaternary">
+          <div className="px-2 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-label text-ink-quaternary">
             {tasks.length} Aufgaben
           </div>
           <div className="max-h-64 overflow-y-auto">

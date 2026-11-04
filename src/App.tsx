@@ -1,4 +1,4 @@
-﻿import React, { Component, ReactNode, Suspense, useCallback, useEffect, useRef } from "react";
+﻿import React, { Component, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-motion";
 import { AlertCircle } from "lucide-react";
 import { RunningInstanceBadge } from "./components/RunningInstanceBadge";
@@ -17,29 +17,37 @@ import { MOTION, EASE } from "./lib/motionTokens";
 import { ToastProvider } from "./components/ToastHost";
 import { useToast } from "./components/Toast";
 import { useAppearance } from "./hooks/useAppearance";
+import { useLauncherFont } from "./hooks/useLauncherFont";
 import { useTheme } from "./hooks/useTheme";
 import { useLauncherSettings } from "./hooks/useLauncherSettings";
 import { useInstances } from "./hooks/useInstances";
 import { useAppNavigation } from "./hooks/useAppNavigation";
 import { useLaunchController } from "./hooks/useLaunchController";
 import { useLogAnalyses } from "./hooks/useLogAnalyses";
-import { useJoinInvites } from "./hooks/useJoinInvites";
 import { useAppOverlays } from "./hooks/useAppOverlays";
 import { useServers } from "./hooks/useServers";
 import { usePersistence } from "./hooks/usePersistence";
 import { useUpdater } from "./hooks/useUpdater";
 import { LAUNCHER_VERSION } from "./lib/version";
+import { OnboardingFlow } from "./components/onboarding/OnboardingFlow";
+import { ChangelogDialog } from "./components/settings/ChangelogDialog";
+import { shouldShowChangelog, shouldShowTour } from "./lib/onboarding";
+import { requestSettingsTarget } from "./lib/settingsNavigation";
+import { PRESET_BLUR, PRESET_BRIGHTNESS } from "./data/themes";
 
 const Dashboard = React.lazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
 const InstancesView = React.lazy(() => import("./components/InstancesView").then(m => ({ default: m.InstancesView })));
 const MultiplayerView = React.lazy(() => import("./components/MultiplayerView").then(m => ({ default: m.MultiplayerView })));
 const ModsView = React.lazy(() => import("./components/ModsView").then(m => ({ default: m.ModsView })));
+const CustomizeView = React.lazy(() => import("./components/customize/CustomizeView").then(m => ({ default: m.CustomizeView })));
 const ScreenshotsView = React.lazy(() => import("./components/ScreenshotsView").then(m => ({ default: m.ScreenshotsView })));
 const SettingsView = React.lazy(() => import("./components/SettingsView").then(m => ({ default: m.SettingsView })));
 
 export type { ThemeDefinition as BambooTheme } from "./services/themeService";
 
 const NO_ACCOUNT: Account = { id: "", username: "", type: "Offline", avatar: "", online: false, active: false };
+
+type OverlayChoice = "onboarding-welcome" | "onboarding-tour" | "changelog" | null;
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -77,6 +85,7 @@ function App() {
   const activeAccount = accountSession.account ?? NO_ACCOUNT;
 
   const appearance = useAppearance();
+  const launcherFont = useLauncherFont();
   const themeState = useTheme();
   const settingsState = useLauncherSettings({ setThemeId: themeState.setThemeId });
   const instancesState = useInstances();
@@ -85,11 +94,6 @@ function App() {
   const serversState = useServers();
   const updater = useUpdater();
   const overlays = useAppOverlays();
-  const joinInvites = useJoinInvites({
-    setActiveTab: navigation.setActiveTab,
-    lang: settingsState.lang,
-    addToast,
-  });
   const launch = useLaunchController({
     instances: instancesState.instances,
     setInstances: instancesState.setInstances,
@@ -177,6 +181,56 @@ function App() {
     bgBlur: appearance.bgBlur,
   });
 
+  // The startup overlay is derived from stored state until the user acts on it:
+  // a first start gets the intro first, an update gets the changelog.
+  const [overlayChoice, setOverlayChoice] = useState<OverlayChoice | undefined>(undefined);
+  const { saveOnboarding } = settingsState;
+  const overlay: OverlayChoice = overlayChoice !== undefined
+    ? overlayChoice
+    : !settingsState.settingsLoaded
+      ? null
+      : (() => {
+          if (shouldShowTour(settingsState.onboarding)) return "onboarding-welcome";
+          const seenInStorage = (() => {
+            try {
+              return localStorage.getItem('bamboo-last-seen-version');
+            } catch {
+              return null;
+            }
+          })();
+          if (seenInStorage === LAUNCHER_VERSION) return null;
+          if (shouldShowChangelog(settingsState.onboarding, LAUNCHER_VERSION)) return "changelog";
+          return null;
+        })();
+
+  // A first start continues into "what's new"; closing a repeated tour does not.
+  const finishOnboarding = useCallback(() => {
+    const seenInStorage = (() => {
+      try {
+        return localStorage.getItem('bamboo-last-seen-version');
+      } catch {
+        return null;
+      }
+    })();
+    const changelogPending = seenInStorage !== LAUNCHER_VERSION && shouldShowChangelog(settingsState.onboarding, LAUNCHER_VERSION);
+    saveOnboarding({ tourDone: true });
+    setOverlayChoice(changelogPending ? "changelog" : null);
+  }, [saveOnboarding, settingsState.onboarding]);
+
+  const closeChangelog = useCallback(() => {
+    setOverlayChoice(null);
+    try {
+      localStorage.setItem('bamboo-last-seen-version', LAUNCHER_VERSION);
+    } catch {
+      /* ignore */
+    }
+    saveOnboarding({ lastSeenVersion: LAUNCHER_VERSION });
+  }, [saveOnboarding]);
+
+  // Presets keep one uniform, readable background look; the sliders belong
+  // to the custom theme only.
+  const presetLook = themeState.mode === 'preset';
+
   return (
     <ErrorBoundary>
     <MotionConfig
@@ -190,13 +244,13 @@ function App() {
         bgImage={themeState.currentTheme.bgImage}
         particleShapes={themeState.currentTheme.particleShapes}
         particleImage={themeState.currentTheme.particleImage}
-        showGlow={appearance.showGlow}
+        showGlow={presetLook ? true : appearance.showGlow}
         glowOverlayColor={appearance.mainColor || "#080415"}
         glowColor={appearance.mainColor || "#080415"}
-        showBgImage={appearance.showBgImage}
-        showParticles={appearance.showParticles}
-        bgBrightness={appearance.bgBrightness}
-        bgBlur={appearance.bgBlur}
+        showBgImage={presetLook ? true : appearance.showBgImage}
+        showParticles={presetLook ? true : appearance.showParticles}
+        bgBrightness={presetLook ? PRESET_BRIGHTNESS : appearance.bgBrightness}
+        bgBlur={presetLook ? PRESET_BLUR : appearance.bgBlur}
         particleSize={themeState.currentTheme.particleSize ?? 8}
         particleFrequency={themeState.currentTheme.particleFrequency ?? 40}
         particleDirection={themeState.currentTheme.particleDirection || "bottom"}
@@ -235,11 +289,23 @@ function App() {
                   updateStatus={updater.status}
                   onCheckForUpdates={updater.check}
                   onInstallUpdate={updater.install}
+                  keybinds={settingsState.preferences.keybinds}
                 />
               )}
               {navigation.activeTab === "singleplayer" && <InstancesView setActiveTab={navigation.setActiveTab} searchQuery={navigation.searchQuery} setActiveInstance={instancesState.setActiveInstance} lang={settingsState.lang} instances={instancesState.instances} setInstances={instancesState.setInstances} openModBrowserForInstance={navigation.openModBrowserForInstance} onLaunch={launch.launchGame} runningInstances={launch.runningInstances} onStopGame={launch.stopGame} launchProgress={launch.launchProgress} selectedInstanceOverride={navigation.selectedInstanceOverride} onClearSelectedInstanceOverride={navigation.clearSelectedInstanceOverride} instancesListToken={navigation.instancesListToken} launching={launch.isLaunching} launchingFolder={launch.launchingFolder} hasAccount={!!activeAccount.id} preferences={settingsState.preferences} setPreferences={settingsState.setPreferences} analyses={logAnalyses.analyses} onReanalyze={logAnalyses.reanalyze} />}
-              {navigation.activeTab === "multiplayer" && <MultiplayerView setActiveTab={navigation.setActiveTab} searchQuery={navigation.searchQuery} lang={settingsState.lang} instances={instancesState.instances} servers={serversState.servers} setServers={serversState.setServers} onLaunchGame={launch.addRunningInstance} activeAccount={activeAccount} joinOffer={joinInvites.offer} onCloseJoin={joinInvites.clear} onJoinLaunched={launch.addRunningInstance} />}
+              {navigation.activeTab === "multiplayer" && <MultiplayerView setActiveTab={navigation.setActiveTab} searchQuery={navigation.searchQuery} lang={settingsState.lang} instances={instancesState.instances} servers={serversState.servers} setServers={serversState.setServers} onLaunchGame={launch.addRunningInstance} activeAccount={activeAccount} />}
               {navigation.activeTab === "mods" && <ModsView key={navigation.modBrowserInstanceId ?? "global"} setActiveTab={navigation.handleSetActiveTab} searchQuery={navigation.searchQuery} instances={instancesState.instances} setInstances={instancesState.setInstances} fromInstanceId={navigation.modBrowserInstanceId} onClearInstance={navigation.clearModBrowser} lang={settingsState.lang} />}
+              {navigation.activeTab === "customize" && (
+                <CustomizeView
+                  lang={settingsState.lang}
+                  locked={launch.isLaunching || launch.runningInstances.length > 0}
+                  instances={instancesState.instances}
+                  onOpenAccounts={() => {
+                    requestSettingsTarget("accounts");
+                    navigation.handleSetActiveTab("settings");
+                  }}
+                />
+              )}
               {navigation.activeTab === "screenshots" && <ScreenshotsView setActiveTab={navigation.setActiveTab} lang={settingsState.lang} />}
               {navigation.activeTab === "settings" && (
                 <SettingsView
@@ -248,6 +314,12 @@ function App() {
                   themeId={themeState.themeId}
                   setThemeId={themeState.setThemeId}
                   themes={themeState.availableThemes}
+                  mode={themeState.mode}
+                  setMode={themeState.setMode}
+                  customAccent={themeState.customAccent}
+                  setCustomAccent={themeState.setCustomAccent}
+                  customBg={themeState.customBg}
+                  setCustomBg={themeState.setCustomBg}
                   preferences={settingsState.preferences}
                   setPreferences={settingsState.setPreferences}
                   showBgImage={appearance.showBgImage}
@@ -260,11 +332,17 @@ function App() {
                   setBgBrightness={appearance.setBgBrightness}
                   bgBlur={appearance.bgBlur}
                   setBgBlur={appearance.setBgBlur}
-                  totalPlaytimeMs={instancesState.totalPlaytime}
+                  launcherFont={launcherFont.launcherFont}
+                  setLauncherFont={launcherFont.setLauncherFont}
+                  statisticsEnabled={settingsState.statisticsEnabled}
+                  setStatisticsEnabled={settingsState.setStatisticsEnabled}
+                  setInstances={instancesState.setInstances}
                   accountSession={accountSession}
                   updateStatus={updater.status}
                   onCheckForUpdates={updater.check}
                   onInstallUpdate={updater.install}
+                  onRestartTour={() => setOverlayChoice("onboarding-tour")}
+                  onOpenChangelog={() => setOverlayChoice("changelog")}
                 />
               )}
             </motion.div>
@@ -275,9 +353,8 @@ function App() {
         <BottomNav activeTab={navigation.activeTab} setActiveTab={navigation.handleSetActiveTab} lang={settingsState.lang} />
 
         <footer className="h-10 w-full bg-root border-t border-hairline px-6 flex items-center justify-between text-ink-secondary text-micro font-medium shrink-0 select-none">
-          <div className="flex shrink-0 items-center gap-4">
-            <span className="font-semibold text-ink">Bamboo Launcher</span>
-            <span className={`text-micro font-medium ${styles.badgeBg} px-2 py-0.2 rounded`}>v{LAUNCHER_VERSION}</span>
+          <div className="flex shrink-0 items-center">
+            <span className="font-mono text-micro tabular-nums text-ink-quaternary">v{LAUNCHER_VERSION}</span>
           </div>
 
           <div className="flex min-w-0 flex-1 justify-center px-4">
@@ -334,17 +411,27 @@ function App() {
         <p>Möchtest du den Launcher wirklich schließen?</p>
       </Dialog>
 
+      {(overlay === "onboarding-welcome" || overlay === "onboarding-tour") && (
+        <OnboardingFlow
+          lang={settingsState.lang}
+          initialStep={overlay === "onboarding-tour" ? "tour" : "welcome"}
+          hasInstances={instancesState.instances.length > 0}
+          onFinish={finishOnboarding}
+        />
+      )}
+
+      <ChangelogDialog
+        open={overlay === "changelog"}
+        version={LAUNCHER_VERSION}
+        lang={settingsState.lang}
+        onClose={closeChangelog}
+      />
+
 </div>
     </ToastProvider>
     </MotionConfig>
     </ErrorBoundary>
   );
 }
-
-const styles = {
-  accentText: "theme-text",
-  badgeBg: "theme-bg-light theme-text theme-border-light",
-  glowShadow: "theme-glow",
-};
 
 export default App;

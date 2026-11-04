@@ -18,12 +18,12 @@ export function SettingsCard({
   className?: string
 }) {
   return (
-    <section className={cx('rounded-[var(--r-xl)] border border-stroke bg-surface/65 overflow-hidden', className)}>
+    <section className={cx('overflow-hidden rounded-[var(--r-xl)] border border-hairline bg-canvas', className)}>
       {(title || action) && (
-        <header className="flex items-start justify-between gap-4 border-b border-hairline px-4 py-3.5">
+        <header className="flex items-start justify-between gap-4 border-b border-hairline px-5 py-3.5">
           <div className="min-w-0">
             {title && <h3 className="m-0 text-small font-medium text-ink">{title}</h3>}
-            {description && <p className="m-0 mt-0.5 text-mini leading-5 text-ink-secondary">{description}</p>}
+            {description && <p className="m-0 mt-0.5 max-w-[68ch] text-mini leading-5 text-ink-secondary">{description}</p>}
           </div>
           {action && <div className="shrink-0">{action}</div>}
         </header>
@@ -55,9 +55,9 @@ export function SettingsRow({
   const content = (
     <>
       {icon && (
-        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-stroke bg-root/40 text-ink-secondary">
+        <span className="mt-0.5 hidden h-5 w-5 shrink-0 items-center justify-center text-ink-tertiary sm:flex">
           {icon}
-        </div>
+        </span>
       )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -68,7 +68,11 @@ export function SettingsRow({
           <p className="m-0 mt-0.5 max-w-[62ch] text-mini leading-5 text-ink-secondary">{description}</p>
         )}
       </div>
-      {control && <div className="flex shrink-0 items-center justify-end gap-2">{control}</div>}
+      {control && (
+        <div className="flex w-full shrink-0 items-center justify-start gap-2 sm:w-auto sm:justify-end">
+          {control}
+        </div>
+      )}
     </>
   )
 
@@ -78,7 +82,7 @@ export function SettingsRow({
         type="button"
         onClick={onClick}
         className={cx(
-          'flex w-full items-start gap-3 border-t border-hairline px-4 text-left transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] first:border-t-0 hover:bg-hover cursor-pointer',
+          'flex w-full flex-wrap items-start gap-x-4 gap-y-3 border-t border-hairline px-5 text-left transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] first:border-t-0 hover:bg-hover cursor-pointer',
           compact ? 'py-2.5' : 'py-3.5',
           className,
         )}
@@ -91,7 +95,7 @@ export function SettingsRow({
   return (
     <div
       className={cx(
-        'flex items-start gap-3 border-t border-hairline px-4 first:border-t-0',
+        'flex flex-wrap items-start gap-x-4 gap-y-3 border-t border-hairline px-5 first:border-t-0',
         compact ? 'py-2.5' : 'py-3.5',
         className,
       )}
@@ -121,15 +125,15 @@ export function Toggle({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cx(
-        'relative h-[22px] w-[38px] shrink-0 rounded-full border transition-colors duration-[var(--t-base)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 cursor-pointer',
-        checked ? 'border-accent/60 bg-accent' : 'border-stroke-strong bg-raised',
+        'relative h-5 w-9 shrink-0 rounded-full border transition-colors duration-[var(--t-base)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 cursor-pointer',
+        checked ? 'border-accent/50 bg-accent' : 'border-stroke-strong bg-raised',
         disabled && 'cursor-not-allowed opacity-40',
       )}
     >
       <span
         className={cx(
-          'absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-[#f4f6f4] shadow-[0_1px_2px_rgb(0_0_0/35%)] transition-[left,background-color] duration-[var(--t-base)] ease-[var(--ease-out)]',
-          checked ? 'left-[18px]' : 'left-[2px]',
+          'absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-[#f4f6f4] shadow-[0_1px_2px_rgb(0_0_0/35%)] transition-[left] duration-[var(--t-base)] ease-[var(--ease-out)]',
+          checked ? 'left-[17px]' : 'left-[2px]',
         )}
       />
     </button>
@@ -152,7 +156,7 @@ export function Segmented<T extends string>({
   return (
     <div
       className={cx(
-        'inline-flex items-center gap-0.5 rounded-lg border border-stroke bg-root/50 p-0.5',
+        'inline-flex items-center gap-0.5 rounded-md border border-hairline bg-root p-0.5',
         className,
       )}
     >
@@ -162,13 +166,14 @@ export function Segmented<T extends string>({
           <button
             key={option.value}
             type="button"
+            aria-pressed={active}
             onClick={() => onChange(option.value)}
             className={cx(
-              'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] cursor-pointer',
+              'inline-flex items-center justify-center gap-1.5 rounded-[4px] font-medium transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] cursor-pointer',
               size === 'sm' ? 'h-6 px-2 text-micro' : 'h-7 px-2.5 text-mini',
               active
-                ? 'bg-accent/15 text-accent'
-                : 'text-ink-secondary hover:bg-hover hover:text-ink',
+                ? 'bg-raised text-ink shadow-[var(--inset-rim)]'
+                : 'text-ink-secondary hover:text-ink',
             )}
           >
             {option.icon}
@@ -219,12 +224,12 @@ export function Slider({
           className="settings-range flex-1"
           style={{ '--range-progress': `${percent}%` } as React.CSSProperties}
         />
-        <span className="w-16 shrink-0 text-right text-mini font-medium tabular-nums text-ink">
+        <span className="w-20 shrink-0 whitespace-nowrap text-right font-mono text-micro font-medium tabular-nums text-ink">
           {formatValue ? formatValue(value) : value}
         </span>
       </div>
       {(minLabel || maxLabel) && (
-        <div className="mt-1 flex justify-between text-micro text-ink-quaternary">
+        <div className="mt-1 flex justify-between font-mono text-micro tabular-nums text-ink-quaternary">
           <span>{minLabel}</span>
           <span>{maxLabel}</span>
         </div>
@@ -260,7 +265,7 @@ export function SelectField<T extends string | number>({
           onChange((match ? match.value : raw) as T)
         }}
         className={cx(
-          'h-8 w-full appearance-none rounded-lg border border-stroke bg-root/50 pl-2.5 pr-8 text-mini font-medium text-ink outline-none transition-colors duration-[var(--t-quick)] hover:border-rim focus:border-accent/60 cursor-pointer',
+          'h-9 w-full appearance-none rounded-md border border-hairline bg-root pl-3 pr-8 text-mini font-medium text-ink outline-none transition-colors duration-[var(--t-quick)] hover:border-rim focus:border-accent/60 cursor-pointer',
           disabled && 'cursor-not-allowed opacity-40',
         )}
       >
@@ -270,7 +275,7 @@ export function SelectField<T extends string | number>({
           </option>
         ))}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-tertiary" />
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-tertiary" />
     </div>
   )
 }
@@ -305,7 +310,7 @@ export function TextField({
         spellCheck={false}
         onChange={(event) => onChange(event.target.value)}
         className={cx(
-          'h-8 w-full rounded-lg border border-stroke bg-root/50 px-2.5 text-mini text-ink outline-none transition-colors duration-[var(--t-quick)] placeholder:text-ink-quaternary hover:border-rim focus:border-accent/60 disabled:cursor-not-allowed disabled:opacity-40',
+          'h-9 w-full rounded-md border border-hairline bg-root px-3 text-mini text-ink outline-none transition-colors duration-[var(--t-quick)] placeholder:text-ink-quaternary hover:border-rim focus:border-accent/60 disabled:cursor-not-allowed disabled:opacity-40',
           mono && 'font-mono',
           inputClassName,
         )}
@@ -335,7 +340,7 @@ export function NumberField({
   return (
     <div
       className={cx(
-        'inline-flex h-8 items-center overflow-hidden rounded-lg border border-stroke bg-root/50',
+        'inline-flex h-9 items-center overflow-hidden rounded-md border border-hairline bg-root',
         className,
       )}
     >
@@ -343,11 +348,11 @@ export function NumberField({
         type="button"
         aria-label="decrease"
         onClick={() => onChange(clamp(value - step))}
-        className="flex h-full w-7 items-center justify-center text-ink-secondary transition-colors hover:bg-hover hover:text-ink cursor-pointer"
+        className="flex h-full w-8 items-center justify-center text-ink-secondary transition-colors hover:bg-hover hover:text-ink cursor-pointer"
       >
-        <Minus className="h-3 w-3" />
+        <Minus className="h-3.5 w-3.5" />
       </button>
-      <div className="flex h-full min-w-14 items-center justify-center border-x border-stroke px-2 text-mini font-medium tabular-nums text-ink">
+      <div className="flex h-full min-w-14 items-center justify-center border-x border-hairline px-2 font-mono text-mini font-medium tabular-nums text-ink">
         {value}
         {suffix && <span className="ml-1 text-micro text-ink-tertiary">{suffix}</span>}
       </div>
@@ -355,9 +360,9 @@ export function NumberField({
         type="button"
         aria-label="increase"
         onClick={() => onChange(clamp(value + step))}
-        className="flex h-full w-7 items-center justify-center text-ink-secondary transition-colors hover:bg-hover hover:text-ink cursor-pointer"
+        className="flex h-full w-8 items-center justify-center text-ink-secondary transition-colors hover:bg-hover hover:text-ink cursor-pointer"
       >
-        <Plus className="h-3 w-3" />
+        <Plus className="h-3.5 w-3.5" />
       </button>
     </div>
   )
@@ -388,12 +393,12 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       className={cx(
-        'inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-[color,background-color,border-color,opacity,transform] duration-[var(--t-quick)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer',
+        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer',
         size === 'sm' ? 'h-7 px-2.5 text-micro' : 'h-8 px-3 text-mini',
         variant === 'primary' && 'bg-accent text-accent-contrast hover:bg-accent-hover active:bg-accent-press',
-        variant === 'secondary' && 'border border-stroke bg-root/40 text-ink hover:border-rim hover:bg-hover',
+        variant === 'secondary' && 'border border-hairline bg-transparent text-ink hover:border-rim hover:bg-hover',
         variant === 'ghost' && 'text-ink-secondary hover:bg-hover hover:text-ink',
-        variant === 'danger' && 'border border-danger/25 bg-danger/10 text-danger hover:bg-danger/20',
+        variant === 'danger' && 'border border-danger/25 text-danger hover:bg-danger/10',
         className,
       )}
     >
@@ -458,13 +463,13 @@ export function Badge({
   return (
     <span
       className={cx(
-        'inline-flex h-5 items-center rounded-md border px-1.5 text-micro font-medium whitespace-nowrap',
-        tone === 'neutral' && 'border-stroke bg-hover text-ink-secondary',
-        tone === 'accent' && 'border-accent/25 bg-accent/10 text-accent',
-        tone === 'success' && 'border-success/25 bg-success/10 text-success',
-        tone === 'warning' && 'border-warning/25 bg-warning/10 text-warning',
-        tone === 'danger' && 'border-danger/25 bg-danger/10 text-danger',
-        tone === 'info' && 'border-info/25 bg-info/10 text-info',
+        'inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-[4px] px-1.5 text-micro font-medium',
+        tone === 'neutral' && 'bg-hover text-ink-secondary',
+        tone === 'accent' && 'bg-accent/10 text-accent',
+        tone === 'success' && 'bg-success/10 text-success',
+        tone === 'warning' && 'bg-warning/10 text-warning',
+        tone === 'danger' && 'bg-danger/10 text-danger',
+        tone === 'info' && 'bg-info/10 text-info',
         className,
       )}
     >
@@ -479,7 +484,7 @@ export function StatTile({
   value,
   hint,
 }: {
-  icon: React.ReactNode
+  icon?: React.ReactNode
   label: string
   value: React.ReactNode
   hint?: string
@@ -500,7 +505,7 @@ export function StatTile({
 
 export function EmptyHint({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-[var(--r-lg)] border border-dashed border-stroke px-4 py-6 text-center text-mini text-ink-tertiary">
+    <div className="px-4 py-6 text-center text-mini leading-5 text-ink-tertiary">
       {children}
     </div>
   )

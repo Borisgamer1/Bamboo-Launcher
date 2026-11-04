@@ -21,6 +21,16 @@
   font-display: swap;
 }
 
+/* Bundled locally (SIL OFL 1.1). See public/fonts/README.md and
+   public/fonts/Monocraft-OFL.txt; no CDN request at runtime. */
+@font-face {
+  font-family: "Monocraft";
+  src: url("./assets/fonts/Monocraft.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme static {
 
   --font-ui: "Inter Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
@@ -28,13 +38,13 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-sans: var(--font-ui);
 
-  --text-micro: 0.6875rem;
-  --text-micro--line-height: 0.875rem;
+  --text-micro: 0.75rem;
+  --text-micro--line-height: 1rem;
   --text-micro--letter-spacing: 0.01em;
-  --text-mini: 0.75rem;
-  --text-mini--line-height: 1rem;
-  --text-small: 0.8125rem;
-  --text-small--line-height: 1rem;
+  --text-mini: 0.8125rem;
+  --text-mini--line-height: 1.125rem;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.25rem;
   --text-regular: 0.9375rem;
   --text-regular--line-height: 1.375rem;
   --text-field: 1rem;
@@ -166,6 +176,26 @@
 
 }
 
+/* Launcher typeface preference. Monocraft ships locally (SIL OFL 1.1); the
+   rest of the stack is only a fallback if that asset cannot load. See
+   public/fonts/README.md. */
+:root {
+  --font-pixel: "Monocraft", "Minecraft", "Minecraftia", "Silkscreen", "VT323", "Pixel Operator", "Consolas", "Courier New", monospace;
+}
+
+html[data-launcher-font="minecraft"] {
+  --font-ui: var(--font-pixel);
+  --font-body: var(--font-pixel);
+  --font-sans: var(--font-pixel);
+}
+
+/* Monocraft is monospaced and wider than Inter; the desktop sidebar label
+   would otherwise be clipped by a few pixels. */
+html[data-launcher-font="minecraft"] .sidebar-label {
+  font-size: 1rem;
+  line-height: 1.25rem;
+}
+
 .settings-range {
   -webkit-appearance: none;
   appearance: none;
@@ -274,6 +304,16 @@ b {
   -webkit-backdrop-filter: blur(12px) saturate(180%);
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
+}
+
+.skin-stage-grid {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 2.5%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 2.5%) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: 50% 100%;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 34%, #000 52%, #000 92%, transparent);
+  mask-image: linear-gradient(to bottom, transparent 34%, #000 52%, #000 92%, transparent);
 }
 
 .status-dot {
@@ -507,8 +547,8 @@ b {
 .tag {
   display: inline-block;
   padding: 2px 8px;
-  font-size: 11px;
-  line-height: 14px;
+  font-size: 12px;
+  line-height: 16px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -674,8 +714,8 @@ html[data-palette-open="true"] [data-blur-tier="toast"] {
   background: var(--bg-raised);
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 13px;
+  line-height: 18px;
 }
 .mod-description pre {
   background: var(--bg-raised);
@@ -711,4 +751,31 @@ html[data-palette-open="true"] [data-blur-tier="toast"] {
   border: 1px solid var(--border);
   padding: 6px 8px;
   text-align: left;
+}
+
+/* The tour highlights the control it wants clicked. The ring breathes slowly
+   instead of blinking, so it reads as "this one" rather than as a warning. */
+@keyframes tour-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.012);
+  }
+}
+
+.tour-ring {
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent),
+    0 0 22px -4px color-mix(in srgb, var(--accent) 60%, transparent);
+  transform-origin: center;
+  animation: tour-ring-pulse 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.tour-progress {
+  transition: width 260ms var(--ease-out);
 }

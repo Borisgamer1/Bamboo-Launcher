@@ -32,7 +32,8 @@ export interface ConflictCheck {
 }
 
 export interface Conflict {
-  type: "existing_instance" | "version_mismatch" | "missing_loader" | "missing_java" | "duplicate_name" | "mod_conflict";
+  // Java is checked at launch, never at import: every player already has it.
+  type: "existing_instance" | "version_mismatch" | "duplicate_name" | "mod_conflict";
   severity: "error" | "warning" | "info";
   message: string;
   resolution?: string;
@@ -57,6 +58,7 @@ export interface ImportResult {
   instanceName?: string
   profile?: IpcProfile
   error?: string
+  warnings?: string[]
   details?: {
     modsInstalled: number;
     resourcepacksInstalled: number;
@@ -101,26 +103,30 @@ class ProfileImportService {
 
   async checkConflicts(
     preview: ImportPreview,
-    existingInstances: Instance[]
+    existingInstances: Instance[],
+    targetName?: string
   ): Promise<ConflictCheck> {
     const conflicts: Conflict[] = [];
+    // The name the user typed in the import dialog is what will be created, so
+    // it is the only name that may count as an existing-instance conflict.
+    const target = (targetName || preview.title).trim() || preview.title;
 
     const nameMatch = existingInstances.find(
-      (i) => i.name.toLowerCase() === preview.title.toLowerCase()
+      (i) => i.name.toLowerCase() === target.toLowerCase()
     );
 
     if (nameMatch) {
       conflicts.push({
         type: "existing_instance",
         severity: "error",
-        message: `Eine Instanz mit dem Namen "${preview.title}" existiert bereits.`,
+        message: `Eine Instanz mit dem Namen "${target}" existiert bereits.`,
         resolution: "Möchtest du sie überschreiben oder eine neue Instanz erstellen?",
         autoResolvable: true,
       });
     }
 
     const duplicateNames = existingInstances.filter(
-      (i) => i.name.toLowerCase() === preview.title.toLowerCase()
+      (i) => i.name.toLowerCase() === target.toLowerCase()
     );
     if (duplicateNames.length > 1) {
       conflicts.push({
@@ -132,39 +138,8 @@ class ProfileImportService {
       });
     }
 
-    if (preview.modloader !== "Vanilla") {
-      const compatibleInstances = existingInstances.filter(
-        (i) => i.modloader === preview.modloader
-      );
-      if (compatibleInstances.length === 0) {
-        conflicts.push({
-          type: "missing_loader",
-          severity: "warning",
-          message: `Der Modloader "${preview.modloader}" wird für diese Instanz benötigt.`,
-          resolution: `Der Launcher wird ${preview.modloader} automatisch installieren.`,
-          autoResolvable: true,
-        });
-      }
-    }
-
-    const majorVersion = parseInt(preview.minecraftVersion.split(".")[0] || "1");
-    if (majorVersion >= 21) {
-      conflicts.push({
-        type: "missing_java",
-        severity: "info",
-        message: `Minecraft ${preview.minecraftVersion} benötigt Java 21 oder neuer.`,
-        resolution: "Der Launcher prüft automatisch auf eine kompatible Java-Version.",
-        autoResolvable: true,
-      });
-    } else if (majorVersion >= 1 && parseInt(preview.minecraftVersion.split(".")[1] || "0") >= 17) {
-      conflicts.push({
-        type: "missing_java",
-        severity: "info",
-        message: `Minecraft ${preview.minecraftVersion} benötigt Java 17 oder neuer.`,
-        resolution: "Der Launcher prüft automatisch auf eine kompatible Java-Version.",
-        autoResolvable: true,
-      });
-    }
+    // No loader/version warnings here: the launcher installs the required
+    // modloader and Minecraft version itself, so they are never a conflict.
 
     if (preview.minecraftVersion && existingInstances.length > 0) {
       const sameVersion = existingInstances.some(
@@ -216,6 +191,9 @@ class ProfileImportService {
         instanceId: result.instanceId,
         instanceName: result.instanceName,
         profile: result.profile as IpcProfile | undefined,
+        ...(Array.isArray(result.warnings) && result.warnings.length > 0
+          ? { warnings: result.warnings }
+          : {}),
         details: {
           modsInstalled: result.modsInstalled || 0,
           resourcepacksInstalled: result.resourcepacksInstalled || 0,

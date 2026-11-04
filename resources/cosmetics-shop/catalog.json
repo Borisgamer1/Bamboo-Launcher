@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "bamboo-sticks",
+      "name": "Bamboo Sticks",
+      "creator": "Bamboo Launcher",
+      "description": "2 X shaped Bamboo Sticks",
+      "rarity": "Legendary",
+      "slots": ["back"],
+      "file": "./bamboo-sticks.cosmiq"
+    },
+    {
+      "id": "bird-cape",
+      "name": "Bird Cape",
+      "creator": "Bamboo Launcher",
+      "description": "Cape with Green Bird",
+      "rarity": "Legendary",
+      "slots": ["back", "cape"],
+      "file": "./bird-cape.cosmiq"
+    },
+    {
+      "id": "furry-ears",
+      "name": "Furry Ears",
+      "creator": "Bamboo Launcher",
+      "description": "Süße Pinke Furry Ohren",
+      "rarity": "Legendary",
+      "slots": ["head"],
+      "file": "./furry-ears.cosmiq"
+    },
+    {
+      "id": "furry-tail",
+      "name": "Furry Tail",
+      "creator": "Bamboo Launcher",
+      "description": "Pink Furry Tail",
+      "rarity": "Legendary",
+      "slots": ["back"],
+      "file": "./furry-tail.cosmiq"
+    },
+    {
+      "id": "maxi-cape",
+      "name": "Maxi Cape",
+      "creator": "Bamboo Launcher",
+      "description": "Maxiiiiiiiiiiiiii",
+      "rarity": "Legendary",
+      "slots": ["back", "cape"],
+      "file": "./maxi-cape.cosmiq"
+    },
+    {
+      "id": "strohhut",
+      "name": "Strohhut",
+      "creator": "Bamboo Launcher",
+      "description": "Ein einfacher Strohut mit rotem Band",
+      "rarity": "Legendary",
+      "slots": ["head"],
+      "file": "./strohhut.cosmiq"
+    }
+  ]
+}

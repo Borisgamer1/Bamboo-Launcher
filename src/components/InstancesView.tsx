@@ -43,15 +43,10 @@ import {
 } from "../lib/contentCategories";
 import {
   decideUpdate,
-  fromCurseForgeFile,
   fromModrinthVersion,
-  isVersionCompatible,
   pickVersion,
-  versionFileFor,
-  type StoreVersion,
   type UpdateDecision,
 } from "../lib/modVersions";
-import { toCurseForgeFailure } from "../lib/curseforge";
 import { mergeKeybinds } from "../lib/keybinds";
 import { parseJvmArgs } from "../lib/gameOptions";
 import { fetchVersionMap, VersionMap } from "../lib/versionApi";
@@ -59,8 +54,6 @@ import { LAUNCHER_VERSION } from "../lib/version";
 import {
   buildModpackContentItems,
   mergeOverrideContentItems,
-  resolveModpackContentMetadata,
-  type ModpackFileMetadata,
   type ModpackIndexFile,
 } from "../lib/modpackContent";
 import {
@@ -72,6 +65,12 @@ import { useToast } from "./Toast";
 import { ProfileExportModal } from "./ProfileExportModal";
 import { ProfileImportModal } from "./ProfileImportModal";
 import { InstanceContextMenu } from "./instances/InstanceContextMenu";
+import { ContentDetailModal } from "./instances/ContentDetailModal";
+import {
+  InstanceVersionSwitchModal,
+  type InstanceVersionSwitchSummary,
+} from "./instances/InstanceVersionSwitchModal";
+import { contentProjectUrl, fetchContentVersions } from "./instances/contentDetailModel";
 import {
   beginBackgroundTask,
   completeBackgroundTask,
@@ -94,36 +93,7 @@ import {
   saveUploadedInstanceCover,
 } from "../lib/instanceCovers";
 import { CrashAnalysisSheet } from "./logs/CrashAnalysisSheet";
-import type { DownloadModPayload, InstanceLaunchSettingsPatch, LaunchProgress, LogAnalysisResult, WorldSummary } from "../electron";
-
-/**
- * The store's version list for one content item, in the shared shape - the same
- * data the browser's selector uses, for both sources. Used by the update check,
- * the update run and the per-item version switcher.
- */
-async function fetchContentVersions(item: {
-  projectId?: string;
-  source?: "modrinth" | "curseforge";
-}): Promise<StoreVersion[]> {
-  try {
-    if (!item.projectId) return [];
-    if (item.source === 'curseforge') {
-      const files = await window.electronAPI?.mods.curseforgeFiles?.(item.projectId, undefined, undefined);
-      if (toCurseForgeFailure(files)) return [];
-      if (!Array.isArray(files)) return [];
-      return files.map(fromCurseForgeFile);
-    }
-    const res = await fetch(`https://api.modrinth.com/v2/project/${item.projectId}/version`, {
-      headers: { 'User-Agent': `BambooLauncher/${LAUNCHER_VERSION}` },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!Array.isArray(data)) return [];
-    return data.map((entry) => fromModrinthVersion(entry));
-  } catch {
-    return [];
-  }
-}
+import type { DownloadModPayload, IdentifiedContentFile, InstanceLaunchSettingsPatch, LaunchProgress, LogAnalysisResult, WorldSummary } from "../electron";
 
 export interface ContentItem {
   id: string;
@@ -222,13 +192,6 @@ interface InstancesViewProps {
   instancesListToken?: number;
   analyses?: Record<string, LogAnalysisResult>;
   onReanalyze?: (key: string, instanceId: string) => Promise<LogAnalysisResult | null>;
-}
-
-function modrinthProjectKind(type: ContentItem['type']): string {
-  if (type === 'datapacks') return 'datapack';
-  if (type === 'resourcepacks') return 'resourcepack';
-  if (type === 'shaderpacks') return 'shader';
-  return 'mod';
 }
 
 function analysisFor(
@@ -697,6 +660,25 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
   };
 
   const [contextMenu, setContextMenu] = useState<{ instance: Instance; x: number; y: number } | null>(null);
+  const [versionSwitchTarget, setVersionSwitchTarget] = useState<Instance | null>(null);
+
+  const handleVersionSwitchApplied = (instanceId: string, summary: InstanceVersionSwitchSummary) => {
+    setInstances(prev => prev.map(item =>
+      item.id === instanceId ? { ...item, ...summary } : item,
+    ));
+  };
+
+  const versionSwitchModal = versionSwitchTarget ? (
+    <InstanceVersionSwitchModal
+      open
+      instance={versionSwitchTarget}
+      versionMap={versionMap}
+      versionsLoading={loadingVersions}
+      lang={lang}
+      onClose={() => setVersionSwitchTarget(null)}
+      onApplied={handleVersionSwitchApplied}
+    />
+  ) : null;
 
   const handleLaunchInstance = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -849,7 +831,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
           {["mods", "resourcepacks", "shader", "worlds", "datapacks"].includes(detailTab) && (
             <DetailViewBoundary key={detailTab} lang={lang}>
               <ContentListView
-                key={inst.id}
+                key={`${inst.id}:${inst.minecraftVersion}:${inst.modloader}:${inst.modloaderVersion || ""}`}
                 inst={inst}
                 instances={instances}
                 detailTab={detailTab}
@@ -881,6 +863,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
               onExport={() => setShowExportModal(true)}
               onOpenFolder={() => window.electronAPI?.instances.openFolder?.(inst.folderName || inst.name.toLowerCase().replace(/\s+/g, "-"))}
               onRepair={() => void handleRepairInstance(inst)}
+              onChangeVersion={() => setVersionSwitchTarget(inst)}
             />
           )}
         </div>
@@ -931,6 +914,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
         </Dialog>
 
         {analysisSheet}
+        {versionSwitchModal}
       </div>
       </DetailViewBoundary>
     );
@@ -951,6 +935,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
             </button>
             <button
               ref={createTriggerRef}
+              data-tour="instance-create"
               onClick={() => setCreateModalOpen(true)}
               className="h-8 px-3 rounded-lg bg-accent text-small font-medium text-accent-contrast hover:bg-accent-hover transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] flex items-center gap-1.5 cursor-pointer"
             >
@@ -1069,6 +1054,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
 
       {analysisSheet}
       {deleteDialog}
+      {versionSwitchModal}
 
       <InstanceContextMenu
         key={contextMenu ? `${contextMenu.instance.id}:${contextMenu.x}:${contextMenu.y}` : "closed"}
@@ -1077,7 +1063,6 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
         y={contextMenu?.y ?? 0}
         instance={contextMenu?.instance ?? null}
         lang={lang}
-        confirmDelete={preferences.behavior.confirmDelete}
         onClose={() => setContextMenu(null)}
         onDelete={(instance) => {
           setContextMenu(null);
@@ -1091,6 +1076,10 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
         onRepair={(instance) => {
           setContextMenu(null);
           void handleRepairInstance(instance);
+        }}
+        onChangeVersion={(instance) => {
+          setContextMenu(null);
+          setVersionSwitchTarget(instance);
         }}
         onClone={(instance) => {
           setContextMenu(null);
@@ -1130,6 +1119,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
             <p className="text-small text-ink-tertiary mt-1 max-w-sm mx-auto">{t.noInstancesDesc}</p>
           </div>
           <button
+            data-tour="instance-create"
             onClick={() => setCreateModalOpen(true)}
  className="theme-bg hover:theme-bg-hover text-accent-contrast px-5 py-2.5 rounded-xl text-small font-medium theme-shadow-lg cursor-pointer"
           >
@@ -1161,7 +1151,12 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
             <button type="button" onClick={() => setCreateModalOpen(false)} className={dialogButton.secondary}>
               {t.cancel}
             </button>
-            <button type="submit" form="create-instance-form" className={dialogButton.accent}>
+            <button
+              type="submit"
+              form="create-instance-form"
+              data-tour="instance-create-confirm"
+              className={dialogButton.accent}
+            >
               {t.create}
             </button>
           </>
@@ -1287,306 +1282,6 @@ class DetailViewBoundary extends React.Component<{ children: React.ReactNode; fa
   }
 }
 
-const ContentDetailModal = ({
-  item,
-  onClose,
-  localInst,
-  setInstances,
-  lang,
-}: {
-  item: ContentItem;
-  onClose: () => void;
-  localInst: Instance;
-  setInstances: React.Dispatch<React.SetStateAction<Instance[]>>;
-  lang: LanguageType;
-}) => {
-  const { addToast } = useToast();
-  const t = translations[lang];
-
-  const handleDelete = async () => {
-    if (item.fileName) {
-      const folderName = instanceFolderKey(localInst);
-      const typeDir = categoryForTab(item.type);
-      try {
-        await window.electronAPI?.mods.deleteContentFile?.({ folderName, fileName: item.fileName, type: typeDir });
-      } catch (e) {
-        console.warn('[ContentDetailModal] Konnte Datei nicht von Platte löschen:', e);
-      }
-    }
-    setInstances(prev => prev.map(i =>
-      i.id === localInst.id
-        ? {
-            ...i,
-            content: (i.content || []).filter(c => c.id !== item.id),
-            installedMods: (i.installedMods || []).filter(s => s !== item.id),
-            modCount: item.type === 'mods' ? Math.max(0, (i.modCount || 0) - 1) : i.modCount,
-          }
-        : i
-    ));
-    onClose();
-  };
-
-  const [showVersionPicker, setShowVersionPicker] = useState(false);
-  const [availableVersions, setAvailableVersions] = useState<{
-    version_number: string
-    date_published: string
-    url: string
-    filename: string
-    isCompatible: boolean
-    curseforgeFileId?: number
-  }[]>([]);
-  const [fetchingVersions, setFetchingVersions] = useState(false);
-  const [installingVersion, setInstallingVersion] = useState(false);
-
-  const handleFetchVersions = async () => {
-    if (!item.projectId || !item.source) return;
-    setFetchingVersions(true);
-    try {
-      // Same selector as the browser and the update run: the listed file is the
-      // one that gets installed, and "compatible" means MC version AND loader.
-      const category = categoryForTab(item.type);
-      const criteria = {
-        category,
-        minecraftVersion: localInst.minecraftVersion,
-        modloader: localInst.modloader,
-      };
-      const versions = (await fetchContentVersions(item))
-        .map((version) => {
-          const file = versionFileFor(version, category);
-          if (!file) return null;
-          const fileId = item.source === 'curseforge' ? Number(version.versionId) : NaN;
-          return {
-            version_number: version.versionNumber,
-            date_published: version.published || '',
-            url: file.url,
-            filename: file.filename,
-            isCompatible: isVersionCompatible(version, criteria),
-            ...(Number.isFinite(fileId) && fileId > 0 ? { curseforgeFileId: fileId } : {}),
-          };
-        })
-        .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-      setAvailableVersions(versions);
-      setShowVersionPicker(true);
-    } catch (e) {
-      console.error('[ContentDetailModal] Fehler beim Abrufen der Versionen:', e);
-    } finally {
-      setFetchingVersions(false);
-    }
-  };
-
-  const handleSwitchVersion = async (ver: {
-    version_number: string
-    url: string
-    filename: string
-    isCompatible: boolean
-    curseforgeFileId?: number
-  }) => {
-    setInstallingVersion(true);
-    try {
-      const folderName = instanceFolderKey(localInst);
-      const category = categoryForTab(item.type);
-      const typeDir = category;
-
-      const payload: DownloadModPayload = {
-        folderName,
-        profileName: localInst.name,
-        versionId: localInst.minecraftVersion,
-        filename: ver.filename,
-        itemType: installItemTypeFor(category),
-      };
-      if (ver.curseforgeFileId) payload.curseforgeFileId = ver.curseforgeFileId;
-      else payload.downloadUrl = ver.url;
-      if (category === 'worlds') payload.title = item.name;
-
-      // Version switch installs first and only then removes the recorded old
-      // file, so a failed download never leaves the item without a file.
-      const result = await window.electronAPI?.mods.download?.(payload);
-
-      if (!result?.success) {
-        addToast({ type: 'error', message: result?.error || t.versionChangeFailed });
-        return;
-      }
-
-      if (item.fileName && item.fileName !== ver.filename) {
-        try {
-          await window.electronAPI?.mods.deleteContentFile?.({ folderName, fileName: item.fileName, type: typeDir });
-        } catch (e) {
-          console.warn('[ContentDetailModal] Alte Datei konnte nicht entfernt werden:', e);
-        }
-      }
-
-      setInstances(prev => prev.map(i =>
-        i.id === localInst.id
-          ? {
-              ...i,
-              content: (i.content || []).map(c =>
-                c.id === item.id
-                  ? { ...c, version: localInst.minecraftVersion, versionNumber: ver.version_number, fileName: ver.filename, updateAvailable: false }
-                  : c
-              )
-            }
-          : i
-      ));
-      setShowVersionPicker(false);
-      onClose();
-      addToast({ type: 'success', message: formatMessage(t.versionChanged, { version: ver.version_number }) });
-    } catch (e) {
-      console.error('[ContentDetailModal] Fehler beim Version-Wechsel:', e);
-      addToast({ type: 'error', message: t.versionChangeFailed });
-    } finally {
-      setInstallingVersion(false);
-    }
-  };
-
-  return (
-    <>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0, transition: motionSafe({ duration: MOTION.instant, ease: EASE.out }) }}
-        className="fixed inset-0 bg-root/80 flex items-center justify-center p-4 z-50"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ scale: 0.95, y: 20 }}
-          animate={{ scale: 1, y: 0 }}
-          exit={{ scale: 0.95, y: 20, transition: motionSafe({ duration: MOTION.instant, ease: EASE.out }) }}
-          className="bg-root border border-stroke/80 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="p-6 border-b border-hairline flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-surface border border-stroke flex items-center justify-center overflow-hidden">
-                {item.iconUrl ? (
-                  <img src={item.iconUrl} alt={item.name} className="w-full h-full object-cover"
-                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                ) : item.type === "mods" ? <Package className="w-6 h-6 text-ink-secondary" /> :
-                   item.type === "resourcepacks" ? <Image className="w-6 h-6 text-ink-secondary" /> :
-                   item.type === "shaderpacks" ? <Shirt className="w-6 h-6 text-ink-secondary" /> :
-                   item.type === "worlds" ? <Globe className="w-6 h-6 text-ink-secondary" /> :
-                   <Layers className="w-6 h-6 text-ink-secondary" />}
-              </div>
-              <div className="text-left">
-                <h3 className="text-large font-semibold text-ink">{item.name}</h3>
-                <p className="text-micro text-ink-secondary font-mono">{item.fileName}</p>
-              </div>
-            </div>
-            <button onClick={onClose} className="bg-surface hover:bg-hover border border-stroke p-2 rounded-xl text-ink-secondary hover:text-ink transition-colors cursor-pointer">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-6 flex flex-col gap-4 text-left">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-surface/20 border border-stroke rounded-2xl p-3">
-                <span className="text-micro text-ink-tertiary uppercase font-medium tracking-label">Version</span>
-                <span className="text-regular font-medium text-ink mt-1 block">{item.version}</span>
-                {item.versionNumber && item.versionNumber !== item.version && (
-                  <span className="text-micro theme-text mt-0.5 block">{item.versionNumber}</span>
-                )}
-              </div>
-              <div className="bg-surface/20 border border-stroke rounded-2xl p-3 flex items-center justify-between">
-                <div>
-                  <span className="text-micro text-ink-tertiary uppercase font-medium tracking-label">Status</span>
-                  <span className={`text-regular font-semibold mt-1 block ${item.enabled ? 'theme-text' : 'text-warning'}`}>
-                    {item.enabled ? t.enabledLabel : t.disabledLabel}
-                  </span>
-                </div>
-                {item.locked && <Lock className="w-4 h-4 text-ink-secondary" />}
-              </div>
-            </div>
-            {item.projectId && item.source && (
-              <button
-                onClick={handleFetchVersions}
-                disabled={fetchingVersions}
-                className="w-full theme-bg-light hover:theme-bg-md theme-text theme-border-light border rounded-xl py-2.5 px-4 text-small font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {fetchingVersions ? (
-                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> {t.loadingVersions}</>
-                ) : (
-                  <><RefreshCw className="w-3.5 h-3.5" /> {t.changeVersion}</>
-                )}
-              </button>
-            )}
-          </div>
-          <div className="p-4 bg-surface/40 border-t border-hairline flex justify-end items-center">
-            <button onClick={handleDelete} disabled={item.locked} className="bg-danger/10 hover:bg-danger/20 text-danger border border-danger/20 px-4 py-2 rounded-xl text-micro font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
-              <Trash2 className="w-3.5 h-3.5 inline mr-1" />
-              {t.delete}
-            </button>
-          </div>
-        </motion.div>
-      </motion.div>
-
-      {showVersionPicker && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0, transition: motionSafe({ duration: MOTION.instant, ease: EASE.out }) }}
-          className="fixed inset-0 bg-root/80 flex items-center justify-center p-4 z-[60]"
-          onClick={() => setShowVersionPicker(false)}
-        >
-          <motion.div
-            initial={{ scale: 0.95, y: 20 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.95, y: 20, transition: motionSafe({ duration: MOTION.instant, ease: EASE.out }) }}
-            className="bg-root border border-stroke/80 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-5 border-b border-hairline flex items-center justify-between">
-              <h3 className="text-large font-semibold text-ink">{formatMessage(t.changeVersionTitle, { name: item.name })}</h3>
-              <button onClick={() => setShowVersionPicker(false)} className="bg-surface hover:bg-hover border border-stroke p-2 rounded-xl text-ink-secondary hover:text-ink transition-colors cursor-pointer">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-4 max-h-80 overflow-y-auto custom-scrollbar flex flex-col gap-2">
-              {availableVersions.length === 0 ? (
-                <p className="text-small text-ink-tertiary text-center py-8">{t.noProjectVersions}</p>
-              ) : (
-                availableVersions.map((ver) => (
-                  <button
-                    key={ver.version_number}
-                    onClick={() => {
-                      if (!ver.isCompatible) {
-                        addToast({ type: 'warning', message: formatMessage(t.incompatibleWarningToast, { mc: localInst.minecraftVersion }) });
-                      }
-                      handleSwitchVersion(ver);
-                    }}
-                    disabled={installingVersion || ver.version_number === item.versionNumber}
-                    className={`flex items-center justify-between bg-surface/30 hover:bg-raised border border-stroke rounded-xl px-4 py-3 transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-left w-full ${
-                      ver.version_number === item.versionNumber ? 'border-theme-text/30' : ''
-                    }`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-regular font-medium text-ink truncate">{ver.version_number}</span>
-                        {!ver.isCompatible && (
-                          <span className="text-micro font-medium text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded shrink-0">{t.notCompatibleShort}</span>
-                        )}
-                      </div>
-                      <span className="text-micro text-ink-tertiary block mt-0.5">{new Date(ver.date_published).toLocaleDateString()}</span>
-                    </div>
-                    <div className="shrink-0 ml-3">
-                      {ver.version_number === item.versionNumber ? (
-                        <span className="text-micro theme-text font-medium">{t.latestLabel}</span>
-                      ) : (
-                        installingVersion ? (
-                          <RefreshCw className="w-4 h-4 animate-spin theme-text" />
-                        ) : (
-                          <Download className="w-4 h-4 text-ink-secondary" />
-                        )
-                      )}
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </>
-  );
-};
-
 const ContentListView = ({
   inst: initialInst,
   instances,
@@ -1614,8 +1309,11 @@ const ContentListView = ({
 
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showOwnModsWarning, setShowOwnModsWarning] = useState(false);
 
-  const contentItems = (localInst.content || []).filter(c => c.type === categoryForTab(detailTab));
+  const contentItems = [...(localInst.content || [])]
+    .filter(c => c.type === categoryForTab(detailTab))
+    .sort((a, b) => a.name.localeCompare(b.name, lang === 'de' ? 'de' : 'en', { sensitivity: 'base', numeric: true }));
 
   // Worlds live on disk (saves/<world>/level.dat), not in the profile content list.
   const worldsFolderKey = instanceFolderKey(localInst);
@@ -1851,32 +1549,31 @@ const ContentListView = ({
   // downloaded files once and resolve them through Modrinth in the background;
   // the list stays interactive while this runs.
   const metadataMissingKey = (localInst.content || [])
-    .filter(item => item.fileName && !item.projectId && !item.iconUrl && item.type !== 'worlds')
+    .filter(item => item.fileName && !item.projectId && item.type !== 'worlds')
     .map(item => item.fileName)
     .sort()
     .join('|');
 
   useEffect(() => {
-    if (!localInst.isModpack) return;
     const missing = (contentRef.current || []).filter(
-      item => item.fileName && !item.projectId && !item.iconUrl && item.type !== 'worlds',
+      item => item.fileName && !item.projectId && item.type !== 'worlds',
     );
     if (missing.length === 0) return;
     const attemptKey = `${localInst.id}:${missing.length}:${missing.map(item => item.fileName).sort().join('|')}`;
     let cancelled = false;
 
-    const applyMetadata = (instance: Instance, byFileName: Map<string, ModpackFileMetadata>): Instance => {
+    const applyMetadata = (instance: Instance, byFileName: Map<string, IdentifiedContentFile>): Instance => {
       const content = (instance.content || []).map((item) => {
         const meta = byFileName.get(item.fileName);
         if (!meta) return item;
         return {
           ...item,
-          id: meta.slug || item.id,
-          name: meta.title || item.name,
+          id: meta.projectId || item.id,
+          name: meta.name || item.name,
           iconUrl: meta.iconUrl || item.iconUrl,
           versionNumber: meta.versionNumber || item.versionNumber,
-          projectId: meta.slug || item.projectId,
-          source: 'modrinth' as const,
+          projectId: meta.projectId || item.projectId,
+          source: meta.source,
         };
       });
       return {
@@ -1894,26 +1591,17 @@ const ContentListView = ({
       metadataAttemptRef.current = attemptKey;
       void (async () => {
         try {
-          const hashes = await window.electronAPI?.mods.hashContentFiles?.({
+          const metadata = await window.electronAPI?.mods.identifyContentFiles?.({
             folderName: worldsFolderKey,
             files: missing.map(item => ({ fileName: item.fileName, type: item.type })),
           });
-          if (cancelled || !hashes) {
-            if (!hashes) metadataAttemptRef.current = null;
+          if (cancelled || !metadata) {
+            if (!metadata) metadataAttemptRef.current = null;
             return;
           }
-          const files: ModpackIndexFile[] = [];
-          for (const item of missing) {
-            const hash = hashes[item.fileName];
-            if (hash) files.push({ path: `${item.type}/${item.fileName}`, hashes: { sha1: hash } });
-          }
-          if (files.length === 0) return;
-          const metadata = await resolveModpackContentMetadata(files);
-          if (cancelled || Object.keys(metadata).length === 0) return;
-          const byFileName = new Map<string, ModpackFileMetadata>();
-          for (const file of files) {
-            const fileName = file.path?.split('/').pop();
-            if (fileName && metadata[file.path || '']) byFileName.set(fileName, metadata[file.path || '']);
+          const byFileName = new Map<string, IdentifiedContentFile>();
+          for (const [fileName, meta] of Object.entries(metadata)) {
+            if (meta && meta.projectId) byFileName.set(fileName, meta);
           }
           if (byFileName.size === 0) return;
           setInstances(prev => prev.map(instance =>
@@ -1930,7 +1618,7 @@ const ContentListView = ({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [localInst.id, localInst.isModpack, metadataMissingKey, setInstances, worldsFolderKey]);
+  }, [localInst.id, metadataMissingKey, setInstances, worldsFolderKey]);
 
   const handleToggleEnabled = (itemId: string) => {
     updateContent(items => items.map(c => c.id === itemId ? { ...c, enabled: !c.enabled } : c));
@@ -1941,12 +1629,19 @@ const ContentListView = ({
   };
 
   const enableOwnContentManagement = () => {
-    withUpdatedInstance(instance => ({ ...instance, ownContentManagement: true }));
+    // Enabling custom content unlocks everything that was pinned by the pack,
+    // so the read-only banner and the lock badges disappear for good.
+    withUpdatedInstance(instance => ({
+      ...instance,
+      ownContentManagement: true,
+      content: (instance.content || []).map(item => ({ ...item, locked: false })),
+    }));
+    setShowOwnModsWarning(false);
     addToast({
       type: "success",
       message: lang === "de"
-        ? "Eigene Mods sind aktiviert. Mods und Datapacks lassen sich jetzt selbst verwalten."
-        : "Custom mods are enabled. You can now manage mods and data packs yourself.",
+        ? "Eigene Mods sind aktiviert. Alle Inhalte sind jetzt entsperrt."
+        : "Custom mods are enabled. All content is unlocked now.",
     });
   };
 
@@ -2030,9 +1725,13 @@ const ContentListView = ({
             ...i,
             content: [...(i.content || []), {
               id: fileName,
-              name: fileName.replace(/\.(jar|zip|disabled)$/i, ''),
+              name: uploadResult.modName || fileName.replace(/\.(jar|zip|disabled)$/i, ''),
               fileName: fileName,
-              version: t.localVersion,
+              version: uploadResult.modVersion || t.localVersion,
+              ...(uploadResult.modVersion && uploadResult.modVersion !== 'unknown'
+                ? { versionNumber: uploadResult.modVersion }
+                : {}),
+              ...(uploadResult.iconBase64 ? { iconUrl: uploadResult.iconBase64 } : {}),
               type: contentType as ContentItem['type'],
               enabled: true,
               locked: false,
@@ -2172,7 +1871,8 @@ const ContentListView = ({
     }
   };
 
-  const hasUpdates = contentItems.some(c => c.updateAvailable);
+  const updatedNames = contentItems.filter(c => c.updateAvailable).map(c => c.name);
+  const hasUpdates = updatedNames.length > 0;
 
   const [modpackUpdateAvailable, setModpackUpdateAvailable] = useState(false);
   const [modpackCheckingUpdates, setModpackCheckingUpdates] = useState(
@@ -2197,7 +1897,7 @@ const ContentListView = ({
     void (async () => {
     try {
       const res = await fetch(`https://api.modrinth.com/v2/project/${localInst.modpackProjectId}/version`, {
-        headers: { 'User-Agent': 'BambooLauncher/0.2.0' }
+        headers: { 'User-Agent': `BambooLauncher/${LAUNCHER_VERSION}` }
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -2456,7 +2156,7 @@ const ContentListView = ({
         for (const projectId of ownModIds) {
           try {
             const modRes = await fetch(`https://api.modrinth.com/v2/project/${projectId}/version`, {
-              headers: { 'User-Agent': 'BambooLauncher/0.2.0' }
+              headers: { 'User-Agent': `BambooLauncher/${LAUNCHER_VERSION}` }
             });
             if (!modRes.ok) continue;
             const modVersions: ModrinthVersion[] = await modRes.json();
@@ -2610,77 +2310,91 @@ const ContentListView = ({
         <h3 className="text-regular font-medium text-ink">
           {tabLabels[detailTab] || detailTab} ({detailTab === "worlds" ? (worlds?.length ?? 0) : contentItems.length})
         </h3>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            onClick={() => { void checkContentUpdates({ report: true }); }}
-            disabled={checkingUpdates}
-            className={`px-3 py-1.5 rounded-xl text-micro font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer flex items-center gap-1.5 disabled:opacity-50 ${
-              checkingUpdates
-                ? "theme-bg-light theme-text theme-border-light"
-                : "theme-bg-light hover:theme-bg-md theme-text theme-border-light"
-            }`}
-            title={t.reloadPackage}
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdates ? 'animate-spin' : ''}`} />
-            {checkingUpdates ? t.loading : t.reloadPackage}
-          </button>
-          {(hasUpdates || modpackContentLocked) && (
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {detailTab === "worlds" && (
             <button
-              onClick={handleUpdateAll}
-              disabled={modpackContentLocked}
-              title={
-                modpackContentLocked
-                  ? lang === 'de'
-                    ? 'Aktiviere zuerst „Eigene Mods“, um Modpack-Inhalte zu aktualisieren.'
-                    : 'Enable “Custom mods” first to update modpack content.'
-                  : t.updateAll
-              }
-              className={`px-4 py-2 rounded-xl text-micro font-medium flex items-center gap-1.5 transition-colors ${
-                modpackContentLocked
-                  ? 'bg-hover text-ink-tertiary border border-hairline cursor-not-allowed opacity-80'
-                  : 'theme-bg hover:theme-bg-hover text-accent-contrast cursor-pointer theme-shadow-lg'
-              }`}
+              onClick={() => window.electronAPI?.instances.openProfileFolder?.(slug)}
+              className="h-8 w-8 rounded-lg text-ink-secondary hover:text-ink hover:bg-hover transition-colors cursor-pointer flex items-center justify-center"
+              title={t.openWorldFolder}
+              aria-label={t.openWorldFolder}
             >
-              {modpackContentLocked ? <Lock className="w-3.5 h-3.5" /> : <RefreshCw className="w-3.5 h-3.5" />}
-              {t.updateAll}
+              <FolderOpen className="w-4 h-4" />
             </button>
           )}
           {!(localInst.isModpack && !localInst.ownContentManagement) && (
             <button
               onClick={handleUploadLocalMod}
               disabled={uploadingFile}
-              className={`px-3 py-1.5 rounded-xl text-micro font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer flex items-center gap-1.5 disabled:opacity-50 ${
-                uploadingFile
-                  ? "theme-bg-light theme-text theme-border-light"
-                  : "theme-bg-light hover:theme-bg-md theme-text theme-border-light"
-              }`}
-              title={t.uploadOwnFile}
+              className="h-8 w-8 rounded-lg text-ink-secondary hover:text-ink hover:bg-hover transition-colors cursor-pointer flex items-center justify-center disabled:opacity-50 relative"
+              title={uploadingFile ? `${t.uploadOwnFile} ${uploadProgress}%` : t.uploadOwnFile}
+              aria-label={t.uploadOwnFile}
             >
-              <Upload className={`w-3.5 h-3.5 ${uploadingFile ? 'animate-pulse' : ''}`} />
-              {uploadingFile ? `${uploadProgress}%` : t.upload}
-            </button>
-          )}
-          {detailTab === "worlds" && (
-            <button
-              onClick={() => window.electronAPI?.instances.openProfileFolder?.(slug)}
-              className="px-3 py-1.5 rounded-xl text-micro font-medium border theme-bg-light hover:theme-bg-md theme-text theme-border-light transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer flex items-center gap-1.5"
-              title={t.openWorldFolder}
-            >
-              <FolderOpen className="w-3.5 h-3.5" />
-              {t.openWorldFolder}
+              <Upload className={`w-4 h-4 ${uploadingFile ? 'animate-pulse' : ''}`} />
+              {uploadingFile && (
+                <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 rounded bg-root px-1 text-[10px] font-semibold text-accent tabular-nums">
+                  {uploadProgress}%
+                </span>
+              )}
             </button>
           )}
           {!(localInst.isModpack && !localInst.ownContentManagement && (detailTab === "mods" || detailTab === "datapacks")) && (
             <button
               onClick={() => { openModBrowserForInstance(localInst.id); setSelectedInstance(null); }}
-              className="theme-bg hover:theme-bg-hover text-accent-contrast px-5 py-2.5 rounded-xl text-small font-medium flex items-center gap-2 cursor-pointer theme-shadow-lg"
+              className="theme-bg hover:theme-bg-hover text-accent-contrast px-4 py-2 rounded-xl text-small font-medium flex items-center gap-2 cursor-pointer theme-shadow-lg"
             >
               <Download className="w-4 h-4" />
               {detailTab === "mods" ? t.addMods : t.addContentShort}
             </button>
           )}
+          <button
+            onClick={() => { void checkContentUpdates({ report: true }); }}
+            disabled={checkingUpdates}
+            className="h-8 w-8 rounded-lg text-ink-tertiary hover:text-ink hover:bg-hover transition-colors cursor-pointer flex items-center justify-center disabled:opacity-50"
+            title={checkingUpdates ? t.loading : t.reloadPackage}
+            aria-label={checkingUpdates ? t.loading : t.reloadPackage}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdates ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
+
+      {hasUpdates && (
+        <div className="rounded-2xl border border-accent/30 bg-accent/8 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/25 bg-accent/10 text-accent">
+            <RefreshCw className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="m-0 text-small font-semibold text-ink">
+              {lang === 'de'
+                ? `${updatedNames.length} ${updatedNames.length === 1 ? 'Update' : 'Updates'} verfügbar`
+                : `${updatedNames.length} ${updatedNames.length === 1 ? 'update' : 'updates'} available`}
+            </p>
+            <p className="m-0 mt-0.5 truncate text-micro text-ink-secondary">
+              {updatedNames.slice(0, 4).join(' · ')}
+              {updatedNames.length > 4 ? ` · +${updatedNames.length - 4}` : ''}
+            </p>
+          </div>
+          <button
+            onClick={handleUpdateAll}
+            disabled={modpackContentLocked}
+            title={
+              modpackContentLocked
+                ? lang === 'de'
+                  ? 'Aktiviere zuerst „Eigene Mods“, um Modpack-Inhalte zu aktualisieren.'
+                  : 'Enable “Custom mods” first to update modpack content.'
+                : t.updateAll
+            }
+            className={`shrink-0 px-4 py-2 rounded-xl text-small font-semibold flex items-center gap-1.5 transition-colors ${
+              modpackContentLocked
+                ? 'bg-hover text-ink-tertiary border border-hairline cursor-not-allowed'
+                : 'theme-bg hover:theme-bg-hover text-accent-contrast cursor-pointer theme-shadow-lg'
+            }`}
+          >
+            {modpackContentLocked ? <Lock className="w-3.5 h-3.5" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            {t.updateAll}
+          </button>
+        </div>
+      )}
 
       {localInst.isModpack && !localInst.ownContentManagement && (detailTab === "mods" || detailTab === "datapacks") && (
         <div className="rounded-2xl border border-hairline bg-surface/60 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -2698,7 +2412,7 @@ const ContentListView = ({
             </p>
           </div>
           <button
-            onClick={enableOwnContentManagement}
+            onClick={() => setShowOwnModsWarning(true)}
             className="shrink-0 px-4 py-2 rounded-xl border border-rim bg-hover hover:bg-selected text-small font-medium text-ink transition-colors cursor-pointer flex items-center gap-2"
           >
             <Unlock className="w-3.5 h-3.5" />
@@ -2706,6 +2420,44 @@ const ContentListView = ({
           </button>
         </div>
       )}
+
+      <Dialog
+        open={showOwnModsWarning}
+        onClose={() => setShowOwnModsWarning(false)}
+        title={lang === "de" ? "Eigene Mods aktivieren?" : "Enable custom mods?"}
+        titleId="own-mods-warning-title"
+        closeLabel={lang === "de" ? "Abbrechen" : "Cancel"}
+        icon={<AlertTriangle className="h-4 w-4" />}
+        tone="info"
+        footer={
+          <>
+            <button onClick={() => setShowOwnModsWarning(false)} className={dialogButton.secondary}>
+              {lang === "de" ? "Abbrechen" : "Cancel"}
+            </button>
+            <button onClick={enableOwnContentManagement} className={dialogButton.accent}>
+              {lang === "de" ? "Trotzdem aktivieren" : "Enable anyway"}
+            </button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3 text-small text-ink-secondary">
+          <p className="m-0">
+            {lang === "de"
+              ? "Bei Modpacks ist das nicht empfohlen: Beim Aktualisieren können eigene Änderungen mit dem Pack kollidieren und Mod-Updates gehen dadurch verloren."
+              : "This is not recommended for modpacks: pack updates can conflict with your own changes and mod updates may be lost."}
+          </p>
+          <p className="m-0">
+            {lang === "de"
+              ? "Für eigene Instanzen und importierte Packs von einem anderen Launcher ist es genau richtig – dort möchtest du deine Mods schließlich selbst verwalten."
+              : "For your own instances and packs imported from another launcher it is exactly right – that is where you want to manage your mods yourself."}
+          </p>
+          <p className="m-0 text-micro text-ink-tertiary">
+            {lang === "de"
+              ? "Beim Aktivieren werden alle Inhalte entsperrt und dieser Hinweis verschwindet dauerhaft."
+              : "Enabling unlocks all content and this notice disappears for good."}
+          </p>
+        </div>
+      </Dialog>
 
       {detailTab === "worlds" ? (
         worlds === null ? (
@@ -2738,30 +2490,30 @@ const ContentListView = ({
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-[13.5px] font-semibold leading-5 truncate text-ink">{world.name}</span>
                       {world.hardcore && (
-                        <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-danger/25 bg-danger/10 px-2 py-0.5 text-[10px] font-semibold leading-none text-danger">
+                        <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-danger/25 bg-danger/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-danger">
                           <Skull className="w-2.5 h-2.5" />
                           {t.hardcoreLabel}
                         </span>
                       )}
                       {world.error && (
-                        <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-warning/25 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold leading-none text-warning" title={world.error}>
+                        <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-warning/25 bg-warning/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-warning" title={world.error}>
                           <AlertTriangle className="w-2.5 h-2.5" />
                           {t.worldUnreadable}
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 flex items-center gap-2 min-w-0 text-[11px] leading-none">
+                    <div className="mt-1 flex items-center gap-2 min-w-0 text-[12px] leading-none">
                       <span className="text-ink-tertiary font-mono truncate" title={world.folderName}>{world.folderName}</span>
-                      <span className="shrink-0 inline-flex items-center gap-1 rounded-md border border-hairline bg-root/70 px-1.5 py-[3px] text-[10px] font-semibold leading-none text-ink-secondary" title={t.gamemodeLabel}>
+                      <span className="shrink-0 inline-flex items-center gap-1 rounded-md border border-hairline bg-root/70 px-1.5 py-[3px] text-[11px] font-semibold leading-none text-ink-secondary" title={t.gamemodeLabel}>
                         {meta ? <meta.Icon className="w-3 h-3" /> : null}
                         {meta ? meta.label : t.gamemodeUnknown}
                       </span>
                       {world.version && (
-                        <span className="shrink-0 rounded-md border border-hairline bg-root/70 px-1.5 py-[3px] text-[10px] font-semibold leading-none text-ink-secondary">MC {world.version}</span>
+                        <span className="shrink-0 rounded-md border border-hairline bg-root/70 px-1.5 py-[3px] text-[11px] font-semibold leading-none text-ink-secondary">MC {world.version}</span>
                       )}
                       {world.playtimeMs !== null && (
                         <span
-                          className="shrink-0 rounded-md border border-hairline bg-root/70 px-1.5 py-[3px] text-[10px] font-semibold leading-none text-ink-secondary"
+                          className="shrink-0 rounded-md border border-hairline bg-root/70 px-1.5 py-[3px] text-[11px] font-semibold leading-none text-ink-secondary"
                           title={`${t.worldPlaytimeLabel}: ${world.playtimeApproximate ? t.worldPlaytimeApproxHint : t.worldPlaytimeStatsHint}`}
                         >
                           {world.playtimeApproximate ? "≈ " : ""}{formatPlaytime(world.playtimeMs, lang)}
@@ -2770,7 +2522,7 @@ const ContentListView = ({
                       {world.lastPlayed && (
                         <>
                           <span className="shrink-0 text-ink-disabled">·</span>
-                          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">{t.worldLastPlayedLabel} {formatDate(world.lastPlayed, lang)}</span>
+                          <span className="shrink-0 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">{t.worldLastPlayedLabel} {formatDate(world.lastPlayed, lang)}</span>
                         </>
                       )}
                     </div>
@@ -2820,30 +2572,30 @@ const ContentListView = ({
                 <div className="flex items-center gap-2 min-w-0">
                   <span className={`text-[13.5px] font-semibold leading-5 truncate ${item.enabled ? "text-ink" : "text-ink-tertiary"}`}>{item.name}</span>
                   {item.locked && (
-                    <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-hairline bg-root px-2 py-0.5 text-[10px] font-medium leading-none text-ink-tertiary">
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-hairline bg-root px-2 py-0.5 text-[11px] font-medium leading-none text-ink-tertiary">
                       <LockedMark className="w-2.5 h-2.5" />
                       {t.lockedLabel}
                     </span>
                   )}
                   {!item.enabled && (
-                    <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-stroke/70 bg-root px-2 py-0.5 text-[10px] font-semibold leading-none text-ink-tertiary">
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-stroke/70 bg-root px-2 py-0.5 text-[11px] font-semibold leading-none text-ink-tertiary">
                       <HiddenMark className="w-2.5 h-2.5" />
                       {t.disabledLabel}
                     </span>
                   )}
                 </div>
-                <div className={`mt-1 flex items-center gap-2 min-w-0 text-[11px] leading-none ${item.enabled ? "" : "opacity-70"}`}>
+                <div className={`mt-1 flex items-center gap-2 min-w-0 text-[12px] leading-none ${item.enabled ? "" : "opacity-70"}`}>
                   <span className="text-ink-tertiary font-mono truncate" title={item.fileName}>{item.fileName}</span>
                   {item.versionNumber && item.versionNumber !== item.version && (
-                    <span className={`shrink-0 rounded-md border px-1.5 py-[3px] text-[10px] font-semibold leading-none ${item.enabled ? "border-hairline bg-root/70 text-ink-secondary" : "border-stroke/50 bg-root/60 text-ink-quaternary"}`}>{item.versionNumber}</span>
+                    <span className={`shrink-0 rounded-md border px-1.5 py-[3px] text-[11px] font-semibold leading-none ${item.enabled ? "border-hairline bg-root/70 text-ink-secondary" : "border-stroke/50 bg-root/60 text-ink-quaternary"}`}>{item.versionNumber}</span>
                   )}
                   {item.version && (
-                    <span className={`shrink-0 rounded-md border px-1.5 py-[3px] text-[10px] font-semibold leading-none ${item.enabled ? "border-hairline bg-root/70 text-ink-secondary" : "border-stroke/50 bg-root/60 text-ink-quaternary"}`}>MC {item.version}</span>
+                    <span className={`shrink-0 rounded-md border px-1.5 py-[3px] text-[11px] font-semibold leading-none ${item.enabled ? "border-hairline bg-root/70 text-ink-secondary" : "border-stroke/50 bg-root/60 text-ink-quaternary"}`}>MC {item.version}</span>
                   )}
                   {item.source && (
                     <>
                       <span className="shrink-0 text-ink-disabled">·</span>
-                      <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">
+                      <span className="shrink-0 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-tertiary">
                         {item.source === "curseforge" ? "CurseForge" : "Modrinth"}
                       </span>
                     </>
@@ -2852,9 +2604,12 @@ const ContentListView = ({
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0 pl-2.5 ml-1 border-l border-hairline" onClick={(e) => e.stopPropagation()}>
-                {item.projectId && item.source === "modrinth" && (
+                {item.projectId && item.source && (
                   <button
-                    onClick={() => window.electronAPI?.system.openExternal?.(`https://modrinth.com/${modrinthProjectKind(item.type)}/${item.projectId}`)}
+                    onClick={() => {
+                      const url = contentProjectUrl(item);
+                      if (url) window.electronAPI?.system.openExternal?.(url);
+                    }}
                     className="h-9 w-9 rounded-lg border border-stroke bg-root/50 hover:border-rim hover:text-ink text-ink-tertiary flex items-center justify-center transition-colors cursor-pointer"
                     title={t.openProject}
                   >
@@ -2911,6 +2666,7 @@ const ContentListView = ({
       <AnimatePresence>
         {selectedContentItem && (
           <ContentDetailModal
+            key={selectedContentItem.id}
             item={selectedContentItem}
             onClose={() => setSelectedContentItem(null)}
             localInst={localInst}

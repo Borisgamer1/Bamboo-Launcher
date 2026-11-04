@@ -60,6 +60,8 @@ export interface LegacyImportResult {
   /** The exact record written to profiles.json; the renderer maps this once. */
   profile?: LegacyPayload
   error?: string
+  /** Non-fatal problems: files the pack could not download, reported after a successful import. */
+  warnings?: string[]
 }
 
 type ArchiveKind = 'mrpack' | 'curseforge' | 'profile' | 'content'
@@ -634,6 +636,7 @@ export async function importLegacyProfile(
     const metadata = await archiveMetadata(filePath, info, manifest)
 
     await mkdir(staging, { recursive: true })
+    let packWarnings: string[] = []
     if (info.kind === 'mrpack' || info.kind === 'curseforge') {
       const client =
         info.kind === 'curseforge' && options.curseforgeApiKey
@@ -652,7 +655,7 @@ export async function importLegacyProfile(
               logger: options.logger,
             })
           : undefined
-      await installModpack({
+      const packResult = await installModpack({
         instanceDir: staging,
         archivePath: filePath,
         ...(client ? { curseforge: client } : {}),
@@ -669,6 +672,7 @@ export async function importLegacyProfile(
           }
         },
       })
+      packWarnings = packResult.blocked.map((entry) => entry.message)
       report(84, 'Modpack-Dateien installiert')
     } else {
       await extractArchive(filePath, staging, report, 4, 52)
@@ -757,6 +761,7 @@ export async function importLegacyProfile(
       datapacksInstalled: scanned.counts.datapacks,
       worldsImported: scanned.counts.worlds,
       profile: newProfile,
+      ...(packWarnings.length > 0 ? { warnings: packWarnings } : {}),
     }
   } catch (error) {
     return { success: false, error: (error as Error).message }

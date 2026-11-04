@@ -1,4 +1,4 @@
-export {}
+import type { BedrockCube } from "../electron/cosmetics/geometry"
 
 export type Unsubscribe = () => void
 
@@ -112,53 +112,6 @@ export interface LogAnalysisResult {
 export type LogFixResult =
   | { ok: true; changed: string[]; undoToken?: string; requiresRestart: boolean }
   | { ok: false; code: 'EACCES' | 'ENOENT' | 'LOCKED' | 'INVALID'; message: string }
-
-export interface JoinPayload {
-  v: 1
-  host: string
-  port: number
-  profile?: string
-  pack?: string
-  sha1?: string
-  name?: string
-}
-
-export interface JoinInstanceSummary {
-  id: string
-  name: string
-  folderName: string
-  version: string
-  loader: string
-  loaderVersion: string
-  javaMode: 'auto' | 'pinned'
-  javaPath: string
-  minMemory: number
-  maxMemory: number
-  memoryMode: 'auto' | 'explicit'
-}
-
-export interface JoinPackSummary {
-  url: string
-  sha1: string
-  size: number
-}
-
-export interface JoinOffer {
-  id: string
-  payload: JoinPayload
-  kind: 'launch' | 'create-pack' | 'create-vanilla'
-  reason: 'join.profile-exact' | 'join.profile-create-offer'
-  instance?: JoinInstanceSummary
-  pack?: JoinPackSummary
-}
-
-export type JoinPrepareResult =
-  | { ok: true; offer: JoinOffer }
-  | { ok: false; code: string; message: string }
-
-export type JoinConfirmResult =
-  | { ok: true; offer: JoinOffer; launchId?: string; pid?: number }
-  | { ok: false; code: string; message: string }
 
 export interface CoreInstanceRecord {
   id: string
@@ -276,6 +229,24 @@ export interface RepairProfilePayload {
   loaderVersion: string
   mcVersion: string
   folderName?: string
+}
+
+export interface ChangeInstanceVersionPayload {
+  folderName: string
+  mcVersion: string
+  /** Lowercase loader id: vanilla, fabric, quilt, forge or neoforge. */
+  loader: string
+  loaderVersion?: string
+}
+
+export interface ChangeInstanceVersionResult {
+  success: boolean
+  error?: string
+  mcVersion?: string
+  loader?: string
+  loaderVersion?: string
+  /** Installed launcher profile that matches the target version. */
+  versionId?: string
 }
 
 export interface JavaVersion {
@@ -406,6 +377,8 @@ export interface LaunchProgress {
   profileName: string
   percent: number
   label: string
+  /** Main-process start timestamp, so a remounted card resumes the curve. */
+  startedAt?: number
 }
 
 export interface ContentFilePayload {
@@ -419,6 +392,16 @@ export interface HashContentFilesPayload {
 }
 
 export type HashContentFilesResult = Record<string, string>
+
+export interface IdentifiedContentFile {
+  source: 'modrinth' | 'curseforge'
+  projectId: string
+  name: string
+  iconUrl: string
+  versionNumber: string
+}
+
+export type IdentifyContentFilesResult = Record<string, IdentifiedContentFile>
 
 export interface UploadLocalModPayload {
   folderName: string
@@ -434,6 +417,11 @@ export interface UploadLocalModResult {
   fileName?: string
   destPath?: string
   itemType?: string
+  /** Read from the JAR manifest so the list never has to show a bare file name. */
+  modName?: string
+  modVersion?: string
+  modLoader?: string
+  iconBase64?: string | null
   /** Set for world uploads: the folders created inside `saves`. */
   worlds?: InstalledWorldInfo[]
 }
@@ -509,6 +497,8 @@ export interface ImportProfileResult {
   shaderpacksInstalled?: number
   datapacksInstalled?: number
   worldsImported?: number
+  /** Non-fatal problems reported after a successful import (e.g. skipped files). */
+  warnings?: string[]
 }
 
 export interface ScreenshotDeletePayload {
@@ -551,6 +541,66 @@ export interface SettingsApi {
   save(settings: SettingsSnapshot): Promise<boolean>
   onFlushBeforeClose(callback: () => void): Unsubscribe
   flushBeforeCloseComplete(): void
+}
+
+/** Mirrors `electron/instances/worlds.ts`; each locomotion stat stays separate. */
+export interface DistanceStats {
+  walkCm: number
+  sprintCm: number
+  crouchCm: number
+  swimCm: number
+  flyCm: number
+  climbCm: number
+  fallCm: number
+  walkOnWaterCm: number
+  walkUnderWaterCm: number
+  aviateCm: number
+  minecartCm: number
+  boatCm: number
+  pigCm: number
+  horseCm: number
+  striderCm: number
+  happyGhastCm: number
+}
+
+/** Mirrors `electron/statistics.ts`; one instance's slice of the aggregate. */
+export interface StatisticsInstanceSummary {
+  id: string
+  name: string
+  version: string
+  loader: string
+  playTimeMs: number
+  sessions: number
+  worlds: number
+  distance: DistanceStats
+  blocksMined: number
+  blocksPlaced: number
+  mobsKilled: number
+  deaths: number
+  jumps: number
+}
+
+/** Mirrors `electron/statistics.ts`; aggregated once in the main process. */
+export interface StatisticsSummary {
+  enabled: boolean
+  playTimeMs: number
+  sessions: number
+  firstPlayedAt: number
+  lastPlayedAt: number
+  distance: DistanceStats
+  blocksMined: number
+  blocksPlaced: number
+  mobsKilled: number
+  deaths: number
+  jumps: number
+  instances: number
+  worlds: number
+  perInstance: StatisticsInstanceSummary[]
+  generatedAt: number
+}
+
+export interface StatisticsApi {
+  summary(): Promise<StatisticsSummary | undefined>
 }
 
 export type WorldGamemode = 'survival' | 'creative' | 'adventure' | 'spectator'
@@ -600,6 +650,7 @@ export interface InstancesApi {
   openProfileFolder(name: string): Promise<void>
   listWorlds(folderName: string): Promise<WorldSummary[]>
   repair(data: RepairProfilePayload): Promise<boolean>
+  changeVersion(data: ChangeInstanceVersionPayload): Promise<ChangeInstanceVersionResult>
   updateLaunchSettings(
     folderName: string,
     patch: InstanceLaunchSettingsPatch,
@@ -630,7 +681,8 @@ export interface ModsApi {
   uploadLocal(data: UploadLocalModPayload): Promise<UploadLocalModResult>
   listContentFiles(data: ContentFilePayload): Promise<string[]>
   hashContentFiles(data: HashContentFilesPayload): Promise<HashContentFilesResult>
-  deleteContentFile(data: ContentFilePayload & { fileName: string }): Promise<void>
+  identifyContentFiles(data: HashContentFilesPayload): Promise<IdentifyContentFilesResult>
+  deleteContentFile(data: ContentFilePayload & { fileName: string }): Promise<boolean>
   onUploadProgress(callback: (data: UploadProgress) => void): Unsubscribe
   onModpackProgress(callback: (data: ModpackInstallProgress) => void): Unsubscribe
 }
@@ -658,15 +710,11 @@ export interface AuthApi {
   onStatus(callback: (status: MicrosoftAuthStatus) => void): Unsubscribe
 }
 
-export interface JoinApi {
-  buildLink(payload: JoinPayload): Promise<string>
-  prepare(payload: unknown): Promise<JoinPrepareResult>
-  confirm(offerId: string): Promise<JoinConfirmResult>
-  onInvite(callback: (payload: JoinPayload) => void): Unsubscribe
-}
-
 export interface WindowApi {
   minimize(): void
+  maximize(): void
+  isMaximized(): Promise<boolean>
+  onMaximizedChange(callback: (maximized: boolean) => void): () => void
   focus(): void
   close(): void
 }
@@ -725,18 +773,113 @@ export interface UpdatesApi {
   onStatus(callback: (status: UpdateStatus) => void): Unsubscribe
 }
 
+export type SkinVariant = 'classic' | 'slim'
+
+export interface VanillaCapeSnapshot {
+  id: string
+  name: string
+  url: string
+  active: boolean
+}
+
+export interface SkinSnapshot {
+  account: { id: string; name: string; uuid: string; online: boolean } | null
+  /** Capes Mojang already owns for the account; display only. */
+  capes: VanillaCapeSnapshot[]
+  skin: {
+    url: string | null
+    source: 'local' | 'profile' | 'none'
+    variant: SkinVariant
+    updatedAt?: number
+    applied: boolean
+  }
+  canApplySkin: boolean
+}
+
+export interface SkinsApi {
+  snapshot(): Promise<SkinSnapshot | undefined>
+  saveSkin(payload: { bytes: Uint8Array; variant: SkinVariant }): Promise<SkinSnapshot | undefined>
+  setSkinVariant(variant: SkinVariant): Promise<SkinSnapshot | undefined>
+  resetSkin(): Promise<SkinSnapshot | undefined>
+  applySkin(): Promise<SkinSnapshot | undefined>
+  /** Sets the active Mojang cape, or hides it with null. */
+  selectCape(capeId: string | null): Promise<SkinSnapshot | undefined>
+  refresh(): Promise<SkinSnapshot | undefined>
+}
+
+export type CosmeticSlot = "head" | "back" | "cape"
+
+export interface CosmeticPreviewPart {
+  /** PNG data URL from the package itself. */
+  texture: string
+  textureWidth: number
+  textureHeight: number
+  cubes: BedrockCube[]
+}
+
+export interface CosmeticPreview {
+  id: string
+  name: string
+  creator: string
+  description: string
+  rarity: string
+  slots: CosmeticSlot[]
+  faces: number
+  parts: CosmeticPreviewPart[]
+}
+
+export interface InstalledCosmetic {
+  file: string
+  name: string
+  creator: string
+  description: string
+  rarity: string
+  slots: CosmeticSlot[]
+  bytes: number
+  valid: boolean
+  error?: string
+}
+
+export interface ShopItem {
+  id: string
+  name: string
+  creator: string
+  description: string
+  rarity: string
+  slots: CosmeticSlot[]
+  file: string
+  remote: boolean
+}
+
+export interface ShopCatalog {
+  items: ShopItem[]
+  source: "remote" | "local"
+  error?: string
+}
+
+export interface CosmeticsApi {
+  list(folderName: string): Promise<InstalledCosmetic[] | undefined>
+  preview(payload: { folderName: string; file: string }): Promise<CosmeticPreview | undefined>
+  remove(payload: { folderName: string; file: string }): Promise<InstalledCosmetic[] | undefined>
+  shop(): Promise<ShopCatalog | undefined>
+  shopPreview(id: string): Promise<CosmeticPreview | undefined>
+  install(payload: { folderName: string; id: string }): Promise<InstalledCosmetic[] | undefined>
+}
+
 export interface BambooApi {
   icons: Record<string, string>
   launch: LaunchApi
   logs: LogsApi
   settings: SettingsApi
+  statistics: StatisticsApi
   instances: InstancesApi
   mods: ModsApi
   dialogs: DialogsApi
   profiles: ProfilesApi
   tasks: TasksApi
   auth: AuthApi
-  join: JoinApi
+  skins: SkinsApi
+  cosmetics: CosmeticsApi
   window: WindowApi
   java: JavaApi
   loaders: LoadersApi

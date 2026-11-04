@@ -11,7 +11,10 @@ const SERVERS_STORAGE_KEY = 'bamboo-servers'
 const DEFAULT_SERVER_ICON =
   'https://api.mineatar.io/face/c06f89064c8a49119c29ea1dbd1aab82?scale=8'
 
-/** Only the durable fields belong in storage; ping state is refreshed on load. */
+/**
+ * Only the durable fields belong in storage. A restored server starts with no
+ * status at all; it is looked up when the user explicitly refreshes the list.
+ */
 function readSavedServers(): ServerItem[] {
   try {
     const raw = localStorage.getItem(SERVERS_STORAGE_KEY)
@@ -34,7 +37,7 @@ function readSavedServers(): ServerItem[] {
         ping: 0,
         version: '',
         icon: typeof saved.icon === 'string' && saved.icon ? saved.icon : DEFAULT_SERVER_ICON,
-        isPinging: true,
+        isPinging: false,
       }]
     })
   } catch {

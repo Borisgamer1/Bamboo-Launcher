@@ -32,8 +32,8 @@ export function useAppearance(): AppearanceState {
   // No renderer control changes this value today; it is read once and only
   // re-written by the persistence pass.
   const [mainColor] = useState(() => localStorage.getItem('bamboo-mainColor') || '')
-  const [bgBrightness, setBgBrightness] = useState(() => readInteger('bamboo-bgBrightness', 35))
-  const [bgBlur, setBgBlur] = useState(() => readInteger('bamboo-bgBlur', 0))
+  const [bgBrightness, setBgBrightness] = useState(() => readInteger('bamboo-bgBrightness', 45))
+  const [bgBlur, setBgBlur] = useState(() => readInteger('bamboo-bgBlur', 4))
 
   useEffect(() => { localStorage.setItem('bamboo-showBgImage', String(showBgImage)) }, [showBgImage])
   useEffect(() => { localStorage.setItem('bamboo-showParticles', String(showParticles)) }, [showParticles])

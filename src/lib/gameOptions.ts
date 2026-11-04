@@ -48,10 +48,6 @@ export const GAME_OPTIONS: GameOptionDef[] = [
     unit: 'Chunks',
     defaultValue: 12,
     label: { de: 'Sichtweite', en: 'Render distance' },
-    description: {
-      de: 'Wie viele Chunks in jede Richtung gerendert werden. Höhere Werte kosten deutlich mehr GPU-Leistung.',
-      en: 'How many chunks are rendered in each direction. Higher values cost significantly more GPU performance.',
-    },
   },
   {
     key: 'simulationDistance',
@@ -63,10 +59,6 @@ export const GAME_OPTIONS: GameOptionDef[] = [
     unit: 'Chunks',
     defaultValue: 12,
     label: { de: 'Simulationsweite', en: 'Simulation distance' },
-    description: {
-      de: 'Bis zu dieser Entfernung bewegen sich Entities, wachsen Pflanzen und laufen Redstone-Updates.',
-      en: 'Entities move, crops grow and redstone updates run within this distance.',
-    },
   },
   {
     key: 'fov',
@@ -78,7 +70,6 @@ export const GAME_OPTIONS: GameOptionDef[] = [
     unit: '°',
     defaultValue: 70,
     label: { de: 'Sichtfeld (FOV)', en: 'Field of view' },
-    description: { de: 'Der horizontale Sichtwinkel der Kamera.', en: 'The horizontal camera field of view.' },
   },
   {
     key: 'guiScale',
@@ -104,10 +95,6 @@ export const GAME_OPTIONS: GameOptionDef[] = [
     unit: 'FPS',
     defaultValue: 120,
     label: { de: 'Maximale Bildrate', en: 'Max framerate' },
-    description: {
-      de: 'Begrenzt die maximale Bildrate.',
-      en: 'Caps the maximum framerate.',
-    },
   },
   {
     key: 'vsync',
@@ -115,10 +102,6 @@ export const GAME_OPTIONS: GameOptionDef[] = [
     kind: 'toggle',
     defaultValue: true,
     label: { de: 'VSync', en: 'VSync' },
-    description: {
-      de: 'Synchronisiert die Bildausgabe mit dem Monitor und reduziert Tearing.',
-      en: 'Synchronizes output with the monitor and reduces tearing.',
-    },
   },
   {
     key: 'graphicsMode',
@@ -153,10 +136,6 @@ export const GAME_OPTIONS: GameOptionDef[] = [
     step: 1,
     defaultValue: 4,
     label: { de: 'Mipmap-Stufen', en: 'Mipmap levels' },
-    description: {
-      de: 'Weichzeichnung von Texturen in der Ferne. Höher ist weicher, aber etwas unschärfer.',
-      en: 'Texture filtering at distance. Higher is smoother but slightly softer.',
-    },
   },
   {
     key: 'gamma',
@@ -208,10 +187,6 @@ export const GAME_OPTIONS: GameOptionDef[] = [
     unit: '%',
     defaultValue: 100,
     label: { de: 'FOV-Effekte', en: 'FOV effects' },
-    description: {
-      de: 'Stärke der Sichtfeld-Änderung bei Sprint, Flug oder Geschwindigkeit.',
-      en: 'Strength of the FOV change while sprinting, flying or moving fast.',
-    },
   },
   {
     key: 'screenEffectScale',
@@ -366,10 +341,7 @@ export const GAME_OPTIONS: GameOptionDef[] = [
     kind: 'toggle',
     defaultValue: true,
     label: { de: 'Richtungsaudio', en: 'Directional audio' },
-    description: {
-      de: 'Räumlicher 3D-Klang für Kopfhörer (HRTF).',
-      en: 'Spatial 3D audio for headphones (HRTF).',
-    },
+    description: { de: 'Für Kopfhörer.', en: 'For headphones.' },
   },
   {
     key: 'showSubtitles',
@@ -410,10 +382,7 @@ export const GAME_OPTIONS: GameOptionDef[] = [
     kind: 'toggle',
     defaultValue: true,
     label: { de: 'Rohe Mauseingabe', en: 'Raw mouse input' },
-    description: {
-      de: 'Umgeht die Mausbeschleunigung des Betriebssystems.',
-      en: 'Bypasses the operating system pointer acceleration.',
-    },
+    description: { de: 'Ohne Mausbeschleunigung.', en: 'No pointer acceleration.' },
   },
   {
     key: 'bobView',

@@ -1,0 +1,36 @@
+Bamboo Launcher License
+Copyright (c) 2026 Borisgamer1. All rights reserved.
+
+This is a source-available license, not an open source license. The source code is
+published so you can read it, build it for yourself and see how the launcher works.
+
+You are allowed to
+  1. use Bamboo Launcher free of charge, for private and public Minecraft gameplay;
+  2. show it in videos, streams and other content, including monetized content, and
+     link to it;
+  3. download and compile the source code for your own private use.
+
+You are not allowed to
+  1. sell, rent, sublicense or otherwise commercially exploit the launcher or its
+     source code;
+  2. publish, redistribute or share the launcher, its installer or the source code,
+     in whole or in part, including as part of another product or a modpack bundle;
+  3. create or distribute forks, modified versions or derivative works;
+  4. remove or alter this notice, this license file, or the Bamboo Launcher name and
+     logo;
+  5. use the Bamboo Launcher name or logo for your own project.
+
+All rights not expressly granted are reserved by the copyright holder.
+
+Third-party components bundled with or downloaded by Bamboo Launcher (for example
+Electron, React, Minecraft libraries, mod loaders and mods) are licensed by their
+respective authors and are not covered by this license.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+Bamboo Launcher is not affiliated with Mojang Studios or Microsoft.

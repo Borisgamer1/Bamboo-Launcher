@@ -283,3 +283,26 @@ test('a 26.x file without graphicsPreset gains the quoted custom seed', (context
   assert.match(text, /^renderDistance:16$/m, 'the existing line keeps its value and position')
   assert.ok(applied.includes('graphicsPreset'))
 })
+
+test('control options such as mouse sensitivity reach options.txt', (context) => {
+  const { applyLauncherGameOptions } = loadOptionsApplier()
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bamboo-controls-'))
+  context.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  fs.writeFileSync(
+    path.join(dir, 'options.txt'),
+    'version:3955\r\nmouseSensitivity:0.50\r\ninvertYMouse:false\r\n',
+    'utf8',
+  )
+
+  const applied = applyLauncherGameOptions(dir, {
+    _mcVersion: '1.21.1',
+    mouseSensitivity: 72,
+    invertYMouse: true,
+  })
+  const text = fs.readFileSync(path.join(dir, 'options.txt'), 'utf8')
+
+  assert.match(text, /^mouseSensitivity:0\.72$/m, 'the slider value is written as the 0..1 value Minecraft reads')
+  assert.match(text, /^invertYMouse:true$/m, 'control toggles are applied too')
+  assert.ok(applied.includes('mouseSensitivity'))
+  assert.ok(applied.includes('invertYMouse'))
+})

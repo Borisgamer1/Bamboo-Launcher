@@ -19,6 +19,7 @@ import { readModpackLock, writeModpackLock, type ModpackUpstream } from './lock'
 import { withZip } from './zip'
 import type { OfflineModIndex } from './offline-index'
 import type {
+  BlockedPackFile,
   MissingDependency,
   ModLoader,
   ModpackFile,
@@ -423,6 +424,7 @@ async function installMrpack(options: ModpackInstallOptions): Promise<ModpackIns
     updated,
     removed: obsolete.removed,
     kept: obsolete.kept,
+    blocked: [],
   }
 }
 
@@ -592,6 +594,7 @@ async function installCurseForgePack(options: ModpackInstallOptions): Promise<Mo
   const updated: string[] = []
   const replaced: string[] = []
   const preserved: string[] = []
+  const blocked: BlockedPackFile[] = []
   const downloaded: Array<{ path: string; file: Awaited<ReturnType<CurseForgeClient['file']>>; source: string }> = []
   let downloadedBytes = 0
   const plan = await planCurseForgeContent(manifest, client, { minecraftVersion, loader })
@@ -623,11 +626,8 @@ async function installCurseForgePack(options: ModpackInstallOptions): Promise<Mo
       downloaded.push({ path: relativePath, file, source })
       continue
     }
-    if (source === 'pack') {
-      if (old) updated.push(file.fileName)
-    } else if (old && old.fileId !== file.id) {
-      updated.push(file.fileName)
-    }
+    const wasUpdate =
+      source === 'pack' ? old !== undefined : Boolean(old && old.fileId !== file.id)
     let result: { bytes: number; skipped: boolean }
     try {
       result = await client.download(file, target, {
@@ -653,11 +653,21 @@ async function installCurseForgePack(options: ModpackInstallOptions): Promise<Mo
         )
       }
       if (!fallback) {
-        throw new ModError(
-          'distribution-blocked',
-          `CurseForge project ${file.modId} blocks third-party distribution and ${file.fileName} has no matching Modrinth file${sha1 ? '' : ' (no SHA-1 in the manifest)'}`,
-          { projectId: String(file.modId), fileId: String(file.id), fileName: file.fileName },
-        )
+        // No sanctioned route offers this file: the author forbids third-party
+        // distribution and Modrinth has no copy. One unreachable file must not
+        // abort the whole pack import — it is reported and skipped instead.
+        const message = `CurseForge project ${file.modId} blocks third-party distribution and ${file.fileName} has no matching Modrinth file${sha1 ? '' : ' (no SHA-1 in the manifest)'}`
+        blocked.push({ fileName: file.fileName, message })
+        options.logger?.warn('CurseForge pack file skipped: distribution blocked', {
+          modId: file.modId,
+          fileId: file.id,
+          file: file.fileName,
+          sha1: sha1 ?? null,
+        })
+        // On an update the previous version stays on disk; removing it would
+        // leave the pack worse off than before.
+        if (old) preserved.push(old.path)
+        continue
       }
       options.logger?.info('CurseForge file resolved from Modrinth by SHA-1', {
         modId: file.modId,
@@ -667,6 +677,7 @@ async function installCurseForgePack(options: ModpackInstallOptions): Promise<Mo
       })
       result = fallback
     }
+    if (wasUpdate) updated.push(file.fileName)
     downloadedBytes += result.bytes
     if (source === 'pack') {
       if (result.skipped) skipped.push(file.fileName)
@@ -756,6 +767,7 @@ async function installCurseForgePack(options: ModpackInstallOptions): Promise<Mo
     updated,
     removed: [...replaced, ...obsolete.removed],
     kept: obsolete.kept,
+    blocked,
   }
 }
 

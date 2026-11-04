@@ -120,6 +120,32 @@ test('clone-instance accepts the renderer payload when the name is generated in 
   assert.equal(schema.safeParse([{ folderName: '..' }]).success, false)
 })
 
+test('change-instance-version validates loader and target fields', () => {
+  const schema = IPC_ARG_SCHEMAS['change-instance-version']
+  const valid = {
+    folderName: 'demo-pack',
+    mcVersion: '1.21.1',
+    loader: 'fabric',
+    loaderVersion: '0.16.10',
+  }
+  assert.equal(schema.safeParse([valid]).success, true)
+  assert.equal(schema.safeParse([{ ...valid, loaderVersion: undefined }]).success, true)
+  assert.equal(schema.safeParse([{ ...valid, loader: 'liteloader' }]).success, false)
+  assert.equal(schema.safeParse([{ ...valid, mcVersion: '' }]).success, false)
+  assert.equal(schema.safeParse([{ ...valid, folderName: '..' }]).success, false)
+})
+
+test('download-mod accepts a CurseForge-only payload without a download URL', () => {
+  const schema = IPC_ARG_SCHEMAS['download-mod']
+  const base = { folderName: 'demo-pack', filename: 'mod.jar', itemType: 'mod' }
+  assert.equal(schema.safeParse([{ ...base, curseforgeFileId: 123 }]).success, true)
+  assert.equal(
+    schema.safeParse([{ ...base, downloadUrl: 'https://cdn.modrinth.com/data/x/versions/y/mod.jar' }]).success,
+    true,
+  )
+  assert.equal(schema.safeParse([base]).success, false)
+})
+
 test('every argument-bearing main.js channel has an argument schema', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8')
   const channels = [...source.matchAll(/ipc\.(?:handle|on|once)\('([^']+)'/g)].map(
@@ -140,6 +166,8 @@ test('every argument-bearing main.js channel has an argument schema', () => {
     'get-active-launches',
     'bamboo:ui:ready',
     'window-minimize',
+    'window-maximize',
+    'window-is-maximized',
     'window-focus',
     'window-close',
     'app:flush-before-close-done',

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import {
   AlertTriangle,
+  ArrowRightLeft,
   Clock3,
   Coffee,
   ExternalLink,
@@ -55,6 +56,7 @@ export interface InstanceSettingsViewProps {
   onExport: () => void
   onOpenFolder: () => void
   onRepair: () => void
+  onChangeVersion: () => void
 }
 
 export function InstanceSettingsView({
@@ -68,6 +70,7 @@ export function InstanceSettingsView({
   onExport,
   onOpenFolder,
   onRepair,
+  onChangeVersion,
 }: InstanceSettingsViewProps) {
   const L = lang as Lang
   const { addToast } = useToast()
@@ -281,6 +284,25 @@ export function InstanceSettingsView({
                 <span className="font-mono text-micro text-ink-secondary">
                   {instance.modloaderVersion || '—'}
                 </span>
+              }
+            />
+            <SettingsRow
+              icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
+              title={t(L, 'Version wechseln', 'Switch version')}
+              description={t(
+                L,
+                'Ändert Minecraft-Version, Loader, Mods, Ressourcenpakete, Shader und Datenpakete. Welten und Configs bleiben erhalten.',
+                'Changes the Minecraft version, loader, mods, resource packs, shaders and data packs. Worlds and configs are kept.',
+              )}
+              control={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<ArrowRightLeft className="h-3 w-3" />}
+                  onClick={onChangeVersion}
+                >
+                  {t(L, 'Version wechseln', 'Switch version')}
+                </Button>
               }
             />
             {instance.isModpack && (

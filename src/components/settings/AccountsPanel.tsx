@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, LogIn, LogOut, RefreshCw, UserRound } from 'lucide-react'
 import type { AccountSession } from '../../lib/accountSession'
 import {
-  Badge,
   Button,
   ConfirmButton,
   SettingsCard,
@@ -119,7 +118,7 @@ export function AccountsPanel({
 
   if (session.unavailable) {
     return (
-      <div className="flex items-start gap-2 rounded-[var(--r-lg)] border border-warning/30 bg-warning/10 px-3 py-2.5 text-mini leading-5 text-warning">
+      <div className="flex items-start gap-2.5 rounded-md border border-warning/25 bg-warning/5 px-4 py-3 text-mini leading-5 text-warning">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
         <div>
           <p className="m-0 font-medium">{t(lang, 'Microsoft-Anmeldung nicht verfügbar', 'Microsoft sign-in unavailable')}</p>
@@ -138,40 +137,43 @@ export function AccountsPanel({
   return (
     <div className="flex flex-col gap-4">
       {error && (
-        <div className="flex items-start gap-2 rounded-[var(--r-lg)] border border-danger/30 bg-danger/10 px-3 py-2.5 text-mini leading-5 text-danger">
+        <div className="flex items-start gap-2.5 rounded-md border border-danger/25 bg-danger/5 px-4 py-3 text-mini leading-5 text-danger">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
       {success && (
-        <div className="flex items-start gap-2 rounded-[var(--r-lg)] border border-success/30 bg-success/10 px-3 py-2.5 text-mini leading-5 text-success">
+        <div className="flex items-start gap-2.5 rounded-md border border-success/25 bg-success/5 px-4 py-3 text-mini leading-5 text-success">
           <Check className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{success}</span>
         </div>
       )}
 
       {signedIn && account ? (
-        <section className="overflow-hidden rounded-[var(--r-xl)] border border-stroke bg-surface/65">
-          <div className="flex items-center gap-4 px-4 py-4">
+        <section className="overflow-hidden rounded-[var(--r-xl)] border border-hairline bg-canvas">
+          <div className="flex flex-wrap items-center gap-4 px-5 py-5">
             <img
               src={account.avatar}
               alt={account.name}
-              width={56}
-              height={56}
-              className="h-14 w-14 shrink-0 rounded-xl border border-stroke bg-root object-cover [image-rendering:pixelated]"
+              width={64}
+              height={64}
+              className="h-16 w-16 shrink-0 rounded-lg border border-hairline bg-root object-cover [image-rendering:pixelated]"
               onError={(event) => {
                 ;(event.target as HTMLImageElement).style.visibility = 'hidden'
               }}
             />
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="m-0 truncate text-title3 font-semibold text-ink">{account.name}</h3>
-                <Badge tone="success">{t(lang, 'Angemeldet', 'Signed in')}</Badge>
-                <Badge tone="accent">Microsoft</Badge>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h3 className="m-0 truncate text-title3 font-medium text-ink">{account.name}</h3>
+                <span className="inline-flex items-center gap-1.5 text-micro text-success">
+                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                  {t(lang, 'Angemeldet', 'Signed in')}
+                </span>
               </div>
-              <p className="m-0 mt-1 flex flex-wrap items-center gap-1.5 text-mini text-ink-secondary">
-                <span className="text-ink-tertiary">UUID</span>
-                <span className="font-mono text-micro text-ink">{account.uuid}</span>
+              <p className="m-0 mt-0.5 text-mini text-ink-secondary">Microsoft</p>
+              <p className="m-0 mt-1 flex flex-wrap items-center gap-2 text-micro text-ink-tertiary">
+                <span>UUID</span>
+                <span className="font-mono text-ink-quaternary">{account.uuid}</span>
               </p>
             </div>
           </div>
@@ -189,7 +191,7 @@ export function AccountsPanel({
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-hairline px-4 py-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-hairline px-5 py-3">
             {account && (
               <Button
                 variant="secondary"
@@ -203,6 +205,7 @@ export function AccountsPanel({
               </Button>
             )}
             <ConfirmButton
+              variant="secondary"
               onConfirm={() => void signOut()}
               confirmLabel={t(lang, 'Wirklich abmelden?', 'Really sign out?')}
               icon={<LogOut className="h-3 w-3" />}
@@ -222,13 +225,13 @@ export function AccountsPanel({
             'For online play, Realms and your Minecraft profile.',
           )}
         >
-          <div className="flex flex-col items-center gap-3 px-4 py-9 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-accent/25 bg-accent/10 text-accent">
+          <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-hairline bg-root text-ink-tertiary">
               <UserRound className="h-6 w-6" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="m-0 text-small font-medium text-ink">
-                {t(lang, 'Noch kein Konto angemeldet', 'No account signed in yet')}
+                {t(lang, 'Noch kein Konto verbunden', 'No account connected yet')}
               </p>
               <p className="m-0 mt-1 max-w-[52ch] text-mini leading-5 text-ink-secondary">
                 {t(
@@ -240,10 +243,10 @@ export function AccountsPanel({
             </div>
 
             {loginPending ? (
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-col items-start gap-2 sm:items-end">
                 <span className="inline-flex items-center gap-2 text-mini font-medium text-accent">
                   <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
-                  {t(lang, 'Warte auf Bestätigung im Browser …', 'Waiting for confirmation in the browser …')}
+                  {t(lang, 'Warte auf Bestätigung …', 'Waiting for confirmation …')}
                 </span>
                 <Button variant="ghost" size="sm" onClick={() => void cancelLogin()}>
                   {t(lang, 'Abbrechen', 'Cancel')}
