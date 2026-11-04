@@ -1,0 +1,33 @@
+{
+  "id": "bird-cape",
+  "name": "Bird Cape",
+  "slot": "cape",
+  "bone": "bipedBody",
+  "offset": [
+    0,
+    6,
+    2.4
+  ],
+  "attachment": {
+    "bone": "bipedBody",
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "scale": [
+      1,
+      1,
+      1
+    ]
+  },
+  "geometry": "bird-cape.geo.json",
+  "texture": "bird-cape.png",
+  "source": "Bird Cape",
+  "cubes": 1
+}

@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Datenschutz — Bamboo Launcher</title>
+  <meta name="description" content="Datenschutz bei Bamboo Launcher: lokale Daten, Microsoft-Anmeldung, Discord Rich Presence und Anfragen an Mod-Plattformen.">
+  <meta name="theme-color" content="#070b08">
+  <link rel="icon" href="assets/bamboo-logo.png" type="image/png">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Zum Inhalt springen</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="index.html" aria-label="Bamboo Launcher Startseite">
+        <img src="assets/bamboo-logo.png" alt="" width="30" height="30">
+        <span>Bamboo Launcher</span>
+      </a>
+      <nav class="site-nav" aria-label="Hauptnavigation">
+        <a class="nav-keep" href="index.html">Startseite</a>
+        <a href="nutzungsbedingungen.html">Nutzungsbedingungen</a>
+        <a class="current" href="datenschutz.html" aria-current="page">Datenschutz</a>
+      </nav>
+      <span class="head-status"><i aria-hidden="true"></i>0.2.0 · Windows</span>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="wrap">
+      <div class="legal-title">
+        <h1>Datenschutz</h1>
+        <p>Bamboo speichert lokal: Einstellungen und Instanzen bleiben auf deinem Gerät, Microsoft-Sitzungen werden lokal verschlüsselt gespeichert. Diese Seite beschreibt, welche Daten trotzdem an Dritte gehen – insbesondere an Discord, Microsoft und die Mod-Plattformen. Sie ist zugleich die Datenschutzerklärung der Discord-Anwendung „Bamboo Launcher“.</p>
+        <div class="legal-stamp">
+          <span>Stand: 24. Oktober 2026</span>
+          <span>Version: 0.2.0</span>
+          <span>Gilt für Launcher und Website</span>
+        </div>
+      </div>
+
+      <div class="legal-layout">
+        <aside class="legal-aside">
+          <p class="caps">Inhalt</p>
+          <ol class="legal-toc">
+            <li><a href="#verantwortlich"><span>01</span>Verantwortlicher</a></li>
+            <li><a href="#kurz"><span>02</span>Kurzfassung</a></li>
+            <li><a href="#website"><span>03</span>Website</a></li>
+            <li><a href="#lokal"><span>04</span>Lokale Launcher-Daten</a></li>
+            <li><a href="#microsoft"><span>05</span>Microsoft-Anmeldung</a></li>
+            <li><a href="#discord"><span>06</span>Discord Rich Presence</a></li>
+            <li><a href="#plattformen"><span>07</span>Plattformen und Dienste</a></li>
+            <li><a href="#backend"><span>08</span>Bamboo-Backend</a></li>
+            <li><a href="#telemetrie"><span>09</span>Telemetrie und Logs</a></li>
+            <li><a href="#dauer"><span>10</span>Speicherdauer</a></li>
+            <li><a href="#rechte"><span>11</span>Deine Rechte</a></li>
+            <li><a href="#aenderungen"><span>12</span>Änderungen</a></li>
+            <li><a href="#kontakt"><span>13</span>Kontakt</a></li>
+          </ol>
+        </aside>
+
+        <article class="legal-article">
+          <section id="verantwortlich">
+            <h2>01 · Verantwortlicher</h2>
+            <p>
+              Bamboo Launcher ist ein unabhängiges Projekt von Boris (GitHub:
+              <a href="https://github.com/Borisgamer1" rel="noopener noreferrer">Borisgamer1</a>).
+              Eine öffentliche E-Mail-Adresse oder postalische Anschrift ist im Projekt derzeit nicht
+              hinterlegt; der angegebene GitHub-Kontakt ist der verfügbare Weg für Datenschutzanfragen.
+            </p>
+          </section>
+
+          <section id="kurz">
+            <h2>02 · Kurzfassung</h2>
+            <ul>
+              <li>Für den Spielstart ist kein Bamboo-Konto nötig; der Launcher legt keines an. Einstellungen werden nicht zentral gespeichert.</li>
+              <li>Einstellungen, Instanzen und Kontometadaten liegen lokal auf deinem Gerät.</li>
+              <li>Die Discord-Anbindung ist Rich Presence über den lokalen Discord-Client – keine Anmeldung, kein Token, kein Zugriff auf Profil-, Freundes- oder Nachrichtendaten.</li>
+              <li>Telemetrie ist standardmäßig aus und wird nicht automatisch übertragen.</li>
+              <li>Diese Website setzt selbst keine Cookies, kein Analytics und keine externen Schriftarten ein.</li>
+            </ul>
+          </section>
+
+          <section id="website">
+            <h2>03 · Website</h2>
+            <p>
+              Diese Website ist statisch. Sie lädt alle Bilder, Stylesheets und Schriften aus dem
+              eigenen Projekt; es gibt keine Analyse-Tools, keine Werbenetzwerke und keine
+              Kontaktformulare. Beim Aufruf fallen bei dem Hosting-Anbieter technisch notwendige
+              Verbindungsdaten an (zum Beispiel IP-Adresse, Zeitpunkt, angeforderte Datei und
+              User-Agent), die zur Auslieferung und Absicherung der Seite verarbeitet werden.
+            </p>
+            <p>
+              Die öffentliche Domain <code>bamboolauncher.pages.dev</code> wird über Cloudflare Pages
+              bereitgestellt. Cloudflare verarbeitet dabei Daten nach eigenen Datenschutzbestimmungen:
+              <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener noreferrer">cloudflare.com/privacypolicy</a>.
+            </p>
+          </section>
+
+          <section id="lokal">
+            <h2>04 · Lokale Launcher-Daten</h2>
+            <p>
+              Bamboo speichert Launcher-Daten im Electron-App-Datenordner, unter Windows im
+              <code>%APPDATA%</code>-Bereich. Dazu gehören unter anderem
+              <code>settings.json</code>, <code>accounts.json</code>,
+              <code>accounts.tokens.json</code>, <code>instances.json</code>, Logs, Backups und –
+              nur bei aktivierter Telemetrie – <code>telemetry.json</code>.
+            </p>
+            <p>
+              Die Spieldaten liegen im konfigurierten Spielordner. Unter Windows übernimmt der
+              Launcher beim ersten Start <code>C:\BambooLaufwerk</code>, wenn dieser Ordner
+              existiert; sonst legt er einen Ordner im App-Datenbereich an. Dort befinden sich die
+              Instanzdaten (<code>profiles.json</code> oder der <code>profiles</code>-Ordner), Mods,
+              Welten, Ressourcenpakete, Screenshots und gegebenenfalls ein lokaler Freundes-Store.
+            </p>
+            <p>
+              Instanz-Vorschaubilder stammen aus den mitgelieferten Bilddateien des Launchers oder
+              aus Bildern, die du selbst auswählst. Sie werden lokal gespeichert und nicht von einem
+              externen Bilddienst geladen.
+            </p>
+            <p>
+              Microsoft-Tokens werden nicht im Klartext in <code>settings.json</code> gespeichert.
+              Sie liegen mit dem Betriebssystem-Schlüssel verschlüsselt in
+              <code>accounts.tokens.json</code> (Electron <code>safeStorage</code>). Ist die
+              Verschlüsselung nicht verfügbar, bleiben sie nur für die Sitzung im Speicher.
+              <code>accounts.json</code> enthält die Kontometadaten (ID, Name, UUID, Typ,
+              Aktivstatus).
+            </p>
+            <p>
+              Diese Daten bleiben lokal, bis du sie löschst. Eine Deinstallation entfernt den
+              App-Daten- und Spielordner nicht automatisch. Du kannst die Ordner manuell entfernen,
+              wenn du alle lokalen Daten loswerden möchtest.
+            </p>
+          </section>
+
+          <section id="microsoft">
+            <h2>05 · Microsoft-Anmeldung</h2>
+            <p>
+              Für den Spielstart meldest du dich über Microsoft an. Der Launcher öffnet dafür den
+              Microsoft-OAuth-Ablauf im Browser mit einer lokalen Loopback-Weiterleitung und tauscht
+              den Code gegen ein Token. Die Anfragen gehen an Microsoft- und Xbox-Endpunkte, nicht an
+              einen Bamboo-Anmeldeserver.
+            </p>
+            <p>
+              Bamboo erhält kein Passwort. Gespeichert werden die Tokens verschlüsselt in
+              <code>accounts.tokens.json</code> und die Kontometadaten in
+              <code>accounts.json</code>; beides bleibt lokal. Es gelten ergänzend die
+              <a href="https://privacy.microsoft.com/privacystatement" rel="noopener noreferrer">Datenschutzbestimmungen von Microsoft</a>.
+            </p>
+          </section>
+
+          <section id="discord">
+            <h2>06 · Discord Rich Presence</h2>
+            <p>
+              Bamboo nutzt die Discord-Anwendung „Bamboo Launcher“ (Application-ID
+              <code>1520516615354056865</code>) ausschließlich für Rich Presence. Bamboo betreibt
+              keine Bots, Slash-Commands, Nachrichten oder Webhooks und fordert keine
+              OAuth-Berechtigungen an. Bamboo verbindet sich über den lokalen Discord-Client (IPC)
+              mit Discord, um eine Rich-Presence-Aktivität anzuzeigen. Es findet keine Discord-Anmeldung statt; Bamboo
+              fordert kein Discord-Token an und liest keine Freundesliste, Nachrichten, Server oder
+              Profilinformationen.
+            </p>
+            <p>An Discord übermittelt werden können:</p>
+            <ul>
+              <li>die Aktivität („In Bamboo Launcher“, „Starting …“, „Playing …“, „Main menu“),</li>
+              <li>der von dir gewählte Instanzname,</li>
+              <li>Minecraft-Version und Loader,</li>
+              <li>ein Startzeitpunkt für die Laufzeitanzeige,</li>
+              <li>Bildschlüssel und Bildtexte der Bamboo-Presence.</li>
+            </ul>
+            <p>
+              Die Presence-Anfrage enthält weder Kontoname, UUID, Access-Token noch Serveradresse oder
+              Modliste. Die Presence wird von Bamboo nicht dauerhaft gespeichert. Sie entsteht nur,
+              wenn Discord läuft; eine separate Abschaltoption im Launcher gibt es derzeit nicht.
+              Discord verarbeitet die Anzeige nach den
+              <a href="https://discord.com/privacy" rel="noopener noreferrer">Datenschutzhinweisen von Discord</a>.
+            </p>
+          </section>
+
+          <section id="plattformen">
+            <h2>07 · Mod-Plattformen und weitere Dienste</h2>
+            <p>
+              Bei einer Suche im Mod-Browser sendet der Launcher die Suchbegriffe und Filter an die
+              API des gewählten Anbieters. Dabei fallen technische Verbindungsdaten wie deine
+              IP-Adresse und der User-Agent an. Die CurseForge-Anfragen nutzen einen im Launcher
+              hinterlegten API-Schlüssel; du musst kein eigenes Konto anlegen.
+            </p>
+            <p>
+              Downloads werden direkt von den CDN-Adressen der Anbieter geladen. Es gelten die
+              Datenschutzbestimmungen von
+              <a href="https://www.curseforge.com/privacy-policy" rel="noopener noreferrer">CurseForge</a>
+              und <a href="https://modrinth.com/legal/privacy" rel="noopener noreferrer">Modrinth</a>.
+            </p>
+            <h3>Weitere Verbindungen, die beim Betrieb entstehen</h3>
+            <ul>
+              <li><strong>Mojang, Fabric, Forge und NeoForge:</strong> Versionslisten, Manifeste, Bibliotheken und Java-Runtimes für den Spielstart.</li>
+              <li><strong>GitHub (raw.githubusercontent.com):</strong> Theme-Hintergründe und Partikelbilder aus dem öffentlichen Bamboo-Content-Repository.</li>
+              <li><strong>minotar.net und api.mineatar.io:</strong> Kopf- und Avatar-Bilder. Dabei wird dein Minecraft-Name oder deine UUID in die Bild-URL gesetzt.</li>
+              <li><strong>api.mcsrvstat.us:</strong> Statusabfrage für eine Serveradresse, die du im Mehrspieler-Bereich eingibst.</li>
+            </ul>
+            <p>
+              Je nach Dienst werden dabei ein Minecraft-Name oder eine UUID, eine Serveradresse oder
+              nur technische Verbindungsdaten übertragen. Einstellungen, Instanzlisten und
+              Sitzungstokens sind nicht Teil dieser Anfragen. Einige Modrinth-Anfragen senden
+              zusätzlich den User-Agent <code>BambooLauncher/0.2.2</code>. Wie die Anbieter damit umgehen, steht in ihren
+              eigenen Datenschutzhinweisen.
+            </p>
+          </section>
+
+          <section id="backend">
+            <h2>08 · Bamboo-Backend</h2>
+            <p>
+              Der Launcher lädt Themes, News und Inhaltsdaten von einem Bamboo-Backend. Dabei fallen
+              technische Verbindungsdaten an, die für jede HTTP-Anfrage übertragen werden. Beim
+              Inhaltsabgleich sendet der Launcher die lokal gespeicherten Content-Versionen (etwa
+              Theme- und Asset-Typen), damit der Server erkennt, was aktualisiert werden muss. Der
+              Body dieser Anfrage enthält ausschließlich die Content-Versionen; Einstellungen,
+              Kontodaten und Instanzlisten sind nicht Teil davon.
+            </p>
+            <p>
+              Die Freundesansicht legt ihre Profil-, Freundes- und Statusdaten lokal im
+              Freundes-Store unter <code>&lt;gameRoot&gt;/friends</code> ab. Für Suche und
+              Freundschaftsanfragen kann sie sich mit dem Bamboo-Backend verbinden; dabei werden
+              Suchbegriffe und Nutzer-IDs sowie ein gegebenenfalls gespeichertes Sitzungstoken
+              übertragen. Die Adresse des Dienstes stammt aus der Build-Konfiguration. Eine eigene
+              Anmeldung für diesen Dienst ist im aktuellen Stand nicht in der Oberfläche vorhanden.
+            </p>
+          </section>
+
+          <section id="telemetrie">
+            <h2>09 · Telemetrie und Logs</h2>
+            <p>
+              Telemetrie ist standardmäßig deaktiviert. Im Launcher gibt es derzeit keinen Schalter
+              dafür; die Option liegt in der Konfigurationsdatei. Ist sie aktiviert, zählt der
+              Launcher lokal technische Ereignisse (zum Beispiel Installations- und Startversuche)
+              und legt sie in <code>telemetry.json</code> ab. Es gibt keine automatische Übertragung
+              an Bamboo.
+            </p>
+            <p>
+              Ein Support-Bundle wird nur auf deinen ausdrücklichen Export hin erstellt. Es enthält
+              bereinigte Zusammenfassungen und Logs; bekannte Pfade und Zugangsdaten werden vor dem
+              Export ersetzt. Ob und mit wem du das Bundle teilst, entscheidest du.
+            </p>
+            <p>
+              Lokale Logs bleiben im App-Datenordner und werden nicht automatisch hochgeladen.
+            </p>
+          </section>
+
+          <section id="dauer">
+            <h2>10 · Speicherdauer</h2>
+            <p>
+              Lokale Launcher- und Spieldaten bleiben gespeichert, bis du sie löschst. Die
+              Discord-Presence ist flüchtig und wird von Bamboo nicht persistiert. Cloudflare
+              verarbeitet Verbindungsdaten im Rahmen seiner eigenen Aufbewahrungsregeln.
+            </p>
+          </section>
+
+          <section id="rechte">
+            <h2>11 · Deine Rechte</h2>
+            <p>
+              Soweit die Datenschutz-Grundverordnung anwendbar ist, hast du das Recht auf Auskunft,
+              Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und
+              Widerspruch. Außerdem kannst du dich bei einer Datenschutz-Aufsichtsbehörde beschweren.
+            </p>
+            <p>
+              Da die wesentlichen Launcher-Daten lokal liegen, kannst du sie direkt über den
+              App-Daten- und Spielordner einsehen und löschen. Für Anfragen zum Bamboo-Backend nutze
+              bitte den unten genannten Kontakt.
+            </p>
+          </section>
+
+          <section id="aenderungen">
+            <h2>12 · Änderungen</h2>
+            <p>
+              Diese Datenschutzhinweise werden angepasst, wenn sich die Datenverarbeitung im Launcher
+              ändert. Maßgeblich ist die auf dieser Seite wiedergegebene Fassung mit dem oben
+              genannten Stand.
+            </p>
+          </section>
+
+          <section id="kontakt">
+            <h2>13 · Kontakt</h2>
+            <p>
+              Datenschutzanfragen:
+              <a href="https://github.com/Borisgamer1" rel="noopener noreferrer">github.com/Borisgamer1</a>.
+              Weitere Kontaktdaten sind im Projekt derzeit nicht hinterlegt.
+            </p>
+          </section>
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-bottom" style="margin-top: 0; border-top: 0; padding-top: 0;">
+        <span>© 2026 Boris · Bamboo Launcher 0.2.0</span>
+        <span><a href="nutzungsbedingungen.html">Nutzungsbedingungen</a> · <a href="index.html">Startseite</a></span>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

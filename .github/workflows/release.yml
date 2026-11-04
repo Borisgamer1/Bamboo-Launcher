@@ -1,0 +1,74 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: windows-release
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG=${GITHUB_REF_NAME#v}
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "package.json is $VERSION but tag is $TAG" >&2
+            exit 1
+          fi
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Core tests with external network blocked
+        run: npm run test:offline
+
+      - name: Build renderer and main process
+        run: npm run build
+
+      # The installer ships the CurseForge key, the sources do not. The file is
+      # gitignored, so a fresh checkout has to receive it from the secret.
+      - name: Provide the bundled CurseForge key
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: |
+          if [ -z "$CURSEFORGE_API_KEY" ]; then
+            echo "Missing repository secret CURSEFORGE_API_KEY: the installer would ship without a key." >&2
+            exit 1
+          fi
+          mkdir -p resources
+          printf '%s\n' "$CURSEFORGE_API_KEY" > resources/curseforge-key.txt
+
+      - name: Publish NSIS installer and update metadata
+        env:
+          # A PAT is only required when this workflow runs in a different repo
+          # than the public release repository (publish.repo in package.json).
+          GH_TOKEN: ${{ secrets.GH_RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win nsis --publish always
+
+      # A release without latest.yml silently kills updates for every installed
+      # launcher (that is what happened to v0.2.1). Fail the workflow instead.
+      - name: Verify update feed
+        run: node scripts/check-update-feed.cjs --remote
