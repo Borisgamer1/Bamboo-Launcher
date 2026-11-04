@@ -159,6 +159,15 @@ function nextFreeProfileFolder(rootPath, base, used) {
   return candidate;
 }
 
+// Every instance folder is a direct child of profiles/. ".." or a nested path
+// from the renderer would let a delete or write leave that folder.
+function profileDirOrNull(rootPath, folderName) {
+  if (!folderName || typeof folderName !== 'string') return null;
+  const profiles = path.join(rootPath, 'profiles');
+  const target = path.resolve(profiles, folderName);
+  return path.dirname(target) === profiles ? target : null;
+}
+
 function uniqueProfileFolder(rootPath, desiredBase, profiles, excludeFolder) {
   const base = profileFolderSlug(desiredBase);
   const excluded = String(excludeFolder || '').toLowerCase();
@@ -854,7 +863,8 @@ ipc.handle('apply-options-patch', async (_event, { folderName, patch }) => {
       return { success: false, error: 'Ungültige options.txt-Werte.' };
     }
     const rootPath = await resolveGameRoot();
-    const gameDir = path.join(rootPath, 'profiles', folderName);
+    const gameDir = profileDirOrNull(rootPath, folderName);
+    if (!gameDir) return { success: false, error: 'Ungültiger Instanzordner.' };
     if (!fs.existsSync(gameDir)) fs.mkdirSync(gameDir, { recursive: true });
     const { GameSettingsService } = require('./dist-electron/gamesettings/service.js');
     const service = new GameSettingsService();
@@ -897,30 +907,42 @@ ipc.handle('open-instance-folder', async (_event, folderName) => {
 
 ipc.handle('delete-profile-files', async (_event, folderName) => {
   const rootPath = gameRoot();
-  const gameDir = path.join(rootPath, 'profiles', folderName);
-  if (fs.existsSync(gameDir)) {
-    fs.rmSync(gameDir, { recursive: true, force: true });
-    shellLog.info('profile folder deleted', { gameDir });
+  const gameDir = profileDirOrNull(rootPath, folderName);
+  if (!gameDir) {
+    shellLog.warn('delete-profile-files: rejected folder name', { folderName });
+    return { success: false, error: 'Ungültiger Instanzordner.' };
+  }
+  let deleted = false;
+  try {
+    if (fs.existsSync(gameDir)) {
+      fs.rmSync(gameDir, { recursive: true, force: true });
+      deleted = true;
+      shellLog.info('profile folder deleted', { gameDir });
+    }
+  } catch (error) {
+    shellLog.error('profile folder could not be deleted', { gameDir, error: error.message });
+    return { success: false, error: error.message };
   }
   const screenshotsDir = path.join(rootPath, 'screenshots');
+  let screenshots = 0;
   if (fs.existsSync(screenshotsDir)) {
     const prefix = folderName + '__';
     const files = fs.readdirSync(screenshotsDir);
-    let deletedCount = 0;
     for (const file of files) {
       if (file.startsWith(prefix)) {
         try {
           fs.unlinkSync(path.join(screenshotsDir, file));
-          deletedCount++;
+          screenshots++;
         } catch (e) {
           shellLog.debug('profile screenshot could not be deleted', { file, error: e.message });
         }
       }
     }
-    if (deletedCount > 0) {
-      shellLog.debug('profile screenshots deleted', { folderName, deletedCount });
+    if (screenshots > 0) {
+      shellLog.debug('profile screenshots deleted', { folderName, screenshots });
     }
   }
+  return { success: true, deleted, screenshots };
 });
 
 ipc.handle('repair-profile', async (event, { loader, loaderVersion, mcVersion, folderName }) => {

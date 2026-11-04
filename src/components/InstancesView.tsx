@@ -546,10 +546,23 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
 
   const deleteInstanceNow = async (instance: Instance) => {
     const folderName = instanceFolderKey(instance);
+    let failure: string | null = null;
     try {
-      await window.electronAPI?.instances.deleteFiles?.(folderName);
+      const result = await window.electronAPI?.instances.deleteFiles?.(folderName);
+      if (result && result.success === false) failure = result.error || 'unbekannt';
     } catch (error) {
-      console.warn('[Instances] Failed to delete profile files', error);
+      failure = error instanceof Error ? error.message : String(error);
+    }
+    if (failure) {
+      // The folder is still there; removing the card would hide that.
+      setDeleteConfirmModal(null);
+      addToast({
+        type: 'error',
+        message: lang === 'de'
+          ? `"${instance.name}" konnte nicht gelöscht werden: ${failure}`
+          : `"${instance.name}" could not be deleted: ${failure}`,
+      });
+      return;
     }
     setInstances(prev => prev.filter(i => i.id !== instance.id));
     setSelectedInstanceId(prev => (prev === instance.id ? null : prev));

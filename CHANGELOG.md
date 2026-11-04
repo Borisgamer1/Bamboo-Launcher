@@ -22,6 +22,7 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 
 - Grafik- und Steuerungseinstellungen wurden nach dem ersten Minecraft-Start stillschweigend ignoriert.
 - Eine Release-Jar für eine andere Minecraft-Version konnte in einer 26.3-Instanz landen.
+- Das Löschen einer Instanz prüft den Ordnernamen und meldet einen Fehler, statt Erfolg anzuzeigen, wenn der Ordner bleibt.
 
 ### New
 
@@ -36,6 +37,7 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 
 - Graphics and control settings were silently ignored after the first Minecraft start.
 - A release jar for a different Minecraft version could land in a 26.3 instance.
+- Deleting an instance validates the folder name and reports a failure instead of "deleted" when the folder stays.
 
 ## 0.2.3 - 2026-11-01
 

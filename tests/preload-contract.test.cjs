@@ -89,6 +89,7 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
   await api.settings.save({ currentTheme: 'bamboo', lang: 'en' })
   await api.statistics.summary()
   await api.instances.list()
+  await api.instances.deleteFiles('demo')
   await api.instances.create({ folderName: 'demo', options: {} })
   await api.instances.updateLaunchSettings('demo', { maxMemory: 4096 })
   await api.mods.curseforgeSearch({ query: 'sodium', sortBy: '0' })
@@ -135,6 +136,7 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
     { mode: 'invoke', channel: 'save-settings', args: [{ currentTheme: 'bamboo', lang: 'en' }] },
     { mode: 'invoke', channel: 'bamboo:statistics:summary', args: [] },
     { mode: 'invoke', channel: 'bamboo:instances:list', args: [] },
+    { mode: 'invoke', channel: 'delete-profile-files', args: ['demo'] },
     { mode: 'invoke', channel: 'create-instance', args: [{ folderName: 'demo', options: {} }] },
     {
       mode: 'invoke',

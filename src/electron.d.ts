@@ -645,7 +645,7 @@ export interface InstancesApi {
   rename(data: { oldFolderName: string; newName: string }): Promise<RenameInstanceResult>
   clone(data: { folderName: string; newName?: string }): Promise<CloneInstanceResult>
   createShortcut(data: { folderName: string; instanceName: string }): Promise<CreateShortcutResult>
-  deleteFiles(folderName: string): Promise<void>
+  deleteFiles(folderName: string): Promise<{ success: boolean; deleted?: boolean; screenshots?: number; error?: string }>
   openFolder(folderName: string): Promise<void>
   openProfileFolder(name: string): Promise<void>
   listWorlds(folderName: string): Promise<WorldSummary[]>
