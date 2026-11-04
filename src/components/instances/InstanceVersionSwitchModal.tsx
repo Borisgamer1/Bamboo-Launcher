@@ -82,7 +82,11 @@ const LOADERS: TargetLoader[] = ['Vanilla', 'Fabric', 'Quilt', 'Forge', 'Neoforg
 const SWITCHABLE_TYPES: ContentCategory[] = ['mods', 'resourcepacks', 'shaderpacks', 'datapacks']
 const SHADER_LOADER_ALWAYS_INCOMPATIBLE = new Set<ContentCategory>(['mods', 'shaderpacks'])
 
-function loaderMapKey(loader: TargetLoader): keyof VersionMap | null {
+// Loader maps are the record entries; minecraftVersions is the version list and
+// must never be indexed with a Minecraft version.
+type LoaderMapKey = Exclude<keyof VersionMap, 'minecraftVersions'>
+
+function loaderMapKey(loader: TargetLoader): LoaderMapKey | null {
   switch (loader) {
     case 'Fabric':
       return 'fabric'
@@ -220,10 +224,11 @@ export const InstanceVersionSwitchModal: React.FC<InstanceVersionSwitchModalProp
     const unsubscribe = window.electronAPI?.tasks.onProgress?.((data) => {
       if (!data || data.id !== taskId) return
       if (data.label) setProgressLabel(data.label)
-      if (typeof data.percent === 'number' && Number.isFinite(data.percent)) {
+      const percent = data.percent
+      if (typeof percent === 'number' && Number.isFinite(percent)) {
         // Main reports 0-100 for the base install. Map it into the first phase
         // of the whole switch so the modal's bar never jumps backwards.
-        setProgress((current) => Math.max(current, Math.min(48, 4 + Math.round(data.percent * 0.44))))
+        setProgress((current) => Math.max(current, Math.min(48, 4 + Math.round(percent * 0.44))))
       }
     })
     return () => unsubscribe?.()
@@ -869,7 +874,7 @@ export const InstanceVersionSwitchModal: React.FC<InstanceVersionSwitchModalProp
               <p className="m-0 text-regular font-medium text-ink">{t.instanceVersionDone}</p>
               <p className="m-0 mt-0.5 text-small text-ink-secondary">
                 {formatMessage(t.instanceVersionDoneBody, {
-                  name: instance.name,
+                  name: instance?.name ?? '',
                   mc: targetMc,
                   loader: targetLoader === 'Vanilla'
                     ? 'Vanilla'

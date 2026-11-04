@@ -202,7 +202,7 @@ test('P14 main.js keeps no duplicate loader installers', () => {
   )
   assert.match(
     source,
-    /const legacyDirectory = path\.join\(rootPath, 'profiles', folderName\)/,
-    'launch-game must resolve the legacy profile directory it hands to the launch facade',
+    /const legacyDirectory = profileDirOrNull\(rootPath, folderName\)/,
+    'launch-game must resolve the legacy profile directory it hands to the launch facade through the guard',
   )
 })

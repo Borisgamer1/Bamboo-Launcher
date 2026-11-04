@@ -39,7 +39,7 @@ export const InstanceCoverPicker: React.FC<InstanceCoverPickerProps> = ({ value,
       properties: ["openFile"],
       filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
     });
-    if (!result || result.canceled || result.filePaths.length === 0) return;
+    if (!result || result.canceled || !result.filePaths || result.filePaths.length === 0) return;
 
     setUploading(true);
     try {

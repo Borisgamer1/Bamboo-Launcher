@@ -889,20 +889,25 @@ ipc.handle('window-is-maximized', () => Boolean(mainWindow && !mainWindow.isDest
 
 ipc.handle('open-profile-folder', async (_event, folderName) => {
   const rootPath = gameRoot();
-  const gameDir = path.join(rootPath, 'profiles', folderName, 'saves');
+  const instanceDir = profileDirOrNull(rootPath, folderName);
+  if (!instanceDir) return { success: false, error: 'Ungültiger Instanzordner.' };
+  const gameDir = path.join(instanceDir, 'saves');
   if (!fs.existsSync(gameDir)) {
     fs.mkdirSync(gameDir, { recursive: true });
   }
   shell.openPath(gameDir);
+  return { success: true };
 });
 
 ipc.handle('open-instance-folder', async (_event, folderName) => {
   const rootPath = gameRoot();
-  const gameDir = path.join(rootPath, 'profiles', folderName);
+  const gameDir = profileDirOrNull(rootPath, folderName);
+  if (!gameDir) return { success: false, error: 'Ungültiger Instanzordner.' };
   if (!fs.existsSync(gameDir)) {
     fs.mkdirSync(gameDir, { recursive: true });
   }
   shell.openPath(gameDir);
+  return { success: true };
 });
 
 ipc.handle('delete-profile-files', async (_event, folderName) => {
@@ -1520,8 +1525,8 @@ ipc.handle('save-profiles', async (_event, profiles) => {
   if (!fs.existsSync(rootPath)) fs.mkdirSync(rootPath, { recursive: true });
   const enriched = profiles.map(p => {
     const folderName = profileFolderOf(p);
-    const dirPath = path.join(rootPath, 'profiles', folderName);
-    const bytes = getFolderSize(dirPath);
+    const dirPath = profileDirOrNull(rootPath, folderName);
+    const bytes = dirPath ? getFolderSize(dirPath) : 0;
     return { ...p, folderName, size: formatSize(bytes) || '0 B' };
   });
   fs.writeFileSync(path.join(rootPath, 'profiles.json'), JSON.stringify(enriched, null, 2));
@@ -1713,10 +1718,13 @@ ipc.handle('export-profile', async (_event, payload) => {
   const { format, instanceName, folderName, manifest, options, suggestedFileName, savePath } = payload || {};
 
   if (format === 'mrpack') {
+    // One implementation: the core writes the mrpack. Falling through to the
+    // zip branch here would ship a second, unchecked pack writer.
     const bridge = getLegacyModsBridge();
-    if (bridge && typeof bridge.exportLegacyProfile === 'function') {
-      return bridge.exportLegacyProfile(payload);
+    if (!bridge || typeof bridge.exportLegacyProfile !== 'function') {
+      return { success: false, error: 'Modpack-Export nicht verfügbar (Core fehlt).' };
     }
+    return bridge.exportLegacyProfile(payload);
   }
 
   if (!manifest || !folderName) {
@@ -1731,7 +1739,8 @@ ipc.handle('export-profile', async (_event, payload) => {
       fs.writeFileSync(path.join(tmpDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
     }
 
-    const gameDir = path.join(rootPath, 'profiles', folderName);
+    const gameDir = profileDirOrNull(rootPath, folderName);
+    if (!gameDir) return { success: false, error: 'Ungültiger Instanzordner.' };
     const selectedContent = options || {};
     
     const gameDirExists = fs.existsSync(gameDir);
@@ -2494,49 +2503,15 @@ ipc.handle('download-mod', async (event, payload) => {
       },
     });
   }
-  const { folderName, versionId, downloadUrl, filename, itemType } = payload || {};
-  if (itemType === 'world' || itemType === 'worlds') {
-    // Without the core there is no way to extract a world into saves/, and placing
-    // the archive in a content folder is exactly the misrouting this must not do.
-    throw new Error('Welten können nur über den Launcher-Core installiert werden');
-  }
-  const rootPath = gameRoot();
-  const gameDir = path.join(rootPath, 'profiles', folderName);
-  const subDir = downloadFolder(itemType);
-  const destDir = path.join(gameDir, subDir);
-  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-  const destPath = path.join(destDir, filename);
-  
-  if (fs.existsSync(destPath)) {
-    try {
-      fs.unlinkSync(destPath);
-    } catch (e) {
-      shellLog.debug('download-mod: existing file could not be removed', { path: destPath, error: e.message });
-    }
-  }
-  
-  const res = await fetch(downloadUrl);
-  if (!res.ok || res.status !== 200) throw new Error(`Download fehlgeschlagen (${res.status})`);
-  
-  const contentType = res.headers.get('content-type') || '';
-  if (contentType.includes('text/html')) throw new Error('Ungültiger Download-Link (HTML-Seite statt Datei)');
-  
-  const buf = await res.arrayBuffer();
-  if (!buf || buf.byteLength === 0) throw new Error('Leere Datei heruntergeladen');
-  
-  fs.writeFileSync(destPath, Buffer.from(buf));
-  
-  const stats = fs.statSync(destPath);
-  if (stats.size === 0) {
-    fs.unlinkSync(destPath);
-    throw new Error('Datei wurde leer gespeichert');
-  }
-  
-  return { success: true, path: destPath, size: stats.size };
+  // The core bridge owns the download and its path validation. A second copy
+  // here wrote path.join(destDir, filename) with an API-supplied name.
+  return { success: false, error: 'Mod-Installation nicht verfügbar (Core fehlt).' };
 });
 
 ipc.handle('get-screenshots', async (_event, folderName) => {
-  const ssPath = path.join(gameRoot(), 'profiles', folderName, 'screenshots');
+  const instanceDir = profileDirOrNull(gameRoot(), folderName);
+  if (!instanceDir) return [];
+  const ssPath = path.join(instanceDir, 'screenshots');
   if (!fs.existsSync(ssPath)) return [];
   return fs.readdirSync(ssPath).filter(f => f.endsWith('.png')).map(f => path.join(ssPath, f));
 });
@@ -2697,7 +2672,12 @@ ipc.on('launch-game', async (event, args) => {
 
   shellLog.info('launch-game: starting', { profileName, folderName, loader: normalizedLoader, version });
   const rootPath = await resolveGameRoot();
-  const legacyDirectory = path.join(rootPath, 'profiles', folderName);
+  const legacyDirectory = profileDirOrNull(rootPath, folderName);
+  if (!legacyDirectory) {
+    ACTIVE_LAUNCHES.delete(folderName);
+    emitLaunchFailed('Ungültiger Instanzordner.');
+    return;
+  }
   const packDependencies = (() => {
     try {
       const indexFile = path.join(legacyDirectory, 'modrinth.index.json');
@@ -3180,7 +3160,8 @@ function parseJarMetadata(jarPath) {
 
 ipc.handle('upload-local-mod', async (event, { folderName, filePath, itemType, taskId }) => {
   const rootPath = gameRoot();
-  const instanceDir = path.join(rootPath, 'profiles', folderName);
+  const instanceDir = profileDirOrNull(rootPath, folderName);
+  if (!instanceDir) return { success: false, error: 'Ungültiger Instanzordner.' };
   const emitTaskProgress = (percent, label) => {
     if (!taskId) return;
     try {
@@ -3281,8 +3262,9 @@ ipc.handle('rename-instance', async (_event, { oldFolderName, newName }) => {
     const safeName = profileFolderSlug(newName);
     // Never fail on a name that already exists: reserve the next free folder.
     const folderName = uniqueProfileFolder(rootPath, safeName, profiles, currentFolder);
-    const oldDir = path.join(rootPath, 'profiles', currentFolder);
-    const newDir = path.join(rootPath, 'profiles', folderName);
+    const oldDir = profileDirOrNull(rootPath, currentFolder);
+    const newDir = profileDirOrNull(rootPath, folderName);
+    if (!oldDir || !newDir) return { success: false, error: 'Ungültiger Instanzordner' };
     if (folderName !== currentFolder && fs.existsSync(oldDir)) {
       if (fs.existsSync(newDir)) return { success: false, error: 'Folder name already exists' };
       fs.renameSync(oldDir, newDir);
@@ -3446,7 +3428,9 @@ ipc.handle('create-desktop-shortcut', async (_event, { folderName, instanceName 
 
 ipc.handle('scan-local-mods', async (_event, { folderName }) => {
   const rootPath = gameRoot();
-  const modsDir = path.join(rootPath, 'profiles', folderName, 'mods');
+  const instanceDir = profileDirOrNull(rootPath, folderName);
+  if (!instanceDir) return [];
+  const modsDir = path.join(instanceDir, 'mods');
   if (!fs.existsSync(modsDir)) return [];
   const files = fs.readdirSync(modsDir).filter(function(f) { return f.endsWith('.jar') && !f.endsWith('.disabled'); });
   const results = [];

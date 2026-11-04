@@ -223,9 +223,9 @@ export function createPlayerModel(variant: 'classic' | 'slim'): PlayerModel {
   const capeDocument = createCapeGeometry('player')
   const capeSheet = boneMesh(capeDocument, 'bipedBody')
   if (!capeSheet) throw new Error('Cape geometry is empty')
-  const capeDescription = capeDocument['minecraft:geometry'][0].description
-  const capePivot: [number, number, number] =
-    capeDocument['minecraft:geometry'][0].bones?.[0]?.pivot ?? [0, 24, 0]
+  const capeEntry = capeDocument['minecraft:geometry']?.[0]
+  if (!capeEntry) throw new Error('Cape geometry is empty')
+  const capePivot: [number, number, number] = capeEntry.bones?.[0]?.pivot ?? [0, 24, 0]
   const cape = new THREE.Group()
   cape.name = 'cape'
   // Hinge at the shoulders like vanilla, so the plane hangs from y=24 down to
@@ -234,8 +234,8 @@ export function createPlayerModel(variant: 'classic' | 'slim'): PlayerModel {
   cape.rotation.x = -0.12
   const capeGeometry = meshGeometry(
     capeSheet,
-    capeDescription.texture_width,
-    capeDescription.texture_height,
+    capeEntry.description?.texture_width ?? 64,
+    capeEntry.description?.texture_height ?? 32,
   )
   geometries.push(capeGeometry)
   const capeMesh = new THREE.Mesh(capeGeometry, capeMaterial)

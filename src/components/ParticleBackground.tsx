@@ -223,6 +223,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
       const mPos = mousePosRef.current;
       const currentAccent = accentRef.current;
       const rgb = hexToRgb(currentAccent);
+      if (!rgb) return;
 
       if (showGlowRef.current) {
         const glowRgb = hexToRgb(glowColorRef.current);
@@ -290,6 +291,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
               tintSprite.__tintCanvas = tCanvas;
             }
             const tc = tCanvas.getContext("2d");
+            if (!tc) return;
             tc.clearRect(0, 0, tCanvas.width, tCanvas.height);
             tc.drawImage(sprite, 0, 0, drawW, drawH);
             tc.globalCompositeOperation = "source-in";

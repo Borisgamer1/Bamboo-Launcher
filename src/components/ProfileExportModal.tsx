@@ -177,8 +177,8 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
         folderName,
         manifest: profileExportService.buildManifest(instance, options),
         options,
-        savePath: result.filePath,
-        suggestedFileName: result.filePath.split(/[/\\]/).pop(),
+        savePath: result.filePath ?? '',
+        suggestedFileName: (result.filePath ?? '').split(/[/\\]/).pop() ?? '',
       });
 
       if (exportResult?.success) {

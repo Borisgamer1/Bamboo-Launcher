@@ -108,7 +108,7 @@ export const InstanceLaunchProgress: React.FC<InstanceLaunchProgressProps> = ({ 
     };
   }, [progress?.percent]);
 
-  const displayPercent = progress?.percent >= 100 ? 100 : Math.min(95, Math.max(0, smoothedPercent));
+  const displayPercent = (progress?.percent ?? 0) >= 100 ? 100 : Math.min(95, Math.max(0, smoothedPercent));
 
   return (
     <div className="shrink-0" aria-live="polite">

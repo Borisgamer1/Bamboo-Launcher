@@ -152,7 +152,7 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
       ],
     });
 
-    if (result && !result.canceled && result.filePaths.length > 0) {
+    if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
       setSelectedFile(result.filePaths[0]);
       await loadPreview(result.filePaths[0]);
     }

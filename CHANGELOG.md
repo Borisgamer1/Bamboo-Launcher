@@ -7,6 +7,28 @@ version, so every release needs a block here in **both** languages.
 Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 `New` / `Better` / `Fixed` / `Removed` for English.
 
+## 0.2.5 - 2026-11-04
+
+### Behoben
+
+- Jeder Handler, der eine Instanz öffnet, löscht oder beschreibt, prüft den Ordnernamen: `..` und absolute Pfade kommen nicht mehr in ein anderes Verzeichnis.
+- Der Mod-Download schreibt keine Datei mehr unter einem Namen, den eine API-Antwort liefert.
+- Ein Modpack-Export als `.mrpack` läuft ausschließlich über den Core.
+
+### Besser
+
+- Die Oberfläche wird jetzt mit `strict: true` typgeprüft; die letzten 13 Typfehler sind behoben.
+
+### Fixed
+
+- Every handler that opens, deletes or writes an instance validates the folder name: `..` and absolute paths can no longer escape it.
+- The mod download writes no file under a name taken from an API response.
+- Exporting a modpack as `.mrpack` runs through the core only.
+
+### Better
+
+- The UI is now type-checked with `strict: true`; the last 13 type errors are gone.
+
 ## 0.2.4 - 2026-11-04
 
 ### Neu

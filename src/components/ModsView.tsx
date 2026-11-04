@@ -442,7 +442,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
   // The browser is unmounted when the instance is opened and mounted again on
   // the way back. Keep the visible page and scroll offset so that round trip
   // returns to the same spot instead of resetting to the first result.
-  const [initialBrowserState] = useState(() => readBrowserState(fromInstanceId));
+  const [initialBrowserState] = useState(() => readBrowserState(fromInstanceId ?? undefined));
   const [search, setSearch] = useState(() => initialSearch || initialBrowserState?.search || '');
   const [source, setSource] = useState<"modrinth" | "curseforge">(() => initialBrowserState?.source ?? readProjectSource());
   const [pageSize, setPageSize] = useState<ModsPageSize>(() => initialBrowserState?.pageSize ?? readSavedPageSize());
@@ -520,7 +520,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
   const scrollTopRef = useRef(initialBrowserState?.scrollTop ?? 0);
   const persistBrowserState = useCallback(() => {
     try {
-      sessionStorage.setItem(browserStateKey(fromInstanceId), JSON.stringify({
+      sessionStorage.setItem(browserStateKey(fromInstanceId ?? undefined), JSON.stringify({
         page,
         scrollTop: scrollTopRef.current,
         search,
@@ -1230,14 +1230,14 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
         // Nothing fits; only an explicit yes installs a labelled mismatch.
         if (!confirmIncompatibleFallback(mod, inst, picked.fallback)) {
           addToast({ type: "warning", message: missMessage(picked.reason, inst, mod) });
-          return;
+          return false;
         }
         version = picked.fallback.version;
         file = picked.fallback.file;
         incompatible = true;
       } else {
         addToast({ type: "warning", message: missMessage(picked.reason, inst, mod) });
-        return;
+        return false;
       }
 
       if (category === 'mods' && !incompatible) {
@@ -1279,7 +1279,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
       }
       if (!payload.curseforgeFileId && !payload.downloadUrl) {
         addToast({ type: "warning", message: missMessage('file', inst, mod) });
-        return;
+        return false;
       }
       if (category === 'worlds') {
         payload.title = mod.title;
@@ -1475,7 +1475,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
         <ModDetailWindow
           mod={selectedMod}
           source={source}
-          contextInstance={contextInstance}
+          contextInstance={contextInstance ?? null}
           isGlobal={isGlobal}
           accent={accent}
           onClose={() => setSelectedMod(null)}

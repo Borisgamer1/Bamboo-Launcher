@@ -401,7 +401,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
       properties: ['openFile'],
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif'] }],
     });
-    if (result && !result.canceled && result.filePaths.length > 0) {
+    if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
       const dataUrl = await window.electronAPI?.dialogs.readImage?.(result.filePaths[0]);
       if (dataUrl) {
         const prepared = await prepareInstanceCover(dataUrl);
@@ -540,7 +540,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
         addToast({ type: 'error', message: result?.error || 'Rename failed' });
       }
     } catch (e) {
-      addToast({ type: 'error', message: e.message || 'Rename failed' });
+      addToast({ type: 'error', message: errorMessage(e) || 'Rename failed' });
     }
   };
 
@@ -2299,7 +2299,7 @@ const ContentListView = ({
             const dlResult = await window.electronAPI?.mods.download?.({
               folderName,
               profileName: localInst.name,
-              versionId: versionData.mcVersion,
+              versionId: versionData.mcVersion ?? '',
               downloadUrl: pick.file.url,
               filename: pick.file.filename,
               itemType: 'mods',
@@ -2308,10 +2308,10 @@ const ContentListView = ({
             if (dlResult?.success) {
               const originalMod = currentMods.find(m => m.projectId === projectId);
               newContent.push({
-                id: originalMod?.id || projectId,
-                name: originalMod?.name || projectId,
-                fileName: pick.file.filename,
-                version: versionData.mcVersion,
+                id: originalMod?.id || projectId || '',
+                name: originalMod?.name || projectId || '',
+                fileName: pick.file.filename ?? '',
+                version: versionData.mcVersion ?? '',
                 type: 'mods',
                 enabled: true,
                 locked: false,

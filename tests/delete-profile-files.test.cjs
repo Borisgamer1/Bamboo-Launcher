@@ -47,3 +47,50 @@ test('the delete handler refuses an invalid name before touching anything', () =
   assert.match(handler, /success: false/)
   assert.match(handler, /return \{ success: true, deleted, screenshots \}/)
 })
+
+// Every handler that touches an instance directory reaches it through the same
+// guard. A raw path.join(rootPath, 'profiles', folderName) let ".." through in
+// seven of them before this test existed.
+const GUARDED_HANDLERS = [
+  'open-profile-folder',
+  'open-instance-folder',
+  'save-profiles',
+  'export-profile',
+  'get-screenshots',
+  'launch-game',
+  'upload-local-mod',
+  'rename-instance',
+  'scan-local-mods',
+]
+
+test('instance handlers resolve the renderer folder name through the guard', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
+  for (const channel of GUARDED_HANDLERS) {
+    const start = Math.max(
+      source.indexOf(`ipc.handle('${channel}'`),
+      source.indexOf(`ipc.on('${channel}'`),
+    )
+    assert.ok(start > 0, `${channel} handler must exist`)
+    const end = source.indexOf('\n});', start)
+    assert.ok(end > start, `${channel} handler must close`)
+    assert.match(source.slice(start, end), /profileDirOrNull\(/, `${channel} must use profileDirOrNull`)
+  }
+})
+
+test('no handler joins a raw renderer folder name onto profiles', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
+  const offenders = source.match(
+    /path\.join\([^)\n]*'profiles',\s*(folderName|oldFolderName|newFolderName|currentFolder)\b/g,
+  )
+  assert.equal(offenders, null, `raw joins left: ${(offenders || []).join(', ')}`)
+})
+
+test('download-mod writes no file of its own and owns no API-supplied name', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
+  const start = source.indexOf("ipc.handle('download-mod'")
+  const end = source.indexOf('\n});', start)
+  assert.ok(start > 0 && end > start, 'download-mod handler must exist')
+  const code = source.slice(start, end).replace(/\/\/.*$/gm, '')
+  assert.doesNotMatch(code, /writeFileSync|path\.join|filename/, 'the core bridge owns the download path')
+  assert.match(code, /installLegacyMod/)
+})
