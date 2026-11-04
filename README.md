@@ -123,8 +123,8 @@ src/                    React renderer
 public/images/          bundled theme background images
 tests/                  node:test suites, fixtures only (no live Minecraft)
 scripts/                offline guard, launch dry-run, support-bundle E2E
-resources/              icon, CurseForge key file, instance templates
-mod/                    standalone Fabric cosmetics Gradle project (not part of the app build)
+resources/              icon, instance templates, bundled cosmetic packages
+mod/                    standalone Fabric cosmetics project (kept out of this repository)
 website/                static legal/marketing pages (not part of the app build)
 ```
 
@@ -275,7 +275,6 @@ handling, log analysis, join payloads, support-bundle redaction and UI helpers.
   service and an older cosmetics UI. Do not treat it as current.
 - `FEATURE_ARCHITECTURE_SPEC.md` is a historical design specification. It still matches much of
   the architecture but is history, not a contract.
-- `mod/` is a standalone Gradle project and is not part of the launcher build.
 
 ## License
 
