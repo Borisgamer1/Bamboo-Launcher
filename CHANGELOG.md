@@ -7,10 +7,30 @@ version, so every release needs a block here in **both** languages.
 Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 `New` / `Better` / `Fixed` / `Removed` for English.
 
-## 0.2.6 - 2026-11-04
+## 0.2.3 - 2026-11-04
+
+### Neu
+
+- Neuer Tab „Anpassen“ mit einer Skin-Bibliothek: Skins hochladen, auswählen, umbenennen und löschen, Klassisch oder Slim wählen und direkt auf das Minecraft-Profil anwenden.
+- Skins lassen sich per Drag & Drop auf die Bibliothek ziehen.
+- Das Modell (Klassisch oder Slim) lässt sich pro lokalem Skin umschalten.
+- Die Bamboo-Cosmetics-Mod wird vor jedem Start automatisch in die Instanz gelegt, auf Wunsch in der neuesten Version direkt aus dem Release.
+- Der Kosmetik-Shop zeigt Vorschaubilder direkt im Tab.
+
+### Besser
+
+- Lokale Skins laden nach einem Neustart zuverlässig.
+- Einstellungen aus dem Launcher landen auch nach dem ersten Spielstart wieder in `options.txt`.
+- Die Oberfläche wird mit `strict: true` typgeprüft.
 
 ### Behoben
 
+- Grafik- und Steuerungseinstellungen wurden nach dem ersten Minecraft-Start stillschweigend ignoriert.
+- Eine Release-Jar für eine andere Minecraft-Version konnte in einer 26.3-Instanz landen.
+- Das Löschen einer Instanz prüft den Ordnernamen und meldet einen Fehler, statt Erfolg anzuzeigen, wenn der Ordner bleibt.
+- Jeder Handler, der eine Instanz öffnet, löscht oder beschreibt, prüft den Ordnernamen: `..` und absolute Pfade kommen nicht mehr in ein anderes Verzeichnis.
+- Der Mod-Download schreibt keine Datei mehr unter einem Namen, den eine API-Antwort liefert.
+- Ein Modpack-Export als `.mrpack` läuft ausschließlich über den Core.
 - Die Instanzliste wird atomar gespeichert. Eine unlesbare `profiles.json` wird als Kopie gesichert statt beim nächsten Speichern durch eine leere Liste ersetzt.
 - Die Instanzgrößen werden im Hintergrund ermittelt, statt beim Speichern jede Datei jeder Instanz zu zählen.
 - Nach einem fehlgeschlagenen Start zeigt Discord wieder den Launcher statt dauerhaft „Starting…“.
@@ -18,90 +38,34 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 - Wird eine laufende Instanz umbenannt, ziehen Start-Registry und Core-Register mit.
 - Die Pfadprüfung beim Hashen von Inhaltsdateien vergleicht mit Pfadtrenner, nicht mit einer rohen Zeichenkette.
 
-### Fixed
-
-- The instance list is written atomically. An unreadable `profiles.json` is kept as a copy instead of being replaced by an empty list on the next save.
-- Instance sizes are measured in the background instead of counting every file on every save.
-- After a failed launch Discord shows the launcher again instead of staying on "Starting…".
-- A running instance can no longer be deleted; the error is shown instead of removing it halfway.
-- Renaming a running instance moves the launch registry and the core register along.
-- Content-file hashing checks the path with a separator instead of a raw prefix.
-
-## 0.2.5 - 2026-11-04
-
-### Behoben
-
-- Jeder Handler, der eine Instanz öffnet, löscht oder beschreibt, prüft den Ordnernamen: `..` und absolute Pfade kommen nicht mehr in ein anderes Verzeichnis.
-- Der Mod-Download schreibt keine Datei mehr unter einem Namen, den eine API-Antwort liefert.
-- Ein Modpack-Export als `.mrpack` läuft ausschließlich über den Core.
-
-### Besser
-
-- Die Oberfläche wird jetzt mit `strict: true` typgeprüft; die letzten 13 Typfehler sind behoben.
-
-### Fixed
-
-- Every handler that opens, deletes or writes an instance validates the folder name: `..` and absolute paths can no longer escape it.
-- The mod download writes no file under a name taken from an API response.
-- Exporting a modpack as `.mrpack` runs through the core only.
-
-### Better
-
-- The UI is now type-checked with `strict: true`; the last 13 type errors are gone.
-
-## 0.2.4 - 2026-11-04
-
-### Neu
-
-- Die Bamboo-Cosmetics-Mod wird vor jedem Start automatisch in die Instanz gelegt, auf Wunsch in der neuesten Version direkt aus dem Release.
-- Der Kosmetik-Shop zeigt Vorschaubilder direkt im Tab.
-
-### Besser
-
-- Einstellungen aus dem Launcher landen auch nach dem ersten Spielstart wieder in `options.txt`.
-
-### Behoben
-
-- Grafik- und Steuerungseinstellungen wurden nach dem ersten Minecraft-Start stillschweigend ignoriert.
-- Eine Release-Jar für eine andere Minecraft-Version konnte in einer 26.3-Instanz landen.
-- Das Löschen einer Instanz prüft den Ordnernamen und meldet einen Fehler, statt Erfolg anzuzeigen, wenn der Ordner bleibt.
-
 ### New
 
+- New “Customize” tab with a skin library: upload, select, rename and delete skins, choose classic or slim, and apply them directly to the Minecraft profile.
+- Skins can be dragged and dropped onto the library.
+- The model (classic or slim) can be switched per local skin.
 - The Bamboo Cosmetics mod is placed into the instance before every start, in the newest release build when one is available.
 - The cosmetics shop shows preview images right in the tab.
 
 ### Better
 
+- Local skins now reload reliably after a restart.
 - Launcher settings reach `options.txt` again after the first game start.
+- The UI is type-checked with `strict: true`.
 
 ### Fixed
 
 - Graphics and control settings were silently ignored after the first Minecraft start.
 - A release jar for a different Minecraft version could land in a 26.3 instance.
 - Deleting an instance validates the folder name and reports a failure instead of "deleted" when the folder stays.
-
-## 0.2.3 - 2026-11-01
-
-### Neu
-
-- Neuer Tab „Anpassen“ mit einer Skin-Bibliothek: Skins hochladen, auswählen, umbenennen und löschen, Klassisch oder Slim wählen und direkt auf das Minecraft-Profil anwenden.
-- Skins lassen sich per Drag & Drop auf die Bibliothek ziehen.
-- Das Modell (Klassisch oder Slim) lässt sich pro lokalem Skin umschalten.
-
-### Besser
-
-- Lokale Skins laden nach einem Neustart zuverlässig.
-
-### New
-
-- New “Customize” tab with a skin library: upload, select, rename and delete skins, choose classic or slim, and apply them directly to the Minecraft profile.
-- Skins can be dragged and dropped onto the library.
-- The model (classic or slim) can be switched per local skin.
-
-### Better
-
-- Local skins now reload reliably after a restart.
+- Every handler that opens, deletes or writes an instance validates the folder name: `..` and absolute paths can no longer escape it.
+- The mod download writes no file under a name taken from an API response.
+- Exporting a modpack as `.mrpack` runs through the core only.
+- The instance list is written atomically. An unreadable `profiles.json` is kept as a copy instead of being replaced by an empty list on the next save.
+- Instance sizes are measured in the background instead of counting every file on every save.
+- After a failed launch Discord shows the launcher again instead of staying on "Starting…".
+- A running instance can no longer be deleted; the error is shown instead of removing it halfway.
+- Renaming a running instance moves the launch registry and the core register along.
+- Content-file hashing checks the path with a separator instead of a raw prefix.
 
 ## 0.2.2 - 2026-10-31
 

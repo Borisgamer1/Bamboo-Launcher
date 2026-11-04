@@ -70,7 +70,7 @@ account-wide library mirrored to every instance and deletes them. Equipping
 happens in game; see
 [`docs/cosmetics-shop.md`](docs/cosmetics-shop.md).
 
-Current version: `0.2.4` (in development; the last published build is `0.2.2`). Packaging target:
+Current version: `0.2.3` (in development; the last published build is `0.2.2`). Packaging target:
 Windows x64, NSIS installer. Release notes live in [`CHANGELOG.md`](CHANGELOG.md). Releases are
 published to GitHub and installed versions update themselves; see [`RELEASING.md`](RELEASING.md).
 

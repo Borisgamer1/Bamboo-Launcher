@@ -54,7 +54,7 @@ export async function createSupportBundle(options: SupportBundleOptions): Promis
   const destination = await resolveDestination(resolve(options.destination), now)
   const data = await collectSupportData(roots)
   const telemetry = options.telemetry ?? { enabled: false, since: 0, updatedAt: 0, phases: {} }
-  const appVersion = options.appVersion ?? process.env.npm_package_version ?? '0.2.6'
+  const appVersion = options.appVersion ?? process.env.npm_package_version ?? '0.2.3'
 
   const summary = {
     createdAt: now.toISOString(),
