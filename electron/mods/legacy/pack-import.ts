@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { CurseForgeClient } from '../curseforge'
 import { ModrinthClient } from '../modrinth'
@@ -15,6 +15,7 @@ import { ModError } from '../errors'
 import { withZip, type ZipArchive, type ZipEntryInfo } from '../zip'
 import { legacyGameRoot } from '../../paths'
 import { describeError, getDefaultLogger } from '../../logger'
+import { profileRegistry } from '../../instances/profile-registry'
 import { loaderInfo, normalizeDependencies } from './pack-format'
 import {
   asRecord,
@@ -97,19 +98,6 @@ const METADATA_FILES = new Set([
 
 async function exists(path: string): Promise<boolean> {
   return Boolean(await stat(path).catch(() => undefined))
-}
-
-async function readProfiles(file: string): Promise<LegacyPayload[]> {
-  try {
-    const parsed = JSON.parse(await readFile(file, 'utf8')) as unknown
-    return Array.isArray(parsed) ? parsed.map(asRecord) : []
-  } catch (error) {
-    getDefaultLogger().child('mods:legacy-import').warn(
-      'legacy import: profiles.json is unreadable; continuing without existing names',
-      { file, error: describeError(error) },
-    )
-    return []
-  }
 }
 
 async function uniqueProfileFolder(
@@ -678,8 +666,7 @@ export async function importLegacyProfile(
       await extractArchive(filePath, staging, report, 4, 52)
     }
 
-    const profilesPath = join(rootPath, 'profiles.json')
-    const profiles = await readProfiles(profilesPath)
+    const profiles = profileRegistry(rootPath).read()
     const requestedName =
       (typeof data.targetInstanceName === 'string' && data.targetInstanceName) ||
       metadata.name ||
@@ -746,9 +733,9 @@ export async function importLegacyProfile(
       ...(metadata.modpackVersion ? { modpackVersion: metadata.modpackVersion } : {}),
     }
 
-    profiles.push(newProfile)
-    await mkdir(rootPath, { recursive: true })
-    await writeFile(profilesPath, JSON.stringify(profiles, null, 2), 'utf8')
+    // Append through the registry: it re-reads inside the call, so an instance
+    // saved while the pack was installing is not overwritten by this list.
+    profileRegistry(rootPath).update((list) => ({ next: [...list, newProfile], result: undefined }))
     report(100, 'Import abgeschlossen')
 
     return {

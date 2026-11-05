@@ -65,12 +65,12 @@ const fileName = text(255).refine(singleSegment, {
 const url = z.string().url().max(4096)
 
 /**
- * Argument schemas for channels that take input. Channels without an entry
- * take no arguments (startup/status/window channels). Parsing is validation
+ * The channel manifest: every channel any surface registers, with its argument
+ * schema. `null` means the channel takes no arguments. Parsing is validation
  * only; the original arguments are passed through so payload shapes and
  * defaults stay exactly as the legacy handlers expect them.
  */
-export const IPC_ARG_SCHEMAS: Record<string, z.ZodType> = {
+export const IPC_CHANNELS: Record<string, z.ZodType | null> = {
   'create-instance': z.tuple([z.object({ folderName, options: record.optional() })]),
   'apply-options-patch': z.tuple([z.object({ folderName, patch: record })]),
   'open-profile-folder': z.tuple([folderName]),
@@ -234,10 +234,82 @@ export const IPC_ARG_SCHEMAS: Record<string, z.ZodType> = {
       data: z.unknown().optional(),
     }),
   ]),
+
+  // Typed core surface (electron/ipc.ts). Optional arguments stay optional: the
+  // preload bridge always passes the slot, sometimes as undefined.
+  'find-java': null,
+  'get-java-versions': z.tuple([z.boolean().optional()]),
+  'get-recommended-java-for-mc': z.tuple([text(64)]),
+  'find-best-java-for-mc': z.tuple([text(64)]),
+  'read-latest-log': z.tuple([folderName]),
+  'detect-lan-server': z.tuple([folderName]),
+  'get-hosted-servers': null,
+  'bamboo:core:status': null,
+  'bamboo:core:set-game-root': z.tuple([text(4096)]),
+  'bamboo:logs:analyze': z.tuple([text(256), text(256).optional()]),
+  'bamboo:logs:apply-fix': z.tuple([text(256), text(256)]),
+  'bamboo:logs:undo': z.tuple([text(256)]),
+  'bamboo:settings:get': null,
+  'bamboo:settings:save': z.tuple([record]),
+  'bamboo:statistics:summary': null,
+  'bamboo:telemetry:get': null,
+  'bamboo:support:bundle': z.tuple([text(4096)]),
+  'bamboo:auth:status': null,
+  'bamboo:auth:login': null,
+  'bamboo:auth:cancel': null,
+  'bamboo:auth:refresh': z.tuple([text(256).optional()]),
+  'bamboo:auth:sign-out': z.tuple([text(256).optional()]),
+  'bamboo:accounts:list': null,
+  'bamboo:accounts:set-active': z.tuple([text(256)]),
+  'bamboo:accounts:remove': z.tuple([text(256)]),
+  'bamboo:instances:list': null,
+  'bamboo:instances:update-launch': z.tuple([folderName, record]),
+  'bamboo:instances:select': z.tuple([text(256)]),
+  'bamboo:instances:upsert': z.tuple([record]),
+  'bamboo:instances:remove': z.tuple([text(256)]),
+  'bamboo:skins:snapshot': null,
+  'bamboo:skins:save-skin': z.tuple([record]),
+  'bamboo:skins:set-skin-variant': z.tuple([z.string().max(32)]),
+  'bamboo:skins:reset-skin': null,
+  'bamboo:skins:apply-skin': null,
+  'bamboo:skins:select-cape': z.tuple([z.string().max(256).nullable()]),
+  'bamboo:skins:refresh': null,
+  'bamboo:cosmetics:list': null,
+  'bamboo:cosmetics:preview': z.tuple([record]),
+  'bamboo:cosmetics:remove': z.tuple([record]),
+  'bamboo:cosmetics:shop': null,
+  'bamboo:cosmetics:shop-preview': z.tuple([text(256)]),
+  'bamboo:cosmetics:sync': null,
+  'bamboo:cosmetics:install': z.tuple([record]),
+  'bamboo:mods:check-updates': z.tuple([record]),
+
+  // Updater surface (electron/updater.ts).
+  'bamboo:updates:state': null,
+  'bamboo:updates:check': null,
+  'bamboo:updates:install': null,
+
+  // Channels that take no arguments at all.
+  'window-minimize': null,
+  'window-maximize': null,
+  'window-is-maximized': null,
+  'window-focus': null,
+  'window-close': null,
+  'get-icons': null,
+  'get-settings': null,
+  'get-player-identity': null,
+  'get-forge-versions': null,
+  'get-neoforge-versions': null,
+  'get-profiles': null,
+  'get-collections': null,
+  'get-active-launches': null,
+  'bamboo:ui:ready': null,
+  'app:flush-before-close-done': null,
+  'collect-all-screenshots': null,
+  'open-screenshots-folder': null,
 }
 
 function validateArgs(channel: string, args: unknown[]): unknown[] {
-  const schema = IPC_ARG_SCHEMAS[channel]
+  const schema = IPC_CHANNELS[channel]
   if (!schema) return args
   const result = schema.safeParse(args)
   if (!result.success) {

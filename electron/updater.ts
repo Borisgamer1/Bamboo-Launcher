@@ -1,6 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { ProgressInfo, UpdateInfo } from 'electron-updater'
+import type { IpcRegistrar } from './ipc-registry'
 
 export type UpdateState =
   | 'disabled'
@@ -30,6 +31,8 @@ export interface UpdaterLogger {
 
 interface SetupAutoUpdaterOptions {
   logger: UpdaterLogger
+  /** The one registrar that owns every channel; the updater adds its three. */
+  ipc: IpcRegistrar
   initialDelayMs?: number
   intervalMs?: number
 }
@@ -115,9 +118,9 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions): void {
   if (started) return
   started = true
 
-  ipcMain.handle('bamboo:updates:state', () => status)
-  ipcMain.handle('bamboo:updates:check', () => checkForUpdates(options.logger))
-  ipcMain.handle('bamboo:updates:install', () => {
+  options.ipc.handle('bamboo:updates:state', () => status)
+  options.ipc.handle('bamboo:updates:check', () => checkForUpdates(options.logger))
+  options.ipc.handle('bamboo:updates:install', () => {
     if (!app.isPackaged) return false
     setImmediate(() => autoUpdater.quitAndInstall(false, true))
     return true

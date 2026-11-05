@@ -18,7 +18,7 @@ const DIALOGS = [
   ["src/components/InstancesView.tsx", "delete-dialog-title"],
   ["src/components/InstancesView.tsx", "create-dialog-title"],
   ["src/components/InstancesView.tsx", "rename-dialog-title"],
-  ["src/components/InstancesView.tsx", "own-mods-warning-title"],
+  ["src/components/instances/content-list-view.tsx", "own-mods-warning-title"],
   ["src/components/ProfileImportModal.tsx", "import-dialog-title"],
   ["src/components/ProfileExportModal.tsx", "profile-export-dialog-title"],
 ];
@@ -26,6 +26,7 @@ const DIALOGS = [
 const CALL_SITES = [
   "src/App.tsx",
   "src/components/InstancesView.tsx",
+  "src/components/instances/content-list-view.tsx",
   "src/components/ProfileImportModal.tsx",
   "src/components/ProfileExportModal.tsx",
 ];

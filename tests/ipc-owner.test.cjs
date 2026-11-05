@@ -8,7 +8,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { test } = require('node:test')
 
-const { createIpcRegistrar, IPC_ARG_SCHEMAS } = require('../dist-electron/ipc-registry.js')
+const { createIpcRegistrar, IPC_CHANNELS } = require('../dist-electron/ipc-registry.js')
 
 const TRUSTED = { senderFrame: { url: 'file:///app/index.html' } }
 const UNTRUSTED = { senderFrame: { url: 'https://evil.example/' } }
@@ -86,8 +86,8 @@ test('the registrar validates arguments and keeps the original payload', async (
     /Invalid IPC arguments/,
   )
 
-  assert.equal(IPC_ARG_SCHEMAS['open-external-url'].safeParse(['discord://invite']).success, true)
-  assert.equal(IPC_ARG_SCHEMAS['open-external-url'].safeParse(['file:///etc/passwd']).success, false)
+  assert.equal(IPC_CHANNELS['open-external-url'].safeParse(['discord://invite']).success, true)
+  assert.equal(IPC_CHANNELS['open-external-url'].safeParse(['file:///etc/passwd']).success, false)
 })
 
 test('the registrar maps removeListener to the wrapped listener', () => {
@@ -103,7 +103,7 @@ test('the registrar maps removeListener to the wrapped listener', () => {
 })
 
 test('profile folder schemas reject dot segments but keep ordinary names', () => {
-  const schema = IPC_ARG_SCHEMAS['open-profile-folder']
+  const schema = IPC_CHANNELS['open-profile-folder']
   assert.ok(schema, 'the profile folder schema exists')
   for (const bad of ['.', '..', 'a/b', 'a\\b']) {
     assert.equal(schema.safeParse([bad]).success, false, `${JSON.stringify(bad)} must be rejected`)
@@ -114,14 +114,14 @@ test('profile folder schemas reject dot segments but keep ordinary names', () =>
 })
 
 test('clone-instance accepts the renderer payload when the name is generated in main', () => {
-  const schema = IPC_ARG_SCHEMAS['clone-instance']
+  const schema = IPC_CHANNELS['clone-instance']
   assert.equal(schema.safeParse([{ folderName: 'demo-pack' }]).success, true)
   assert.equal(schema.safeParse([{ folderName: 'demo-pack', newName: 'Copy' }]).success, true)
   assert.equal(schema.safeParse([{ folderName: '..' }]).success, false)
 })
 
 test('change-instance-version validates loader and target fields', () => {
-  const schema = IPC_ARG_SCHEMAS['change-instance-version']
+  const schema = IPC_CHANNELS['change-instance-version']
   const valid = {
     folderName: 'demo-pack',
     mcVersion: '1.21.1',
@@ -136,7 +136,7 @@ test('change-instance-version validates loader and target fields', () => {
 })
 
 test('download-mod accepts a CurseForge-only payload without a download URL', () => {
-  const schema = IPC_ARG_SCHEMAS['download-mod']
+  const schema = IPC_CHANNELS['download-mod']
   const base = { folderName: 'demo-pack', filename: 'mod.jar', itemType: 'mod' }
   assert.equal(schema.safeParse([{ ...base, curseforgeFileId: 123 }]).success, true)
   assert.equal(
@@ -146,34 +146,59 @@ test('download-mod accepts a CurseForge-only payload without a download URL', ()
   assert.equal(schema.safeParse([base]).success, false)
 })
 
-test('every argument-bearing main.js channel has an argument schema', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8')
-  const channels = [...source.matchAll(/ipc\.(?:handle|on|once)\('([^']+)'/g)].map(
-    (match) => match[1],
+test('the manifest covers every channel of every surface, and nothing else', () => {
+  const surfaces = ['main.js', 'electron/ipc.ts', 'electron/updater.ts']
+  const registered = []
+  for (const file of surfaces) {
+    const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
+    const channels = [...source.matchAll(/(?:ipc|ipcMain)\.(?:handle|on|once)\(\s*'([^']+)'/g)].map(
+      (match) => match[1],
+    )
+    assert.ok(channels.length > 0, `${file} must be scanned by the contract`)
+    registered.push(...channels)
+  }
+  const declared = Object.keys(IPC_CHANNELS)
+  assert.deepEqual(
+    [...new Set(registered)].sort(),
+    [...declared].sort(),
+    'every registered channel needs a manifest entry, and the manifest may not list a dead channel',
   )
-  assert.ok(channels.length > 40, 'main.js channel scan found the legacy surface')
+  assert.ok(declared.length > 100, 'the manifest covers the whole surface')
+})
 
-  const noArguments = new Set([
-    'get-icons',
-    'get-settings',
-    'get-player-identity',
-    'get-forge-versions',
-    'get-neoforge-versions',
-    'get-profiles',
-    'get-collections',
-    'collect-all-screenshots',
-    'open-screenshots-folder',
-    'get-active-launches',
-    'bamboo:ui:ready',
-    'window-minimize',
-    'window-maximize',
-    'window-is-maximized',
-    'window-focus',
-    'window-close',
-    'app:flush-before-close-done',
-  ])
-  const unvalidated = channels.filter(
-    (channel) => !noArguments.has(channel) && !IPC_ARG_SCHEMAS[channel],
+test('no surface registers directly on ipcMain any more', () => {
+  const surfaces = ['main.js', 'electron/ipc.ts', 'electron/updater.ts']
+  for (const file of surfaces) {
+    const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
+    assert.doesNotMatch(source, /ipcMain\.(handle|on|once)\(/, `${file} must use the registrar`)
+  }
+})
+
+test('the manifest validates arguments on the typed core surface too', async () => {
+  const { ipc, handles } = fakeIpc()
+  const registrar = createIpcRegistrar(ipc)
+  let calls = 0
+  registrar.handle('bamboo:accounts:set-active', () => {
+    calls += 1
+    return 'ok'
+  })
+  assert.equal(await handles.get('bamboo:accounts:set-active')(TRUSTED, 'account-1'), 'ok')
+  await assert.rejects(
+    () => handles.get('bamboo:accounts:set-active')(TRUSTED, { id: 'account-1' }),
+    /Invalid IPC arguments/,
   )
-  assert.deepEqual(unvalidated, [], 'new argument channels need a schema or an explicit no-argument entry')
+  assert.equal(calls, 1)
+
+  const analyze = createIpcRegistrar(ipc)
+  let got
+  analyze.handle('bamboo:logs:analyze', (_event, instanceId, launchId) => {
+    got = [instanceId, launchId]
+    return null
+  })
+  await handles.get('bamboo:logs:analyze')(TRUSTED, 'instance-1', undefined)
+  assert.deepEqual(got, ['instance-1', undefined])
+  await assert.rejects(
+    () => handles.get('bamboo:logs:analyze')(TRUSTED, '', undefined),
+    /Invalid IPC arguments/,
+  )
 })

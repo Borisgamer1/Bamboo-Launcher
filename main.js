@@ -4,6 +4,12 @@ const fs = require('fs');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const { createIpcRegistrar } = require('./dist-electron/ipc-registry.js');
+// Single owner of profiles.json and the instance-folder naming rules.
+const {
+  profileRegistry,
+  profileFolderOf,
+  profileFolderSlug,
+} = require('./dist-electron/instances/profile-registry.js');
 const { deleteScreenshotFile } = require('./dist-electron/screenshots.js');
 // Single owner for "which folder does this content type go into".
 const { downloadFolder } = require('./dist-electron/mods/legacy/shared.js');
@@ -113,54 +119,12 @@ async function resolveGameRoot() {
 // now reserves a free folder first, and existing collisions are repaired once
 // at startup.
 // ---------------------------------------------------------------------------
-function profileFolderSlug(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 64) || 'instance';
-}
-
-function profileFolderOf(profile) {
-  const stored = typeof profile?.folderName === 'string' ? profile.folderName.trim() : '';
-  if (stored && stored !== '.' && stored !== '..') return path.basename(stored);
-  return profileFolderSlug(profile?.name || profile?.id || 'instance');
-}
-
-// An unreadable profiles.json is the only copy of the instance list, so it is
-// copied aside before any caller can overwrite it with an empty list.
-function quarantineProfilesFile(profilesPath) {
-  const backup = `${profilesPath}.corrupt-${Date.now()}`;
-  try {
-    fs.copyFileSync(profilesPath, backup);
-    shellLog.warn('profiles.json quarantined', { backup });
-  } catch (error) {
-    shellLog.error('profiles.json could not be quarantined', { profilesPath, error: error.message });
-  }
-}
-
 function readProfilesSync(rootPath) {
-  const profilesPath = path.join(rootPath, 'profiles.json');
-  if (!fs.existsSync(profilesPath)) return [];
-  try {
-    const parsed = JSON.parse(fs.readFileSync(profilesPath, 'utf8'));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    shellLog.warn('profiles.json is unreadable', { path: profilesPath, error: error.message });
-    quarantineProfilesFile(profilesPath);
-    return [];
-  }
+  return profileRegistry(rootPath).read();
 }
 
-// Same rule as electron/atomic.ts: write a sibling temp file, then rename, so a
-// crash mid-write cannot leave a truncated instance list behind.
 function writeProfilesSync(rootPath, profiles) {
-  fs.mkdirSync(rootPath, { recursive: true });
-  const target = path.join(rootPath, 'profiles.json');
-  const temp = `${target}.tmp-${process.pid}`;
-  fs.writeFileSync(temp, JSON.stringify(profiles, null, 2));
-  fs.renameSync(temp, target);
+  profileRegistry(rootPath).write(profiles);
 }
 
 // Directory containment with a separator, so "profiles-x" never counts as
@@ -233,50 +197,50 @@ function uniqueProfileName(profiles, baseName) {
  * soon as the renderer saves the profile list again.
  */
 function repairProfileFolderCollisions(rootPath) {
-  const profiles = readProfilesSync(rootPath);
-  if (profiles.length === 0) return { repaired: 0, changes: [] };
-  const used = new Set();
-  const changes = [];
-  for (const profile of profiles) {
-    if (!profile || typeof profile !== 'object') continue;
-    const folder = profileFolderOf(profile);
-    const key = folder.toLowerCase();
-    if (profile.folderName !== folder) {
-      profile.folderName = folder;
-      changes.push({ id: profile.id, folderName: folder });
-    }
-    if (!used.has(key)) {
-      used.add(key);
-      continue;
-    }
-    const source = path.join(rootPath, 'profiles', folder);
-    const targetFolder = nextFreeProfileFolder(rootPath, profile.name || folder, used);
-    const target = path.join(rootPath, 'profiles', targetFolder);
-    try {
-      if (fs.existsSync(source)) {
-        fs.cpSync(source, target, { recursive: true, force: false, errorOnExist: true });
-      } else {
-        fs.mkdirSync(target, { recursive: true });
+  return profileRegistry(rootPath).update((profiles) => {
+    if (profiles.length === 0) return { result: { repaired: 0, changes: [] } };
+    const used = new Set();
+    const changes = [];
+    for (const profile of profiles) {
+      if (!profile || typeof profile !== 'object') continue;
+      const folder = profileFolderOf(profile);
+      const key = folder.toLowerCase();
+      if (profile.folderName !== folder) {
+        profile.folderName = folder;
+        changes.push({ id: profile.id, folderName: folder });
       }
-      profile.folderName = targetFolder;
-      used.add(targetFolder.toLowerCase());
-      changes.push({ id: profile.id, folderName: targetFolder });
-      shellLog.info('instance folder collision repaired', {
-        instance: profile.name,
-        from: folder,
-        to: targetFolder,
-      });
-    } catch (error) {
-      shellLog.warn('instance folder collision could not be repaired', {
-        instance: profile.name,
-        from: folder,
-        target: targetFolder,
-        error: error.message,
-      });
+      if (!used.has(key)) {
+        used.add(key);
+        continue;
+      }
+      const source = path.join(rootPath, 'profiles', folder);
+      const targetFolder = nextFreeProfileFolder(rootPath, profile.name || folder, used);
+      const target = path.join(rootPath, 'profiles', targetFolder);
+      try {
+        if (fs.existsSync(source)) {
+          fs.cpSync(source, target, { recursive: true, force: false, errorOnExist: true });
+        } else {
+          fs.mkdirSync(target, { recursive: true });
+        }
+        profile.folderName = targetFolder;
+        used.add(targetFolder.toLowerCase());
+        changes.push({ id: profile.id, folderName: targetFolder });
+        shellLog.info('instance folder collision repaired', {
+          instance: profile.name,
+          from: folder,
+          to: targetFolder,
+        });
+      } catch (error) {
+        shellLog.warn('instance folder collision could not be repaired', {
+          instance: profile.name,
+          from: folder,
+          target: targetFolder,
+          error: error.message,
+        });
+      }
     }
-  }
-  if (changes.length > 0) writeProfilesSync(rootPath, profiles);
-  return { repaired: changes.length, changes };
+    return { next: changes.length > 0 ? profiles : undefined, result: { repaired: changes.length, changes } };
+  });
 }
 
 // Never print credentials: the launch core masks --accessToken before logging.
@@ -1150,22 +1114,22 @@ ipc.handle('change-instance-version', async (event, { folderName, mcVersion, loa
 
     emitProgress(54, 'Instanzdaten werden aktualisiert…');
 
-    const profiles = readProfilesSync(rootPath);
-    let profileUpdated = false;
-    const nextProfiles = profiles.map((profile) => {
-      if (!profile || typeof profile !== 'object') return profile;
-      if (profileFolderOf(profile) !== requestedFolder) return profile;
-      profileUpdated = true;
-      return {
-        ...profile,
-        version: targetMc,
-        loader: loaderDisplayName(normalizedLoader),
-        loaderVersion: installedLoaderVersion,
-      };
+    const profileUpdated = profileRegistry(rootPath).update((profiles) => {
+      let updated = false;
+      const next = profiles.map((profile) => {
+        if (!profile || typeof profile !== 'object') return profile;
+        if (profileFolderOf(profile) !== requestedFolder) return profile;
+        updated = true;
+        return {
+          ...profile,
+          version: targetMc,
+          loader: loaderDisplayName(normalizedLoader),
+          loaderVersion: installedLoaderVersion,
+        };
+      });
+      return { next: updated ? next : undefined, result: updated };
     });
-    if (profileUpdated) {
-      writeProfilesSync(rootPath, nextProfiles);
-    } else {
+    if (!profileUpdated) {
       shellLog.warn('change-instance-version: profile not found in profiles.json', {
         folderName: requestedFolder,
       });
@@ -1561,28 +1525,21 @@ async function measureFolderBytes(dirPath) {
 async function refreshInstanceSizes(rootPath) {
   const profiles = readProfilesSync(rootPath);
   if (profiles.length === 0) return;
-  let changed = false;
-  const next = [];
+  const measured = new Map();
   for (const profile of profiles) {
-    if (!profile || typeof profile !== 'object') {
-      // Never drop an entry here: this pass only rewrites size strings.
-      next.push(profile);
-      continue;
-    }
+    if (!profile || typeof profile !== 'object') continue;
     const folderName = profileFolderOf(profile);
     const key = folderName.toLowerCase();
+    if (!instanceSizeDirty.has(key)) continue;
     const dirPath = profileDirOrNull(rootPath, folderName);
-    if (!dirPath || !instanceSizeDirty.has(key)) {
-      next.push({ ...profile, folderName });
-      continue;
-    }
+    if (!dirPath) continue;
     const bytes = await measureFolderBytes(dirPath);
     instanceSizeCache.set(key, bytes);
     instanceSizeDirty.delete(key);
-    next.push({ ...profile, folderName, size: formatSize(bytes) || '0 B' });
-    changed = true;
+    measured.set(key, formatSize(bytes) || '0 B');
   }
-  if (changed) writeProfilesSync(rootPath, next);
+  // Patch, do not replace: a save during the measurement window must survive.
+  profileRegistry(rootPath).patchSizes(measured);
 }
 
 function scheduleInstanceSizeRefresh(rootPath) {
@@ -2335,7 +2292,7 @@ app.whenReady().then(async () => {
   }
   try {
     const { setupAutoUpdater } = require('./dist-electron/updater.js');
-    setupAutoUpdater({ logger: shellLog });
+    setupAutoUpdater({ logger: shellLog, ipc });
   } catch (error) {
     // A missing updater module must never prevent the launcher from starting.
     shellLog.warn('auto-updater unavailable', { error: error.message });
@@ -3310,64 +3267,111 @@ ipc.handle('upload-local-mod', async (event, { folderName, filePath, itemType, t
   }
 });
 
-ipc.handle('rename-instance', async (_event, { oldFolderName, newName }) => {
+// A rename touches three places that must agree: the profile list, the folder on
+// disk and the core register. All of it happens here instead of in each handler.
+async function commitInstanceRename({ oldFolderName, newName }) {
   const rootPath = gameRoot();
+  const registry = profileRegistry(rootPath);
+  if (!fs.existsSync(registry.file)) return { success: false, error: 'Profiles file not found' };
+
+  let currentFolder = '';
+  let newFolder = '';
+  let newDir = '';
+  let failure = '';
+  let movedFrom = '';
+  let movedTo = '';
+
+  let profiles;
   try {
-    const profilesPath = path.join(rootPath, 'profiles.json');
-    if (!fs.existsSync(profilesPath)) return { success: false, error: 'Profiles file not found' };
-    const profiles = readProfilesSync(rootPath);
-    const idx = profiles.findIndex(function(p) { return profileFolderOf(p).toLowerCase() === String(oldFolderName || '').toLowerCase(); });
-    if (idx === -1) return { success: false, error: 'Instance not found' };
-    const currentFolder = profileFolderOf(profiles[idx]);
-    const safeName = profileFolderSlug(newName);
-    // Never fail on a name that already exists: reserve the next free folder.
-    const folderName = uniqueProfileFolder(rootPath, safeName, profiles, currentFolder);
-    const oldDir = profileDirOrNull(rootPath, currentFolder);
-    const newDir = profileDirOrNull(rootPath, folderName);
-    if (!oldDir || !newDir) return { success: false, error: 'Ungültiger Instanzordner' };
-    if (folderName !== currentFolder && fs.existsSync(oldDir)) {
-      if (fs.existsSync(newDir)) return { success: false, error: 'Folder name already exists' };
-      fs.renameSync(oldDir, newDir);
+    profiles = registry.update((list) => {
+      const idx = list.findIndex((p) => profileFolderOf(p).toLowerCase() === String(oldFolderName || '').toLowerCase());
+      if (idx === -1) return { result: list };
+      currentFolder = profileFolderOf(list[idx]);
+      // Never fail on a name that already exists: reserve the next free folder.
+      const folderName = uniqueProfileFolder(rootPath, profileFolderSlug(newName), list, currentFolder);
+      const oldDir = profileDirOrNull(rootPath, currentFolder);
+      const targetDir = profileDirOrNull(rootPath, folderName);
+      if (!oldDir || !targetDir) {
+        failure = 'Ungültiger Instanzordner';
+        return { result: list };
+      }
+      if (folderName !== currentFolder && fs.existsSync(oldDir)) {
+        if (fs.existsSync(targetDir)) {
+          failure = 'Folder name already exists';
+          return { result: list };
+        }
+        fs.renameSync(oldDir, targetDir);
+        movedFrom = oldDir;
+        movedTo = targetDir;
+      }
+      newFolder = folderName;
+      newDir = targetDir;
+      const next = list.slice();
+      next[idx] = { ...next[idx], name: newName, folderName };
+      return { next, result: next };
+    });
+  } catch (error) {
+    // The list was not replaced: put the folder back, so profiles.json, the
+    // disk and the launch key still name the same folder.
+    if (movedFrom) {
+      try {
+        fs.renameSync(movedTo, movedFrom);
+      } catch (rollbackError) {
+        shellLog.error('rename-instance: folder rollback failed', {
+          folderName: newFolder,
+          error: rollbackError.message,
+        });
+      }
     }
-    // The launch registry is keyed by folder name, so a running instance keeps
-    // its handle under the new key.
+    throw error;
+  }
+
+  if (!currentFolder) return { success: false, error: 'Instance not found' };
+  if (failure) return { success: false, error: failure };
+
+  // Runtime keys move only once the list is on disk.
+  if (newFolder && newFolder !== currentFolder) {
     const activeLaunch = ACTIVE_LAUNCHES.get(currentFolder);
-    if (activeLaunch !== undefined && folderName !== currentFolder) {
+    if (activeLaunch !== undefined) {
       ACTIVE_LAUNCHES.delete(currentFolder);
-      ACTIVE_LAUNCHES.set(folderName, activeLaunch);
+      ACTIVE_LAUNCHES.set(newFolder, activeLaunch);
     }
     const oldSizeKey = currentFolder.toLowerCase();
-    const newSizeKey = folderName.toLowerCase();
-    if (oldSizeKey !== newSizeKey) {
-      const cachedSize = instanceSizeCache.get(oldSizeKey);
-      if (cachedSize !== undefined) instanceSizeCache.set(newSizeKey, cachedSize);
-      instanceSizeCache.delete(oldSizeKey);
-      instanceSizeDirty.delete(oldSizeKey);
-    }
-    profiles[idx].name = newName;
-    profiles[idx].folderName = folderName;
-    writeProfilesSync(rootPath, profiles);
-    // The core keeps its own instance register; a stale path there would point
-    // every core-side write at the old folder.
-    try {
-      const core = await getBambooCore();
-      if (core) {
-        const found = await core.instanceManager.findByFolder(currentFolder);
-        if (found) {
-          await core.instances.upsert({
-            id: found.instance.id,
-            folderName,
-            path: newDir,
-            updatedAt: Date.now(),
-          });
-        }
-      }
-    } catch (error) {
-      shellLog.warn('rename-instance: core register not updated', { folderName, error: error.message });
-    }
-    return { success: true, newFolderName: folderName, profiles: profiles };
+    const newSizeKey = newFolder.toLowerCase();
+    const cachedSize = instanceSizeCache.get(oldSizeKey);
+    if (cachedSize !== undefined) instanceSizeCache.set(newSizeKey, cachedSize);
+    instanceSizeCache.delete(oldSizeKey);
+    instanceSizeDirty.delete(oldSizeKey);
+  }
+
+  // Second register: without this the core keeps pointing at the old folder.
+  await mirrorInstanceRename(newFolder, newDir, currentFolder);
+  return { success: true, newFolderName: newFolder, profiles };
+}
+
+async function mirrorInstanceRename(newFolder, newDir, currentFolder) {
+  try {
+    const core = await getBambooCore();
+    if (!core) return;
+    // The old folder is still recorded in the core register at this point.
+    const found = await core.instanceManager.findByFolder(currentFolder);
+    if (!found) return;
+    await core.instances.upsert({
+      id: found.instance.id,
+      folderName: newFolder,
+      path: newDir,
+      updatedAt: Date.now(),
+    });
+  } catch (error) {
+    shellLog.warn('rename-instance: core register not updated', { folderName: newFolder, error: error.message });
+  }
+}
+
+ipc.handle('rename-instance', async (_event, payload) => {
+  try {
+    return await commitInstanceRename(payload || {});
   } catch (e) {
-    shellLog.error('rename-instance failed', { oldFolderName, error: e.message });
+    shellLog.error('rename-instance failed', { oldFolderName: payload?.oldFolderName, error: e.message });
     return { success: false, error: e.message };
   }
 });
@@ -3375,35 +3379,38 @@ ipc.handle('rename-instance', async (_event, { oldFolderName, newName }) => {
 ipc.handle('clone-instance', async (_event, { folderName, newName }) => {
   const rootPath = gameRoot();
   try {
-    const profiles = readProfilesSync(rootPath);
-    const sourceIndex = profiles.findIndex(function(p) {
-      return profileFolderOf(p).toLowerCase() === String(folderName || '').toLowerCase();
+    let clone = null;
+    let sourceName = '';
+    profileRegistry(rootPath).update((profiles) => {
+      const sourceIndex = profiles.findIndex((p) =>
+        profileFolderOf(p).toLowerCase() === String(folderName || '').toLowerCase());
+      if (sourceIndex === -1) return { result: null };
+      const sourceProfile = profiles[sourceIndex];
+      sourceName = String(sourceProfile.name || '');
+      const name = uniqueProfileName(profiles, newName || `${sourceProfile.name || 'Instanz'} (Kopie)`);
+      const cloneFolder = uniqueProfileFolder(rootPath, profileFolderSlug(name), profiles);
+      const sourceDir = path.join(rootPath, 'profiles', profileFolderOf(sourceProfile));
+      const targetDir = path.join(rootPath, 'profiles', cloneFolder);
+      if (fs.existsSync(sourceDir)) {
+        fs.cpSync(sourceDir, targetDir, { recursive: true, force: false, errorOnExist: true });
+      } else {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+      clone = {
+        ...sourceProfile,
+        id: require('crypto').randomUUID(),
+        name,
+        folderName: cloneFolder,
+        playTimeMs: 0,
+        sessionCount: 0,
+        lastPlayedAt: 0,
+        lastPlayed: '',
+        createdAt: Date.now(),
+      };
+      return { next: [...profiles, clone], result: clone };
     });
-    if (sourceIndex === -1) return { success: false, error: 'Instance not found' };
-    const sourceProfile = profiles[sourceIndex];
-    const name = uniqueProfileName(profiles, newName || `${sourceProfile.name || 'Instanz'} (Kopie)`);
-    const cloneFolder = uniqueProfileFolder(rootPath, profileFolderSlug(name), profiles);
-    const sourceDir = path.join(rootPath, 'profiles', profileFolderOf(sourceProfile));
-    const targetDir = path.join(rootPath, 'profiles', cloneFolder);
-    if (fs.existsSync(sourceDir)) {
-      fs.cpSync(sourceDir, targetDir, { recursive: true, force: false, errorOnExist: true });
-    } else {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
-    const clone = {
-      ...sourceProfile,
-      id: require('crypto').randomUUID(),
-      name,
-      folderName: cloneFolder,
-      playTimeMs: 0,
-      sessionCount: 0,
-      lastPlayedAt: 0,
-      lastPlayed: '',
-      createdAt: Date.now(),
-    };
-    profiles.push(clone);
-    writeProfilesSync(rootPath, profiles);
-    shellLog.info('instance cloned', { from: sourceProfile.name, to: name, folderName: cloneFolder });
+    if (!clone) return { success: false, error: 'Instance not found' };
+    shellLog.info('instance cloned', { from: sourceName, to: clone.name, folderName: clone.folderName });
     return { success: true, profile: clone };
   } catch (e) {
     shellLog.error('clone-instance failed', { folderName, error: e.message });

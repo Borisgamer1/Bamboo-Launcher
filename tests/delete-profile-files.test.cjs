@@ -60,12 +60,19 @@ const GUARDED_HANDLERS = [
   'get-screenshots',
   'launch-game',
   'upload-local-mod',
-  'rename-instance',
   'scan-local-mods',
 ]
 
 test('instance handlers resolve the renderer folder name through the guard', () => {
   const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
+  // rename-instance delegates to one function that owns list, folder and core
+  // register; the guard lives there.
+  const delegated = {
+    'rename-instance': [
+      'async function commitInstanceRename(',
+      "ipc.handle('clone-instance'",
+    ],
+  }
   for (const channel of GUARDED_HANDLERS) {
     const start = Math.max(
       source.indexOf(`ipc.handle('${channel}'`),
@@ -74,6 +81,12 @@ test('instance handlers resolve the renderer folder name through the guard', () 
     assert.ok(start > 0, `${channel} handler must exist`)
     const end = source.indexOf('\n});', start)
     assert.ok(end > start, `${channel} handler must close`)
+    assert.match(source.slice(start, end), /profileDirOrNull\(/, `${channel} must use profileDirOrNull`)
+  }
+  for (const [channel, [from, to]] of Object.entries(delegated)) {
+    const start = source.indexOf(from)
+    const end = source.indexOf(to, start)
+    assert.ok(start > 0 && end > start, `${channel} delegate must exist`)
     assert.match(source.slice(start, end), /profileDirOrNull\(/, `${channel} must use profileDirOrNull`)
   }
 })
