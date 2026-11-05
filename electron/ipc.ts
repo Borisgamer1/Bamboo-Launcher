@@ -275,7 +275,7 @@ export function registerIpc(ipcMain: IpcMainLike, core: LauncherCore): void {
     const { item, bytes } = await shopPackageById(String(id ?? ''))
     return parseCosmiq(bytes, item.id)
   }))
-  ipc.handle('bamboo:cosmetics:sync', eventless(() => syncStatus()))
+  ipc.handle('bamboo:cosmetics:sync', eventless(async () => syncStatus(await cosmeticTargets())))
   // One batched request for the whole mods folder; the per-mod lookups stay for the rest.
   ipc.handle('bamboo:mods:check-updates', eventless(async (payload: unknown) => {
     const folderName = String(((payload ?? {}) as { folderName?: unknown }).folderName ?? '')

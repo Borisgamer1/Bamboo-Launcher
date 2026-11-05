@@ -40,6 +40,7 @@ import { createSupportBundle, type SupportBundleResult } from './support-bundle'
 import type { FetchLike } from './download/http'
 import type { FixDeps } from './logs/types'
 import { ensureBambooMod } from './cosmetics/mod'
+import { readConfig, writeInstanceSync } from './cosmetics/sync'
 import { ModrinthClient } from './mods/modrinth'
 import { installModrinthProject } from './mods/installer'
 import type { ModLoader } from './mods/types'
@@ -524,6 +525,8 @@ export class LauncherCore {
       const mod = await ensureBambooMod(found.directory, file.version, file.loader, {
         cacheDir: this.paths.cacheDir,
       })
+      // The build owns the pair; the mod only reads bamboo/sync.json.
+      await writeInstanceSync(found.directory, await readConfig())
       this.logger.child('cosmetics').debug('bamboo mod state', { result: mod, instance: file.name })
     } catch {
       // A missing mod copy must never block a start either.

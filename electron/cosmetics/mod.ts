@@ -62,6 +62,14 @@ async function sizeOf(target: string): Promise<number | null> {
   }
 }
 
+async function mtimeOf(target: string): Promise<number> {
+  try {
+    return (await stat(target)).mtimeMs
+  } catch {
+    return 0
+  }
+}
+
 async function readState(file: string): Promise<ReleaseState | null> {
   try {
     const parsed = JSON.parse(await readFile(file, 'utf8')) as Partial<ReleaseState>
@@ -153,6 +161,7 @@ export async function ensureBambooMod(
   if (!source) return 'missing-jar'
   const sourceSize = await sizeOf(source.path)
   if (sourceSize === null) return 'missing-jar'
+  const sourceTime = await mtimeOf(source.path)
 
   const mods = join(instanceDirectory, 'mods')
   await mkdir(mods, { recursive: true })
@@ -172,8 +181,8 @@ export async function ensureBambooMod(
     await copyJar(source.path, target)
     return 'installed'
   }
-  // Same name and same size is taken as the same build; a release changes the file.
-  if (targetSize !== sourceSize) {
+  // A rebuild can keep the exact byte count, so the timestamp decides too.
+  if (targetSize !== sourceSize || (await mtimeOf(target)) < sourceTime) {
     await copyJar(source.path, target)
     return 'updated'
   }

@@ -195,17 +195,18 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({ snapshot, lang, onRe
     }
   }, [api])
 
-  // One probe per visit: the relay only needs to answer whether others can see us.
+  // Local state only: which instances have the mod and a readable sync.json.
   useEffect(() => {
     if (!api) return
     let cancelled = false
     api
       .syncStatus()
       .then((value) => {
-        if (!cancelled) setSync(value ?? null)
+        if (cancelled) return
+        setSync(value ?? null)
       })
       .catch(() => {
-        if (!cancelled) setSync({ relay: '', online: false })
+        if (!cancelled) setSync(null)
       })
     return () => {
       cancelled = true
@@ -327,18 +328,30 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({ snapshot, lang, onRe
     )
   }
 
+  const total = sync?.instances.total ?? 0
+  const ready = sync?.instances.ready ?? 0
   const syncText =
     sync === null
       ? de
-        ? 'Sync wird geprüft'
-        : 'Checking sync'
-      : sync.online
+        ? 'Sync-Status nicht lesbar'
+        : 'Sync status unreadable'
+      : !sync.configured
         ? de
-          ? 'Sync aktiv · für Mitspieler sichtbar'
-          : 'Sync on · visible to other players'
-        : de
-          ? 'Sync offline · nur du siehst deine Cosmetics'
-          : 'Sync offline · only you see your cosmetics'
+          ? 'Kein Supabase-Projekt in diesem Build'
+          : 'This build ships no Supabase project'
+        : ready === 0
+          ? de
+            ? 'Eingerichtet · noch keine Instanz bereit'
+            : 'Set up · no instance ready yet'
+          : de
+            ? `Bereit in ${ready} von ${total} Instanzen`
+            : `Ready in ${ready} of ${total} instances`
+  const syncDetail =
+    sync?.configured && sync.instances.missingMod > 0
+      ? de
+        ? `${sync.instances.missingMod} Instanz(en) ohne Mod-Jar`
+        : `${sync.instances.missingMod} instance(s) without the mod jar`
+      : null
 
   return (
     <>
@@ -428,22 +441,29 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({ snapshot, lang, onRe
             </div>
           </section>
 
-          <p
-            className="m-0 mt-3 flex items-center gap-2 text-micro text-ink-quaternary"
-            title={
-              de
-                ? 'Andere Spieler mit dem Bamboo-Mod sehen deine ausgerüsteten Shop-Cosmetics nach etwa einer Minute. Eigene Importe bleiben lokal.'
-                : 'Players with the Bamboo mod see your equipped shop cosmetics after about a minute. Own imports stay local.'
-            }
-          >
-            <span
-              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                sync?.online ? 'bg-accent' : 'bg-ink-quaternary/50'
-              }`}
-              aria-hidden
-            />
-            {syncText}
-          </p>
+          <div className="mt-3 rounded-[12px] border border-hairline px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  sync?.configured && ready > 0 ? 'bg-accent' : 'bg-ink-quaternary/50'
+                }`}
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 truncate text-micro text-ink-tertiary">
+                {syncText}
+              </span>
+            </div>
+            {syncDetail ? (
+              <p className="m-0 mt-1 text-micro text-ink-quaternary">{syncDetail}</p>
+            ) : null}
+            {sync?.configured ? (
+              <p className="m-0 mt-1 text-micro leading-4 text-ink-quaternary">
+                {de
+                  ? 'Projekt kommt mit dem Launcher; bamboo/sync.json wird beim Start jeder Instanz geschrieben.'
+                  : 'The project ships with the launcher; bamboo/sync.json is written on every instance start.'}
+              </p>
+            ) : null}
+          </div>
         </aside>
 
         <section className={`min-w-0 overflow-hidden ${PANEL}`}>

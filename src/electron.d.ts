@@ -884,14 +884,20 @@ export interface CosmeticsApi {
   shop(): Promise<ShopCatalog | undefined>
   shopPreview(id: string): Promise<CosmeticPreview | undefined>
   install(payload: { id: string }): Promise<InstalledCosmetic[] | undefined>
-  /** Reachability of the mod's relay; the launcher itself never publishes. */
+  /** Readiness of the Supabase sync per instance; no network probe. */
   syncStatus(): Promise<CosmeticSyncStatus | undefined>
 }
 
 export interface CosmeticSyncStatus {
-  relay: string
-  online: boolean
-  error?: string
+  /** The build ships a project pair; false in a build without one. */
+  configured: boolean
+  instances: {
+    total: number
+    /** Mod jar present and sync.json readable. */
+    ready: number
+    /** sync.json readable, mod jar missing. */
+    missingMod: number
+  }
 }
 
 export interface BambooApi {
