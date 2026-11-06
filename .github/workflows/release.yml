@@ -95,6 +95,12 @@ jobs:
           mkdir -p resources
           printf '%s\n' "$CURSEFORGE_API_KEY" > resources/curseforge-key.txt
 
+      # Renderer and main process are generated, never in the repository. Without
+      # this step the installer ships an asar with no dist/ and no dist-electron/
+      # and crashes on launch with "Cannot find module dist-electron/...".
+      - name: Build renderer and main process
+        run: npm run build
+
       # Each job builds only its own platform and never publishes. The publish
       # job below uploads everything together, which avoids parallel writers on
       # the same release.
