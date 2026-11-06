@@ -175,7 +175,9 @@ jobs:
             echo "No release artifacts were downloaded." >&2
             exit 1
           fi
-          npx electron-builder publish -f "${files[@]}"
+          # --policy always is required: without it electron-builder 26 sets the
+          # publish config to undefined and rejects its own schema.
+          npx electron-builder publish -f "${files[@]}" --policy always
 
       # A release without latest.yml silently kills updates for every installed
       # launcher (that is what happened to v0.2.1). Fail the workflow instead.
