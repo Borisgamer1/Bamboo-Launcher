@@ -52,7 +52,7 @@ Discord: <https://discord.gg/DXzNcTGJD> · Website: <https://bamboolauncher.page
 
 ## About this repository
 
-Bamboo Launcher is a local-first Minecraft launcher for Windows. An Electron shell hosts a
+Bamboo Launcher is a local-first Minecraft launcher. An Electron shell hosts a
 React/TypeScript renderer and a TypeScript main process that manages instances, mod loaders
 (Vanilla, Fabric, Forge, NeoForge), Java runtimes, mods and modpacks (Modrinth and CurseForge),
 log analysis, Microsoft sign-in and the UI theme system.
@@ -70,9 +70,10 @@ account-wide library mirrored to every instance and deletes them. Equipping
 happens in game; see
 [`docs/cosmetics-shop.md`](docs/cosmetics-shop.md).
 
-Current version: `0.2.3` (in development; the last published build is `0.2.2`). Packaging target:
-Windows x64, NSIS installer. Release notes live in [`CHANGELOG.md`](CHANGELOG.md). Releases are
-published to GitHub and installed versions update themselves; see [`RELEASING.md`](RELEASING.md).
+Current version: `0.2.3` (in development; the last published build is `0.2.2`). Packaging targets:
+Windows x64 (NSIS), macOS universal (DMG + ZIP) and Linux x64 (AppImage + DEB). Release notes live
+in [`CHANGELOG.md`](CHANGELOG.md). Releases are published to GitHub; installed Windows and Linux
+AppImage builds update themselves, unsigned macOS builds do not; see [`RELEASING.md`](RELEASING.md).
 
 ## Stack and requirements
 
@@ -80,8 +81,8 @@ published to GitHub and installed versions update themselves; see [`RELEASING.md
 - React 19 + Vite 8 renderer (`src/`).
 - `node:test` for all automated tests (`tests/*.test.cjs`); no Jest/Vitest runner.
 - Node.js 24 and npm (the version CI uses). Java is found or installed at runtime, not bundled.
-- Windows 10/11 for packaging. The dev server runs on other platforms, but only the Windows
-  installer is configured.
+- Windows, macOS or Linux for packaging; electron-builder runs on the target OS. CI uses
+  `windows-latest`, `macos-latest` and `ubuntu-latest`.
 
 ## Setup and run
 
@@ -113,6 +114,9 @@ electron/               main-process TypeScript (compiled to dist-electron/)
   index.ts              boots the core and registers IPC
   core.ts               shared services: stores, instances, Java, launch, mods, logs
   ipc.ts                namespaced IPC handlers for the core
+  legacy/               bridges for the legacy renderer: options.txt, CurseForge,
+                        instance folders/register, version switch/repair, modpack
+                        install, profile export/import, settings, shell and screenshots
   ipc-registry.ts       registration wrapper: sender guard + schema validation
   schemas.ts            zod schemas for IPC arguments
   auth/ launch/ loaders/ java/ mods/ instances/ version/ logs/ support/
@@ -142,8 +146,8 @@ this file, with the results shown.
 | `npm run lint` | ESLint over the whole repository, zero warnings allowed | 0 errors, 0 warnings |
 | `npx tsc -b` | TypeScript project references for the renderer and node configs | clean |
 | `npm run build` | `build:core` (`tsc -p tsconfig.electron.json`), `tsc -b`, Vite production build | success |
-| `npm run test:core` | core suite | 394 tests, 394 passed |
-| `npm run test:offline` | the same suite with non-loopback network blocked | 394 passed, 40 files, 0 external attempts |
+| `npm run test:core` | core suite | 516 tests, 516 passed |
+| `npm run test:offline` | the same suite with non-loopback network blocked | 516 passed, 55 files, 0 external attempts |
 | `npm run launch:dryrun` | read-only launch planning against the real `.minecraft` installation | exit 0, no process started |
 
 `npm run build` emits the usual Vite chunk-size warning but completes. `test:core` enumerates its
@@ -162,33 +166,22 @@ with scripts disabled, `npm run lint`, `npm run test:offline`, the support-bundl
 ## Packaging
 
 ```bash
-npm run release    # npm run build, then electron-builder
+npm run dist:win     # Windows x64, NSIS installer
+npm run dist:mac     # macOS universal (Intel + Apple Silicon), DMG + ZIP
+npm run dist:linux   # Linux x64, AppImage + DEB
 ```
 
-The NSIS installer is written to `release/Bamboo Launcher Setup <version>.exe`. The build is
-x64-only, `oneClick: false`, and lets the user choose the installation directory.
+Each command runs the production build first and writes the artifacts plus update metadata
+(`latest*.yml`, blockmaps) into `release/`. Windows keeps
+`Bamboo-Launcher-Setup-<version>.exe` with `oneClick: false` and a selectable install directory;
+macOS and Linux use `Bamboo-Launcher-<version>-<arch>.<ext>`. The builds are unsigned, so Windows
+SmartScreen and macOS Gatekeeper warn on first run. macOS auto-update only works with a signed
+app, so unsigned macOS builds must be replaced by hand.
 
-Packaging note for this checkout: `npm run release` builds successfully, but on this machine
-electron-builder fails while unpacking its downloaded Electron with
-`EPERM: operation not permitted, rename 'release\win-unpacked.tmp' -> 'release\win-unpacked'`.
-The freshly extracted folder is locked by something in this environment: the same rename fails
-from a plain shell after electron-builder has exited, so it is not a project defect. Packaging was
-therefore verified with the Electron already installed in `node_modules`:
-
-```bash
-npx electron-builder --win --config.electronDist=node_modules/electron/dist
-```
-
-That produced `release/Bamboo Launcher Setup 0.2.0.exe` with exit code 0. The override is safe
-because the local Electron matches the pinned dev dependency, but it should not be necessary on a
-machine without the lock. The installer is 102.1 MiB (`107.109.300` bytes) and was built on
-29 October 2026. Its SHA-512 is
-`0251828955b02f343e4365619c7e339f9dda968fc34194edfceab09025ebad90b027f1d2d72612659400781c90224f19984ee82670a189b16dbef18abb3984f5`.
-It was installed silently into a scratch directory for the release-candidate check; the
-installed executable started from that location without a dev server, and a second instance with
-its own user-data and game root started independently. The installer is unsigned, so Windows SmartScreen warns on first
-run. The app.asar still includes the wallpaper archive set under `resources/Instanz Vorlagen/` and
-production `node_modules`, which keeps the package large.
+`.github/workflows/release.yml` runs on a `v*` tag: it verifies lint and the offline core suite,
+builds all three platforms on their native runners, then a single publish job uploads every asset
+into one GitHub release. The publish job exists so the platforms never race on the same release;
+`workflow_dispatch` builds the artifacts without publishing. See [`RELEASING.md`](RELEASING.md).
 
 ## Local themes
 
@@ -232,10 +225,14 @@ Electron's userData directory (via `app.getPath('userData')`) holds launcher sta
 `root` (pointer to the game folder), `settings.json`, `accounts.json`, `accounts.tokens.json`
 (encrypted tokens), `instances.json`, `java.json`, `logs/`, `cache/`, `backups/`.
 
-Instances live under the game folder at `<game root>/instances/<folder>/`, each with
-`instance.json` and the usual `mods/`, `config/`, `saves/`, `resourcepacks/`, `shaderpacks/`,
-`screenshots/`, `logs/` and `crash-reports/` folders. The game root is chosen on first start and
-can be changed later; `%APPDATA%\.minecraft` is not modified.
+Instances created in the launcher UI live under the game folder at
+`<game root>/profiles/<folder>/`, with the usual `mods/`, `config/`, `saves/`, `resourcepacks/`,
+`shaderpacks/`, `screenshots/`, `logs/` and `crash-reports/`. Their metadata is the legacy profile
+entry in `<game root>/profiles.json`. The core also accepts a managed layout under
+`<game root>/instances/<folder>/` whose folders carry `instance.json`. Both kinds are registered in
+`<userData>/instances.json`; the launcher updates that register when an instance is created,
+renamed, cloned or deleted, and reconciles existing profiles on load. The game root is chosen on
+first start and can be changed later; `%APPDATA%\.minecraft` is not modified.
 
 | Variable | Effect |
 | --- | --- |
@@ -252,7 +249,7 @@ with one while the sources do not.
 
 ## Tests and what they cover
 
-The 40 suites are fixture-driven and must not need a Minecraft installation or external network
+The 55 suites are fixture-driven and must not need a Minecraft installation or external network
 access. They cover IPC ownership and argument validation, the preload contract,
 version/manifest resolution,
 Java selection, loader installers, the launch command builder and legacy instance migration,
@@ -270,15 +267,14 @@ handling, log analysis, join payloads, support-bundle redaction and UI helpers.
   requires a real account.
 - The Windows installer was built but not installed or started. Discord rich presence connected
   during the shell smoke test, but nothing beyond that connection was verified.
-- No macOS or Linux packaging target exists.
+- The macOS and Linux installers are produced by CI on their native runners only; neither was
+  installed or started here.
 
 ## Repository notes
 
 - The launcher has no server and no database; all state lives in the Electron userData directory.
 - [`SUMMARY.md`](SUMMARY.md) is stale: it documents the deleted PostgreSQL backend, the friends
   service and an older cosmetics UI. Do not treat it as current.
-- `FEATURE_ARCHITECTURE_SPEC.md` is a historical design specification. It still matches much of
-  the architecture but is history, not a contract.
 
 ## License
 

@@ -8,17 +8,21 @@ public: `electron-updater` reads `latest.yml` and the installer without embeddin
 
 The updater asks GitHub for the **newest published release** and then downloads `latest.yml` from
 that release. A release that contains only the installer is dead as an update channel — every
-installed launcher reports "Update-Prüfung fehlgeschlagen" and nobody can tell why.
+installed launcher reports "Update-Prüfung fehlgeschlagen" and nobody can tell why.Every release must therefore carry the Windows updater set, plus the macOS and Linux sets for those
+platforms:
 
-Every release must therefore carry exactly these three assets:
+- Windows: `Bamboo-Launcher-Setup-<version>.exe`, its `.blockmap`, `latest.yml`
+- macOS: `Bamboo-Launcher-<version>-universal.dmg`, `Bamboo-Launcher-<version>-universal.zip`,
+  `latest-mac.yml`
+- Linux: `Bamboo-Launcher-<version>-<arch>.AppImage`, `Bamboo-Launcher-<version>-<arch>.deb`,
+  `latest-linux.yml`
 
-- `Bamboo-Launcher-Setup-<version>.exe`
-- `Bamboo-Launcher-Setup-<version>.exe.blockmap`
-- `latest.yml`
+It must be **published**, not a draft and not a pre-release (`/releases/latest` skips both). v0.2.1
+shipped with the installer alone, so no installed copy of it can discover anything; v0.2.2 fixes
+the channel for everyone because the updater reads the newest release, not its own.
 
-It must be **published**, not a draft and not a pre-release (`/releases/latest` skips both).
-v0.2.1 shipped with the installer alone, so no installed copy of it can discover anything; v0.2.2
-fixes the channel for everyone because the updater reads the newest release, not its own.
+`electron-updater` on macOS only installs signed updates. The CI build is unsigned, so macOS users
+have to install new versions by hand until signing and notarization are configured.
 
 ## One-time step for 0.2.0 installations
 
@@ -46,19 +50,22 @@ settings, accounts, instances and worlds stay in place.
 4. Either publish from the tag (preferred, no manual asset handling):
 
    ```bash
-   git tag -a v0.2.2 -m "Bamboo Launcher 0.2.2"
-   git push origin v0.2.2
+   git tag -a v0.2.3 -m "Bamboo Launcher 0.2.3"
+   git push origin v0.2.3
    ```
 
-   The `release` workflow verifies that the tag and `package.json` match, builds, uploads the
-   assets and then runs `node scripts/check-update-feed.cjs --remote`. A release that cannot update
-   anyone turns the workflow red instead of shipping silently.
+   The `release` workflow verifies that the tag and `package.json` match, runs lint and the offline
+   core suite, then builds Windows, macOS and Linux in parallel. A single publish job waits for all
+   three, uploads every asset into one GitHub release and runs
+   `node scripts/check-update-feed.cjs --remote`. A release that cannot update anyone turns the
+   workflow red instead of shipping silently. `workflow_dispatch` builds without publishing.
 
-   Users only need the installer. `latest.yml` is what makes that installer findable for every
-   running copy, and the `.blockmap` only enables the delta download: without it the update still
-   works, it just downloads the full installer instead of the changed blocks.
+   `latest.yml` is what makes the Windows installer findable for every running copy, and the
+   `.blockmap` only enables the delta download: without it the update still works, it just
+   downloads the full installer instead of the changed blocks. `latest-mac.yml` and
+   `latest-linux.yml` do the same for those platforms.
 
-   Or build and publish from this machine:
+   Or build and publish the Windows release from this machine:
 
    ```bash
    npm run release           # installer + latest.yml into release/, verified locally

@@ -9,10 +9,16 @@ on:
 permissions:
   contents: write
 
+# One release run at a time: the publish job uploads all platforms into the
+# same GitHub release, so two runs (or a rerun racing the first) would collide.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  windows:
-    name: windows-release
-    runs-on: windows-latest
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
@@ -44,11 +50,40 @@ jobs:
       - name: Core tests with external network blocked
         run: npm run test:offline
 
-      - name: Build renderer and main process
-        run: npm run build
+  build:
+    name: build-${{ matrix.platform }}
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            artifact: windows
+          - os: macos-latest
+            platform: mac
+            artifact: macos
+          - os: ubuntu-latest
+            platform: linux
+            artifact: linux
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
 
       # The installer ships the CurseForge key, the sources do not. The file is
-      # gitignored, so a fresh checkout has to receive it from the secret.
+      # gitignored, so every platform has to receive it from the secret.
       - name: Provide the bundled CurseForge key
         env:
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
@@ -60,13 +95,87 @@ jobs:
           mkdir -p resources
           printf '%s\n' "$CURSEFORGE_API_KEY" > resources/curseforge-key.txt
 
-      - name: Publish NSIS installer and update metadata
+      # Each job builds only its own platform and never publishes. The publish
+      # job below uploads everything together, which avoids parallel writers on
+      # the same release.
+      - name: Build ${{ matrix.platform }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --${{ matrix.platform }} --publish never
+
+      - name: Upload ${{ matrix.platform }} artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+            release/*.dmg
+            release/*.zip
+            release/latest-mac.yml
+            release/*.AppImage
+            release/*.deb
+            release/latest-linux.yml
+
+  publish:
+    name: publish
+    needs: build
+    # workflow_dispatch builds without publishing: a manual run has no tag, and
+    # the version guard above only runs for tags.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Only the electron-builder CLI is needed here; no Electron binary.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh release
+
+      - name: Publish GitHub release
         env:
           # A PAT is only required when this workflow runs in a different repo
           # than the public release repository (publish.repo in package.json).
           GH_TOKEN: ${{ secrets.GH_RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --win nsis --publish always
+          # Allows a rerun after GitHub's two-hour release edit window.
+          EP_GH_IGNORE_TIME: 'true'
+        run: |
+          shopt -s nullglob
+          files=(
+            release/*.exe
+            release/*.blockmap
+            release/*.dmg
+            release/*.zip
+            release/*.AppImage
+            release/*.deb
+            release/latest.yml
+            release/latest-mac.yml
+            release/latest-linux.yml
+          )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release artifacts were downloaded." >&2
+            exit 1
+          fi
+          npx electron-builder publish -f "${files[@]}"
 
       # A release without latest.yml silently kills updates for every installed
       # launcher (that is what happened to v0.2.1). Fail the workflow instead.
