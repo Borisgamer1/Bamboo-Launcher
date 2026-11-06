@@ -74,6 +74,15 @@ test("release feed: latest.yml is parsed regardless of quoting and line endings"
   assert.equal(PARSE("no version here"), null);
 });
 
+test("release workflow builds the app before packaging", () => {
+  const workflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", "release.yml"), "utf8");
+  const build = workflow.indexOf("npm run build");
+  const pack = workflow.indexOf("npx electron-builder");
+
+  assert.ok(build > -1, "the workflow must run npm run build");
+  assert.ok(build < pack, "the build must run before electron-builder, or the asar ships without dist/ and dist-electron/");
+});
+
 test("release feed: the embedded launcher version matches package.json", () => {
   const args = fs.readFileSync(path.join(ROOT, "electron", "launch", "args.ts"), "utf8");
   const match = /LAUNCHER_VERSION\s*=\s*'([^']+)'/.exec(args);
