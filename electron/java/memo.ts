@@ -15,11 +15,22 @@ export function javaMemoRelativePath(gameRoot: string, javaPath: string): string
   return relativePath.split(sep).join('/')
 }
 
+// Memos are stored with forward slashes but may be read on another platform.
+// A drive-letter path is absolute on Windows and relative to POSIX `resolve`.
+const WINDOWS_ABSOLUTE = /^(?:[a-zA-Z]:|[\\/]{2})/
+
 export function resolveJavaMemo(
   gameRoot: string,
   memo: ResolvedJava | undefined,
 ): JavaMemoTarget | undefined {
-  if (!memo || !memo.relativePath || isAbsolute(memo.relativePath)) return undefined
+  if (
+    !memo ||
+    !memo.relativePath ||
+    isAbsolute(memo.relativePath) ||
+    WINDOWS_ABSOLUTE.test(memo.relativePath)
+  ) {
+    return undefined
+  }
   const root = resolve(gameRoot)
   const absolute = resolve(root, memo.relativePath)
   const relativePath = relative(root, absolute)
