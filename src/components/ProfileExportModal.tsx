@@ -21,6 +21,7 @@ import type { Instance } from "./InstancesView";
 import type { ExportFormat, ExportOptions, ExportProgress } from "../services/profileExport";
 import { profileExportService } from "../services/profileExport";
 import { LanguageType } from "../lib/translations";
+import { mainErrorText } from "../lib/mainErrors";
 import { useToast } from "./Toast";
 import { MOTION, EASE, motionSafe } from "../lib/motionTokens";
 import { Dialog } from "./Dialog";
@@ -137,12 +138,12 @@ export const ProfileExportModal: React.FC<ProfileExportModalProps> = ({
 
       setStep("complete");
     } else {
-      setError(result.error || t("Export fehlgeschlagen", "Export failed"));
+      setError(mainErrorText(result, lang, t("Export fehlgeschlagen", "Export failed")));
       setStep("options");
     }
 
     setIsExporting(false);
-  }, [buildOptions, t, instance]);
+  }, [buildOptions, t, instance, lang]);
 
   const folderName = instance.folderName || instance.name.toLowerCase().replace(/\s+/g, "-");
 

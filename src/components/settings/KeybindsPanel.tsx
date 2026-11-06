@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { translations } from '../../lib/translations';
 import {
   AlertTriangle,
   Check,
@@ -392,7 +393,7 @@ export function KeybindsPanel({
                 onClick={() => setSelectedToken(null)}
                 className="ml-auto text-micro text-ink-tertiary hover:text-ink cursor-pointer"
               >
-                {t(lang, 'Schließen', 'Close')}
+                {translations[lang].common.close}
               </button>
             </div>
           ) : hoveredToken ? (
@@ -456,11 +457,11 @@ export function KeybindsPanel({
             </div>
             <ConfirmButton
               onConfirm={onResetAll}
-              confirmLabel={t(lang, 'Wirklich zurücksetzen?', 'Really reset?')}
+              confirmLabel={translations[lang].common.resetConfirm}
               variant="secondary"
               icon={<RotateCcw className="h-3 w-3" />}
             >
-              {t(lang, 'Zurücksetzen', 'Reset')}
+              {translations[lang].common.reset}
             </ConfirmButton>
           </div>
         </header>
@@ -657,7 +658,7 @@ function KeyRecorder({
             type="button"
             onClick={onCancel}
             className="text-ink-tertiary hover:text-ink cursor-pointer"
-            aria-label={t(lang, 'Abbrechen', 'Cancel')}
+            aria-label={translations[lang].common.cancel}
           >
             <X className="h-4 w-4" />
           </button>
@@ -712,7 +713,7 @@ function KeyRecorder({
             {t(lang, 'Auf Standard zurücksetzen', 'Reset to default')}
           </button>
           <Button variant="secondary" size="sm" onClick={onCancel}>
-            {t(lang, 'Abbrechen', 'Cancel')}
+            {translations[lang].common.cancel}
           </Button>
         </div>
       </div>

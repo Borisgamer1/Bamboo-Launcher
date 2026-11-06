@@ -1,9 +1,10 @@
 /**
  * The one owner of the CurseForge project-type <-> class-id mapping.
  *
- * `main.js` uses the compiled copy, the renderer imports this module through
- * `src/lib/contentCategories.ts`, and the CurseForge provider imports it
- * directly. A new type or a changed id belongs here and nowhere else.
+ * The legacy CurseForge bridge uses the compiled copy, the renderer imports
+ * this module through `src/lib/contentCategories.ts`, and the CurseForge
+ * provider imports it directly. A new type or a changed id belongs here and
+ * nowhere else.
  */
 export const CURSEFORGE_CLASS_IDS = {
   mod: 6,

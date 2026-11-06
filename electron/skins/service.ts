@@ -155,7 +155,7 @@ export class SkinsService {
   }
 
   async snapshot(): Promise<SkinSnapshot> {
-    const account = await this.#core.accounts.getSelected()
+    const account = await this.#core.activeAccount()
     const state = await this.#readState()
     const online = Boolean(account && isModernMsAccount(account.type))
     const token = online && account ? await this.#core.auth.accessTokenFor(account) : undefined
@@ -249,7 +249,7 @@ export class SkinsService {
   async applySkin(): Promise<SkinSnapshot> {
     const state = await this.#readState()
     if (!state.skin) throw new Error('Wähle zuerst einen lokalen Skin.')
-    const account = await this.#core.accounts.getSelected()
+    const account = await this.#core.activeAccount()
     if (!account || !isModernMsAccount(account.type)) {
       throw new Error('Verbinde ein Microsoft-Konto, um den Skin anzuwenden.')
     }
@@ -288,7 +288,7 @@ export class SkinsService {
    * the cape again.
    */
   async selectCape(capeId: string | null): Promise<SkinSnapshot> {
-    const account = await this.#core.accounts.getSelected()
+    const account = await this.#core.activeAccount()
     if (!account || !isModernMsAccount(account.type)) {
       throw new Error('Verbinde ein Microsoft-Konto, um ein Cape zu wählen.')
     }

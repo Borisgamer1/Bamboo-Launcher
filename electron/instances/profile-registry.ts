@@ -3,6 +3,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   statSync,
@@ -68,7 +69,49 @@ export class ProfileRegistry {
 
   /** Never throws: an unreadable file is copied aside and reported as empty. */
   read(): LegacyProfile[] {
-    if (!existsSync(this.#file)) return []
+    return this.#readList() ?? []
+  }
+
+  /**
+   * The list the UI shows. Older layouts kept the same list inside
+   * `profiles/profiles.json` or as one JSON file per profile; both are still
+   * read when the main file is missing or unreadable.
+   */
+  readWithFallback(): LegacyProfile[] {
+    const primary = this.#readList()
+    if (primary) return primary
+
+    const nested = path.join(this.rootPath, 'profiles', 'profiles.json')
+    try {
+      if (existsSync(nested)) {
+        const parsed: unknown = JSON.parse(readFileSync(nested, 'utf8'))
+        if (Array.isArray(parsed)) return parsed as LegacyProfile[]
+        this.#logger.warn('profiles/profiles.json is not a list')
+      }
+    } catch (error) {
+      this.#logger.warn('profiles/profiles.json is unreadable', { error: describeError(error) })
+    }
+
+    const profilesDir = path.join(this.rootPath, 'profiles')
+    if (!existsSync(profilesDir) || !statSync(profilesDir).isDirectory()) return []
+    const result: LegacyProfile[] = []
+    for (const name of readdirSync(profilesDir)) {
+      if (!name.endsWith('.json') || name === 'profiles.json') continue
+      try {
+        const parsed: unknown = JSON.parse(readFileSync(path.join(profilesDir, name), 'utf8'))
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          result.push(parsed as LegacyProfile)
+        }
+      } catch (error) {
+        this.#logger.debug('skipping unreadable profile file', { file: name, error: describeError(error) })
+      }
+    }
+    return result
+  }
+
+  /** `undefined` when the file is missing, unreadable or not a list. */
+  #readList(): LegacyProfile[] | undefined {
+    if (!existsSync(this.#file)) return undefined
     try {
       const parsed: unknown = JSON.parse(readFileSync(this.#file, 'utf8'))
       if (Array.isArray(parsed)) return parsed as LegacyProfile[]
@@ -78,7 +121,7 @@ export class ProfileRegistry {
     }
     // A read error is as much a reason to keep the file as broken JSON is.
     this.#quarantineIfUnreadable()
-    return []
+    return undefined
   }
 
   /** Sibling temp file + rename: a crash cannot leave a truncated list. */

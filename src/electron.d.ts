@@ -190,6 +190,7 @@ export interface LaunchFailedPayload {
   folderName: string
   profileName: string
   message: string
+  code?: string
 }
 
 export interface LaunchStopPayload {
@@ -199,6 +200,10 @@ export interface LaunchStopPayload {
 
 export interface CreateInstancePayload {
   folderName: string
+  name?: string
+  version?: string
+  loader?: string
+  loaderVersion?: string
   options: Record<string, unknown> & {
     keyBindings?: Record<string, string>
     _mcVersion?: string
@@ -222,6 +227,7 @@ export interface RenameInstanceResult {
   newFolderName?: string
   profiles?: unknown
   error?: string
+  code?: string
 }
 
 export interface RepairProfilePayload {
@@ -242,6 +248,7 @@ export interface ChangeInstanceVersionPayload {
 export interface ChangeInstanceVersionResult {
   success: boolean
   error?: string
+  code?: string
   mcVersion?: string
   loader?: string
   loaderVersion?: string
@@ -322,6 +329,8 @@ export interface DownloadModResult {
   success: boolean
   path?: string
   error?: string
+  /** Stable failure code; the English UI maps it instead of showing `error`. */
+  code?: string
   /** Set for world installs: the folders created inside `saves`. */
   worlds?: InstalledWorldInfo[]
 }
@@ -353,6 +362,8 @@ export interface InstallModpackResult {
   modCount?: number
   index?: ModpackIndex
   error?: string
+  /** Stable failure code; the English UI maps it instead of showing `error`. */
+  code?: string
   loaderInstalled?: boolean
   /** Loader kind and versions the .mrpack actually requires, not the UI label. */
   loader?: string
@@ -447,6 +458,8 @@ export interface ExportProfileResult {
   fileName?: string
   fileSize?: number
   error?: string
+  /** Stable failure code; the English UI maps it instead of showing `error`. */
+  code?: string
 }
 
 export interface ImportPreviewPayload {
@@ -492,6 +505,8 @@ export interface ImportProfileResult {
   instanceName?: string
   profile?: Record<string, unknown>
   error?: string
+  /** Stable failure code; the English UI maps it instead of showing `error`. */
+  code?: string
   modsInstalled?: number
   resourcepacksInstalled?: number
   shaderpacksInstalled?: number
@@ -625,12 +640,14 @@ export interface CloneInstanceResult {
   success: boolean
   profile?: InstanceProfileRecord
   error?: string
+  code?: string
 }
 
 export interface CreateShortcutResult {
   success: boolean
   path?: string
   error?: string
+  code?: string
 }
 
 export interface BackgroundTaskProgress {
@@ -645,11 +662,11 @@ export interface InstancesApi {
   rename(data: { oldFolderName: string; newName: string }): Promise<RenameInstanceResult>
   clone(data: { folderName: string; newName?: string }): Promise<CloneInstanceResult>
   createShortcut(data: { folderName: string; instanceName: string }): Promise<CreateShortcutResult>
-  deleteFiles(folderName: string): Promise<{ success: boolean; deleted?: boolean; screenshots?: number; error?: string }>
+  deleteFiles(folderName: string): Promise<{ success: boolean; deleted?: boolean; screenshots?: number; error?: string; code?: string }>
   openFolder(folderName: string): Promise<void>
   openProfileFolder(name: string): Promise<void>
   listWorlds(folderName: string): Promise<WorldSummary[]>
-  repair(data: RepairProfilePayload): Promise<boolean>
+  repair(data: RepairProfilePayload): Promise<{ success: boolean; error?: string; code?: string }>
   changeVersion(data: ChangeInstanceVersionPayload): Promise<ChangeInstanceVersionResult>
   updateLaunchSettings(
     folderName: string,
@@ -660,21 +677,13 @@ export interface InstancesApi {
   onLaunchRequest(callback: (folderName: string) => void): Unsubscribe
 }
 
-export interface InstanceModUpdate {
-  /** Installed file name in `mods/`; the row is matched by it. */
-  file: string
-  projectId: string
-  versionId: string
-  versionNumber: string
-  fileName: string
-  url: string
-}
+import type {
+  InstanceModUpdate as ModUpdateRecord,
+  InstanceModUpdateResult as ModUpdateResult,
+} from '../electron/mods/types'
 
-export interface InstanceModUpdateResult {
-  /** Jars Modrinth knows, with or without a newer build. */
-  resolved: string[]
-  updates: InstanceModUpdate[]
-}
+export type InstanceModUpdate = ModUpdateRecord
+export type InstanceModUpdateResult = ModUpdateResult
 
 export interface ModsApi {
   checkUpdates(data: { folderName: string }): Promise<InstanceModUpdateResult>

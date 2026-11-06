@@ -135,7 +135,9 @@ test('P13 presets are exact and contain no client-hostile Aikar flags', () => {
 })
 
 test('P13 main.js no longer derives RAM and delegates JVM to launchInstance', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8')
+  const source = ['main.js', 'electron/legacy/launch-ipc.ts']
+    .map((file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8'))
+    .join('\n')
   assert.equal(source.includes('const ramMb ='), false)
   assert.equal(source.includes('resolveJvmPreferences'), false)
   assert.equal(source.includes('core.launch.start'), false)

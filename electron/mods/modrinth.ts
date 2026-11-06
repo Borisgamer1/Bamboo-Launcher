@@ -7,7 +7,7 @@ import { streamToFile, TRANSFER_STAGE } from '../download/stream'
 import type { Logger } from '../logger'
 import { describeError, getDefaultLogger } from '../logger'
 import { isVersionCompatible } from './compatibility'
-import { ModError } from './errors'
+import { ModError, providerList } from './errors'
 import { MODRINTH_LOADER_NAMES } from './loaders'
 import { modsMetrics, type ModMetrics } from './metrics'
 import type { ModLoader, ProviderProject, ProviderVersion } from './types'
@@ -120,14 +120,6 @@ export function pickModrinthVersion(
   )
 }
 
-/** A response list is either a list or a malformed answer — never a raw TypeError. */
-function asArray<T>(value: unknown, what: string): T[] {
-  if (value === undefined || value === null) return []
-  if (!Array.isArray(value)) {
-    throw new ModError('provider-error', `Modrinth returned ${what} that is not a list`)
-  }
-  return value as T[]
-}
 
 export class ModrinthClient {
   readonly #base: string
@@ -209,7 +201,7 @@ export class ModrinthClient {
       ...(options.index ? { index: options.index } : {}),
       ...(facets?.length ? { facets: JSON.stringify(facets) } : {}),
     })
-    const hits = asArray<Record<string, unknown>>(body.hits, 'search hits').map((hit) => ({
+    const hits = providerList<Record<string, unknown>>(body.hits, 'Modrinth', 'search hits').map((hit) => ({
       projectId: String(hit.project_id ?? ''),
       slug: String(hit.slug ?? ''),
       title: String(hit.title ?? ''),
@@ -259,7 +251,7 @@ export class ModrinthClient {
         ...(loaderName ? { loaders: JSON.stringify([loaderName]) } : {}),
       },
     )
-    return asArray<RawVersion>(raw, 'versions')
+    return providerList<RawVersion>(raw, 'Modrinth', 'versions')
       .map(normalizeVersion)
       .filter((version): version is ProviderVersion => Boolean(version))
   }

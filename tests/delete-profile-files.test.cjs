@@ -1,7 +1,8 @@
 /**
  * A renderer-provided folder name must never leave the profiles folder: the
  * delete handler removes its target recursively, so ".." would empty the game
- * root. The guard lives in main.js and is checked here on its own.
+ * root. The guard lives in electron/legacy/instance-files and is checked here
+ * on its own.
  */
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -10,13 +11,23 @@ const { test } = require('node:test')
 
 const ROOT = path.join(__dirname, '..')
 const rootPath = path.join(ROOT, 'fake-game-root')
+const profileSource = () => fs.readFileSync(path.join(ROOT, 'electron', 'legacy', 'profile-ipc.ts'), 'utf8')
 
 function loadGuard() {
-  const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
-  const start = source.indexOf('function profileDirOrNull(rootPath, folderName) {')
-  const end = source.indexOf('function uniqueProfileFolder(', start)
-  assert.ok(start > 0 && end > start, 'folder guard must exist in main.js')
-  return new Function('path', `${source.slice(start, end)}; return profileDirOrNull;`)(path)
+  const { createInstanceFiles } = require(path.join(
+    ROOT,
+    'dist-electron',
+    'legacy',
+    'instance-files.js',
+  ))
+  const silent = { debug() {}, info() {}, warn() {}, error() {} }
+  const { profileDirOrNull } = createInstanceFiles({
+    logger: silent,
+    resolveGameRoot: async () => rootPath,
+    getCore: async () => null,
+  })
+  assert.ok(profileDirOrNull, 'folder guard must exist in the instance-file owner')
+  return profileDirOrNull
 }
 
 test('a plain instance folder resolves inside profiles', () => {
@@ -35,13 +46,13 @@ test('traversal and absolute paths are refused', () => {
 })
 
 test('the delete handler refuses an invalid name before touching anything', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
+  const source = profileSource()
   const start = source.indexOf("ipc.handle('delete-profile-files'")
-  const end = source.indexOf("ipc.handle('repair-profile'", start)
+  const end = source.indexOf("ipc.handle('get-profiles'", start)
   assert.ok(start > 0 && end > start, 'delete-profile-files handler must exist')
   const handler = source.slice(start, end)
   const guardAt = handler.indexOf('profileDirOrNull(rootPath, folderName)')
-  const removeAt = handler.indexOf('fs.rmSync(')
+  const removeAt = handler.indexOf('rmSync(')
   assert.ok(guardAt > 0, 'handler must resolve through the guard')
   assert.ok(removeAt > guardAt, 'the guard must run before the recursive delete')
   assert.match(handler, /success: false/)
@@ -57,14 +68,22 @@ const GUARDED_HANDLERS = [
   'open-profile-folder',
   'open-instance-folder',
   'export-profile',
-  'get-screenshots',
   'launch-game',
   'upload-local-mod',
-  'scan-local-mods',
 ]
 
 test('instance handlers resolve the renderer folder name through the guard', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
+  // Screenshot handlers moved to their own module; both surfaces use the guard.
+  const source = [
+    'main.js',
+    'electron/legacy/profile-ipc.ts',
+    'electron/legacy/screenshot-ipc.ts',
+    'electron/legacy/profile-archive.ts',
+    'electron/legacy/content-ipc.ts',
+    'electron/legacy/launch-ipc.ts',
+  ]
+    .map((file) => fs.readFileSync(path.join(ROOT, file), 'utf8'))
+    .join('\n')
   // rename-instance delegates to one function that owns list, folder and core
   // register; the guard lives there.
   const delegated = {
@@ -79,9 +98,10 @@ test('instance handlers resolve the renderer folder name through the guard', () 
       source.indexOf(`ipc.on('${channel}'`),
     )
     assert.ok(start > 0, `${channel} handler must exist`)
-    const end = source.indexOf('\n});', start)
-    assert.ok(end > start, `${channel} handler must close`)
-    assert.match(source.slice(start, end), /profileDirOrNull\(/, `${channel} must use profileDirOrNull`)
+    const nextHandle = source.slice(start + 1).search(/\n\s*ipc\.(?:handle|on)\('/)
+    const end = nextHandle < 0 ? source.length : start + 1 + nextHandle
+    const handler = source.slice(start, end)
+    assert.match(handler, /profileDirOrNull\(/, `${channel} must use profileDirOrNull`)
   }
   for (const [channel, [from, to]] of Object.entries(delegated)) {
     const start = source.indexOf(from)

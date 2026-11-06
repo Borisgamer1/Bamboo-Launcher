@@ -213,32 +213,6 @@ export function registerIpc(ipcMain: IpcMainLike, core: LauncherCore): void {
       return core.instanceManager.updateFile(found.instance.id, patch)
     }),
   )
-  ipc.handle(
-    'bamboo:instances:select',
-    eventless(async (id: unknown) => {
-      if (typeof id !== 'string') throw new Error('Invalid instance id')
-      await core.instances.select(id)
-      return core.instances.list()
-    }),
-  )
-  ipc.handle(
-    'bamboo:instances:upsert',
-    eventless(async (payload: unknown) => {
-      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-        throw new Error('Invalid instance payload')
-      }
-      return core.instances.upsert(payload as Record<string, unknown>)
-    }),
-  )
-  ipc.handle(
-    'bamboo:instances:remove',
-    eventless(async (id: unknown) => {
-      if (typeof id !== 'string') throw new Error('Invalid instance id')
-      await core.instances.remove(id)
-      return core.instances.list()
-    }),
-  )
-
   // The active skin has one main-process owner. The renderer never sees a
   // Mojang token or a filesystem path it could write to.
   ipc.handle('bamboo:skins:snapshot', eventless(() => skinsService().snapshot()))
@@ -280,11 +254,15 @@ export function registerIpc(ipcMain: IpcMainLike, core: LauncherCore): void {
   ipc.handle('bamboo:mods:check-updates', eventless(async (payload: unknown) => {
     const folderName = String(((payload ?? {}) as { folderName?: unknown }).folderName ?? '')
     const found = folderName ? await core.instanceManager.findByFolder(folderName) : undefined
-    if (!found) return []
-    const loader = found.instance.loader.toLowerCase() as ModLoader
+    if (!found) return { resolved: [], updates: [] }
+    // The profile file is what the instance actually launches with; the index
+    // entry has lost the loader for legacy imports, which made the batched
+    // update pick jars for any loader.
+    const profile = await core.instanceManager.readFile(found.instance.id).catch(() => undefined)
+    const loader = String(profile?.loader ?? found.instance.loader).toLowerCase() as ModLoader
     return checkInstanceModUpdates({
       instanceDir: found.directory,
-      minecraftVersion: found.instance.version,
+      minecraftVersion: String(profile?.version || found.instance.version),
       ...(loader === 'fabric' || loader === 'quilt' || loader === 'forge' || loader === 'neoforge'
         ? { loader }
         : {}),

@@ -21,6 +21,15 @@ export type ModErrorCode =
   | 'store-locked'
   | 'ledger-locked'
 
+/** A provider list is either a list or a malformed answer, never a raw TypeError. */
+export function providerList<T>(value: unknown, provider: string, what: string): T[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) {
+    throw new ModError('provider-error', `${provider} returned ${what} that is not a list`)
+  }
+  return value as T[]
+}
+
 export class ModError extends Error {
   readonly code: ModErrorCode
   readonly details?: Record<string, unknown>

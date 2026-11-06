@@ -71,8 +71,16 @@ const url = z.string().url().max(4096)
  * defaults stay exactly as the legacy handlers expect them.
  */
 export const IPC_CHANNELS: Record<string, z.ZodType | null> = {
-  'create-instance': z.tuple([z.object({ folderName, options: record.optional() })]),
-  'apply-options-patch': z.tuple([z.object({ folderName, patch: record })]),
+  'create-instance': z.tuple([
+    z.object({
+      folderName,
+      options: record.optional(),
+      name: z.string().max(80).optional(),
+      version: z.string().max(64).optional(),
+      loader: z.string().max(64).optional(),
+      loaderVersion: z.string().max(64).optional(),
+    }),
+  ]),
   'open-profile-folder': z.tuple([folderName]),
   'open-instance-folder': z.tuple([folderName]),
   'delete-profile-files': z.tuple([folderName]),
@@ -113,22 +121,12 @@ export const IPC_CHANNELS: Record<string, z.ZodType | null> = {
     z.number().int().optional(),
   ]),
   'save-profiles': z.tuple([objectArray]),
-  'save-collections': z.tuple([objectArray]),
   'show-open-dialog': z.tuple([record.optional()]),
   'show-save-dialog': z.tuple([record.optional()]),
   'ping-server': z.tuple([text(255)]),
-  'read-file-as-base64': z.tuple([text(4096)]),
-  'save-temp-file': z.tuple([z.object({ data: z.array(z.number()), fileName })]),
   'show-item-in-folder': z.tuple([text(4096)]),
   'read-image-file': z.tuple([text(4096)]),
   'export-profile': z.tuple([record]),
-  'export-profile-legacy': z.tuple([
-    z.object({
-      profileId: z.union([z.string(), z.number()]).optional(),
-      mode: z.string().max(64).optional(),
-      options: record.optional(),
-    }),
-  ]),
   'import-preview': z.tuple([text(4096)]),
   'import-profile': z.tuple([record]),
   'install-modpack-mrpack': z.tuple([
@@ -150,7 +148,6 @@ export const IPC_CHANNELS: Record<string, z.ZodType | null> = {
       path: ['downloadUrl'],
     }),
   ]),
-  'get-screenshots': z.tuple([folderName]),
   'delete-screenshot-file': z.tuple([
     z.union([
       text(4096),
@@ -193,14 +190,6 @@ export const IPC_CHANNELS: Record<string, z.ZodType | null> = {
     z.object({ folderName, filePath: text(4096), itemType: z.string().max(64).optional() }),
   ]),
   'rename-instance': z.tuple([z.object({ oldFolderName: folderName, newName: text(256) })]),
-  'scan-local-mods': z.tuple([z.object({ folderName })]),
-  'match-local-mod': z.tuple([
-    z.object({
-      modName: z.string().max(256).optional(),
-      projectId: z.union([z.string().max(64), z.number()]).optional(),
-      source: z.string().max(32).optional(),
-    }),
-  ]),
   'identify-content-files': z.tuple([
     z.object({
       folderName,
@@ -264,9 +253,6 @@ export const IPC_CHANNELS: Record<string, z.ZodType | null> = {
   'bamboo:accounts:remove': z.tuple([text(256)]),
   'bamboo:instances:list': null,
   'bamboo:instances:update-launch': z.tuple([folderName, record]),
-  'bamboo:instances:select': z.tuple([text(256)]),
-  'bamboo:instances:upsert': z.tuple([record]),
-  'bamboo:instances:remove': z.tuple([text(256)]),
   'bamboo:skins:snapshot': null,
   'bamboo:skins:save-skin': z.tuple([record]),
   'bamboo:skins:set-skin-variant': z.tuple([z.string().max(32)]),
@@ -300,7 +286,6 @@ export const IPC_CHANNELS: Record<string, z.ZodType | null> = {
   'get-forge-versions': null,
   'get-neoforge-versions': null,
   'get-profiles': null,
-  'get-collections': null,
   'get-active-launches': null,
   'bamboo:ui:ready': null,
   'app:flush-before-close-done': null,

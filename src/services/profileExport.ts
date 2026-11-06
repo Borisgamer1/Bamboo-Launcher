@@ -32,6 +32,8 @@ export interface ExportResult {
   fileName?: string;
   fileSize?: number;
   error?: string;
+  /** Stable failure code; the English UI maps it instead of showing `error`. */
+  code?: string;
 }
 
 export interface BambooManifest {
@@ -245,6 +247,7 @@ class ProfileExportService {
       fileName: result?.fileName,
       fileSize: result?.fileSize,
       error: result?.error,
+      code: result?.code,
     };
   }
 
@@ -271,6 +274,7 @@ class ProfileExportService {
       fileName: result?.fileName,
       fileSize: result?.fileSize,
       error: result?.error,
+      code: result?.code,
     };
   }
 

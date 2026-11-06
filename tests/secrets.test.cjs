@@ -19,6 +19,11 @@ const { createCore } = require('../dist-electron/core.js')
 const { registerIpc } = require('../dist-electron/ipc.js')
 const { createNullLogger } = require('../dist-electron/logger.js')
 const { createSupportBundle } = require('../dist-electron/support-bundle.js')
+const {
+  createLegacyCurseForge,
+  curseForgeFailure,
+  CURSEFORGE_KEY_MISSING,
+} = require('../dist-electron/legacy/curseforge.js')
 
 const ROOT = path.join(__dirname, '..')
 const SKIP_DIRS = new Set([
@@ -108,56 +113,42 @@ test('a configured CurseForge key reaches neither logs nor the support bundle', 
   assert.deepEqual(Object.keys(settings).sort(), ['currentTheme', 'lang', 'telemetryEnabled'])
 })
 
-test('main.js resolves the bundled CurseForge key at runtime', (context) => {
-  const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
-  const start = source.indexOf('function readCurseForgeApiKey()')
-  const end = source.indexOf('function cfLoaderTypeToNum')
-  assert.ok(start > 0 && end > start, 'key resolver block must exist in main.js')
-  assert.match(source, /const CURSEFORGE_KEY_MISSING = \{\s*error: 'Kein CurseForge API-Key gesetzt',\s*code: 'missing-key'/,)
-  assert.equal(
-    source.split('if (!headers) return { ...CURSEFORGE_KEY_MISSING };').length - 1,
-    3,
-    'every CurseForge handler must fail with a clear error before fetching',
-  )
-  // Evaluate the shipped resolver against stubs instead of launching Electron.
-  const factory = new Function(
-    'path',
-    'fs',
-    '__dirname',
-    `${source.slice(start, end)}; return { readCurseForgeApiKey, curseForgeHeaders };`,
-  )
+test('the CurseForge bridge resolves only the bundled key at runtime', async (context) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bamboo-key-resolver-'))
   context.after(() => fs.rmSync(dir, { recursive: true, force: true }))
-  const resolver = factory(path, fs, dir)
+  const bridge = createLegacyCurseForge({ keyPath: path.join(dir, 'resources', 'curseforge-key.txt') })
+  const handlers = new Map()
+  bridge.register({ handle: (channel, listener) => handlers.set(channel, listener) })
 
   // Without the bundled file the launcher fails closed. A legacy per-user key
   // in settings.json must not resurrect a path the UI no longer offers.
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ curseForgeApiKey: 'stale-user-key' }))
-  assert.equal(resolver.readCurseForgeApiKey(), '')
-  assert.equal(resolver.curseForgeHeaders(), null, 'missing key must not produce headers')
+  assert.equal(bridge.readApiKey(), '')
+  assert.equal(bridge.headers(), null, 'missing key must not produce headers')
+  assert.deepEqual([...handlers.keys()].sort(), [
+    'curseforge-files',
+    'curseforge-project',
+    'curseforge-search',
+  ])
+  for (const [channel, handler] of handlers) {
+    const missing = await handler({}, { folderName: 'demo' }, '1')
+    assert.equal(missing.code, 'missing-key', `${channel} must fail before fetching`)
+  }
 
   // The key that ships with the launcher is the only source for every user.
   const key = fixtureKey()
   fs.mkdirSync(path.join(dir, 'resources'))
   fs.writeFileSync(path.join(dir, 'resources', 'curseforge-key.txt'), `${key}\n`)
-  assert.equal(resolver.readCurseForgeApiKey(), key)
-  assert.equal(resolver.curseForgeHeaders()['x-api-key'], key)
+  assert.equal(bridge.readApiKey(), key)
+  assert.equal(bridge.headers()['x-api-key'], key)
 
   // The environment is not a second owner of the credential.
   process.env.CURSEFORGE_API_KEY = 'env-key-must-not-win'
-  assert.equal(resolver.readCurseForgeApiKey(), key)
+  assert.equal(bridge.readApiKey(), key)
   delete process.env.CURSEFORGE_API_KEY
 })
 
-test('main.js classifies CurseForge failures so the UI never shows an empty list', async () => {
-  const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
-  const start = source.indexOf('const CURSEFORGE_KEY_MISSING')
-  const end = source.indexOf('function cfLoaderTypeToNum')
-  assert.ok(start > 0 && end > start, 'CurseForge failure block must exist in main.js')
-  const { curseForgeFailure, CURSEFORGE_KEY_MISSING } = new Function(
-    `${source.slice(start, end)}; return { curseForgeFailure, CURSEFORGE_KEY_MISSING };`,
-  )()
-
+test('the CurseForge bridge classifies failures so the UI never shows an empty list', async () => {
   assert.equal(CURSEFORGE_KEY_MISSING.code, 'missing-key')
   assert.deepEqual(Object.keys(CURSEFORGE_KEY_MISSING).sort(), ['code', 'error'])
 

@@ -60,15 +60,15 @@ test('the registrar validates arguments and keeps the original payload', async (
   const { ipc, handles } = fakeIpc()
   const registrar = createIpcRegistrar(ipc)
   let received
-  registrar.handle('read-file-as-base64', (_event, filePath) => {
+  registrar.handle('read-image-file', (_event, filePath) => {
     received = filePath
     return 'ok'
   })
 
-  assert.equal(await handles.get('read-file-as-base64')(TRUSTED, 'C:\\game\\icon.png'), 'ok')
+  assert.equal(await handles.get('read-image-file')(TRUSTED, 'C:\\game\\icon.png'), 'ok')
   assert.equal(received, 'C:\\game\\icon.png')
   await assert.rejects(
-    () => handles.get('read-file-as-base64')(TRUSTED, { path: 'C:\\game\\icon.png' }),
+    () => handles.get('read-image-file')(TRUSTED, { path: 'C:\\game\\icon.png' }),
     /Invalid IPC arguments/,
   )
 
@@ -147,7 +147,23 @@ test('download-mod accepts a CurseForge-only payload without a download URL', ()
 })
 
 test('the manifest covers every channel of every surface, and nothing else', () => {
-  const surfaces = ['main.js', 'electron/ipc.ts', 'electron/updater.ts']
+  const surfaces = [
+    'main.js',
+    'electron/ipc.ts',
+    'electron/updater.ts',
+    'electron/legacy/curseforge.ts',
+    'electron/legacy/instance-version-ipc.ts',
+    'electron/legacy/profile-archive.ts',
+    'electron/legacy/modpack-ipc.ts',
+    'electron/legacy/profile-ipc.ts',
+    'electron/legacy/screenshot-ipc.ts',
+    'electron/legacy/settings-ipc.ts',
+    'electron/legacy/shell-ipc.ts',
+    'electron/legacy/content-ipc.ts',
+    'electron/legacy/launch-ipc.ts',
+    'electron/legacy/shortcut-ipc.ts',
+    'electron/legacy/window.ts',
+  ]
   const registered = []
   for (const file of surfaces) {
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
@@ -163,11 +179,27 @@ test('the manifest covers every channel of every surface, and nothing else', () 
     [...declared].sort(),
     'every registered channel needs a manifest entry, and the manifest may not list a dead channel',
   )
-  assert.ok(declared.length > 100, 'the manifest covers the whole surface')
+  assert.ok(declared.length > 90, 'the manifest covers the whole surface')
 })
 
 test('no surface registers directly on ipcMain any more', () => {
-  const surfaces = ['main.js', 'electron/ipc.ts', 'electron/updater.ts']
+  const surfaces = [
+    'main.js',
+    'electron/ipc.ts',
+    'electron/updater.ts',
+    'electron/legacy/curseforge.ts',
+    'electron/legacy/instance-version-ipc.ts',
+    'electron/legacy/profile-archive.ts',
+    'electron/legacy/modpack-ipc.ts',
+    'electron/legacy/profile-ipc.ts',
+    'electron/legacy/screenshot-ipc.ts',
+    'electron/legacy/settings-ipc.ts',
+    'electron/legacy/shell-ipc.ts',
+    'electron/legacy/content-ipc.ts',
+    'electron/legacy/launch-ipc.ts',
+    'electron/legacy/shortcut-ipc.ts',
+    'electron/legacy/window.ts',
+  ]
   for (const file of surfaces) {
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     assert.doesNotMatch(source, /ipcMain\.(handle|on|once)\(/, `${file} must use the registrar`)

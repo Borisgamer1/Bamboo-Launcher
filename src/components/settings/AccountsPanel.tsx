@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { translations } from '../../lib/translations';
 import { AlertTriangle, Check, LogIn, LogOut, RefreshCw, UserRound } from 'lucide-react'
 import type { AccountSession } from '../../lib/accountSession'
 import {
@@ -8,12 +9,14 @@ import {
   type Lang,
 } from './SettingsPrimitives'
 import { cx, t } from './settingsUtils'
+import { authErrorText } from '../../lib/authErrors'
 
 type Busy = 'login' | 'refresh' | 'signout' | null
 
-function readableError(error: unknown): string {
+function readableError(error: unknown, lang: Lang): string {
   const message = error instanceof Error ? error.message : String(error)
-  return message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '')
+  const raw = message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '')
+  return authErrorText(raw, lang)
 }
 
 export function AccountsPanel({
@@ -59,7 +62,7 @@ export function AccountsPanel({
         )
       }
     } catch (err) {
-      const message = readableError(err)
+      const message = readableError(err, lang)
       if (!/abgebrochen|aborted|cancel/i.test(message)) setError(message)
     } finally {
       setBusy(null)
@@ -92,7 +95,7 @@ export function AccountsPanel({
         )
       }
     } catch (err) {
-      setError(readableError(err))
+      setError(readableError(err, lang))
     } finally {
       setBusy(null)
     }
@@ -106,7 +109,7 @@ export function AccountsPanel({
       const next = await window.electronAPI?.auth.signOut?.(status?.account?.id)
       if (next) session.apply(next)
     } catch (err) {
-      setError(readableError(err))
+      setError(readableError(err, lang))
     } finally {
       setBusy(null)
     }
@@ -249,7 +252,7 @@ export function AccountsPanel({
                   {t(lang, 'Warte auf Bestätigung …', 'Waiting for confirmation …')}
                 </span>
                 <Button variant="ghost" size="sm" onClick={() => void cancelLogin()}>
-                  {t(lang, 'Abbrechen', 'Cancel')}
+                  {translations[lang].common.cancel}
                 </Button>
               </div>
             ) : (

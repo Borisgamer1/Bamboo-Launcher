@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import { translations } from '../../lib/translations';
 import {
   ArrowDown,
   Boxes,
@@ -430,7 +431,7 @@ export const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
           <>
             <div className="flex flex-wrap items-end justify-between gap-6 px-5 pb-5 pt-4">
               <div className="min-w-0">
-                <p className="m-0 text-micro text-ink-tertiary">{t(L, 'Spielzeit', 'Playtime')}</p>
+                <p className="m-0 text-micro text-ink-tertiary">{translations[L].common.playtime}</p>
                 <p className="m-0 mt-1 truncate text-title1 font-medium tabular-nums tracking-[-0.02em] text-ink">
                   {formatPlaytime(summary.playTimeMs, lang)}
                 </p>

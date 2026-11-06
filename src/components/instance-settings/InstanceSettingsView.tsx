@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { translations } from '../../lib/translations';
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -161,7 +162,7 @@ export function InstanceSettingsView({
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
             <StatTile
               icon={<Clock3 className="h-3.5 w-3.5" />}
-              label={t(L, 'Spielzeit', 'Playtime')}
+              label={translations[L].common.playtime}
               value={formatPlaytime(instance.playTimeMs, L)}
               hint={t(L, 'Gesamte Spielzeit', 'Total playtime')}
             />
@@ -250,7 +251,7 @@ export function InstanceSettingsView({
               description={t(L, 'Als Modrinth-Pack oder ZIP sichern.', 'Save as a Modrinth pack or ZIP.')}
               control={
                 <Button variant="secondary" size="sm" icon={<ExternalLink className="h-3 w-3" />} onClick={onExport}>
-                  {t(L, 'Exportieren', 'Export')}
+                  {translations[L].common.export}
                 </Button>
               }
             />
@@ -373,7 +374,7 @@ export function InstanceSettingsView({
               )}
               control={
                 <Button variant="secondary" size="sm" icon={<FolderOpen className="h-3 w-3" />} onClick={onOpenFolder}>
-                  {t(L, 'Ordner öffnen', 'Open folder')}
+                  {translations[L].common.openFolder}
                 </Button>
               }
             />
@@ -382,7 +383,7 @@ export function InstanceSettingsView({
               description={t(L, 'Erstellt eine teilbare Instanz-Datei.', 'Creates a shareable instance file.')}
               control={
                 <Button variant="secondary" size="sm" onClick={onExport}>
-                  {t(L, 'Exportieren', 'Export')}
+                  {translations[L].common.export}
                 </Button>
               }
             />
@@ -459,7 +460,7 @@ export function InstanceSettingsView({
             }
           >
             <SettingsRow
-              title={t(L, 'Java-Installation', 'Java installation')}
+              title={translations[L].common.javaInstallation}
               description={t(L, '„Automatisch“ wählt die passende Version anhand der Minecraft-Version.', '“Automatic” picks the right runtime for the Minecraft version.')}
               control={
                 <SelectField
@@ -478,12 +479,12 @@ export function InstanceSettingsView({
                       : []),
                   ]}
                   className="w-[290px] max-w-[46vw]"
-                  ariaLabel={t(L, 'Java-Installation', 'Java installation')}
+                  ariaLabel={translations[L].common.javaInstallation}
                 />
               }
             />
             <SettingsRow
-              title={t(L, 'JVM-Argumente', 'JVM arguments')}
+              title={translations[L].common.jvmArguments}
               description={t(L, 'Überschreibt die Launcher-Standards für diese Instanz.', 'Overrides the launcher defaults for this instance.')}
               control={
                 <TextField
@@ -492,7 +493,7 @@ export function InstanceSettingsView({
                   placeholder={preferences.instanceDefaults.jvmArgs || '-XX:+UseG1GC'}
                   mono
                   className="w-[300px] max-w-[46vw]"
-                  ariaLabel={t(L, 'JVM-Argumente', 'JVM arguments')}
+                  ariaLabel={translations[L].common.jvmArguments}
                 />
               }
             />
@@ -516,7 +517,7 @@ export function InstanceSettingsView({
           <SettingsCard title={t(L, 'Instanz verwalten', 'Manage instance')}>
             <SettingsRow
               icon={<FolderOpen className="h-3.5 w-3.5" />}
-              title={t(L, 'Ordner öffnen', 'Open folder')}
+              title={translations[L].common.openFolder}
               description={t(L, 'Öffnet den Instanzordner im Explorer.', 'Opens the instance folder in Explorer.')}
               control={
                 <Button variant="secondary" size="sm" onClick={onOpenFolder}>

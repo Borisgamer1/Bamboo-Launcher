@@ -785,8 +785,10 @@ test('a failing tar keeps the existing mrpack error message', async () => {
 })
 
 test('the shipped mrpack handler awaits the fallback instead of blocking the main loop', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8')
-  assert.equal(source.includes('execSync'), false, 'no synchronous child process in main.js')
+  const source = ['main.js', 'electron/legacy/modpack-ipc.ts']
+    .map((file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8'))
+    .join('\n')
+  assert.equal(source.includes('execSync'), false, 'no synchronous child process in the mrpack handler')
   assert.ok(
     source.includes('await extractMrpackWithTar(mrpackPath, extractDir)'),
     'the tar fallback must be awaited',

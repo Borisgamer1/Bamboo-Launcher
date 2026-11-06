@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import type { ServerItem } from '../components/MultiplayerView'
+import type { ServerItem } from '../components/multiplayer/types'
 
 export interface ServersState {
   servers: ServerItem[]

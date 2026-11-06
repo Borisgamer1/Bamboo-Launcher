@@ -1,29 +1,20 @@
 import { readFile, stat } from 'node:fs/promises'
 import { hashBuffer } from '../download/checksum'
 import { DownloadError, type FetchLike } from '../download/http'
-import { LAUNCHER_VERSION } from '../launch/args'
 import { streamToFile, TRANSFER_STAGE } from '../download/stream'
 import type { Logger } from '../logger'
 import { describeError, getDefaultLogger } from '../logger'
-import { ModError } from './errors'
+import { ModError, providerList } from './errors'
 import { CURSEFORGE_LOADER_IDS } from './loaders'
 import { modsMetrics, type ModMetrics } from './metrics'
+import { CurseForgeHttp } from './curseforge-http'
 import type { ModLoader } from './types'
 
-const DEFAULT_BASE = 'https://api.curseforge.com/v1'
 const RELATION_REQUIRED = 3
 
 /** The search endpoint reaches at most this many results (`index + pageSize`). */
 export const CURSEFORGE_SEARCH_LIMIT = 10_000
 
-/** A response list is either a list or a malformed answer — never a raw TypeError. */
-function asArray<T>(value: unknown, what: string): T[] {
-  if (value === undefined || value === null) return []
-  if (!Array.isArray(value)) {
-    throw new ModError('provider-error', `CurseForge returned ${what} that is not a list`)
-  }
-  return value as T[]
-}
 
 const CURSEFORGE_CDN_HOSTS = new Set([
   'edge.forgecdn.net',
@@ -310,11 +301,9 @@ export function curseForgeFileIdFromUrl(raw: string): number | undefined {
 
 export class CurseForgeClient {
   readonly #key: string
-  readonly #base: string
   readonly #fetch?: FetchLike
   readonly #logger?: Logger
-  readonly #sleep: (ms: number) => Promise<void>
-  readonly #retries: number
+  readonly #http: CurseForgeHttp
   readonly #cdnBase: string
   readonly #metrics?: ModMetrics
 
@@ -323,11 +312,16 @@ export class CurseForgeClient {
       throw new ModError('missing-api-key', 'CurseForge requires an API key')
     }
     this.#key = options.apiKey
-    this.#base = (options.baseUrl ?? DEFAULT_BASE).replace(/\/$/, '')
     this.#fetch = options.fetchImpl
     this.#logger = options.logger
-    this.#sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
-    this.#retries = Math.max(1, options.rateLimitRetries ?? 3)
+    this.#http = new CurseForgeHttp({
+      apiKey: options.apiKey,
+      ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
+      ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+      ...(options.logger ? { logger: options.logger } : {}),
+      ...(options.sleep ? { sleep: options.sleep } : {}),
+      retries: options.rateLimitRetries ?? 3,
+    })
     this.#cdnBase = options.cdnBase ?? DEFAULT_CDN_BASE
     this.#metrics = options.metrics ?? modsMetrics
   }
@@ -338,61 +332,26 @@ export class CurseForgeClient {
     init?: { method: string; body: string },
   ): Promise<T> {
     this.#metrics?.request()
-    const url = new URL(`${this.#base}${pathname}`)
-    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value)
-    const fetchImpl = this.#fetch ?? fetch
-    let lastStatus = 0
-    for (let attempt = 0; attempt < this.#retries; attempt += 1) {
-      const response = await fetchImpl(url.toString(), {
-        headers: {
-          'x-api-key': this.#key,
-          accept: 'application/json',
-          'user-agent': `BambooLauncher/${LAUNCHER_VERSION}`,
-          ...(init ? { 'content-type': 'application/json' } : {}),
-        },
-        ...(init ? { method: init.method, body: init.body } : {}),
-        redirect: 'follow',
-      })
-      if (response.status === 429) {
-        lastStatus = 429
-        const retryAfter = Number(response.headers.get('retry-after') ?? '1')
-        const delayMs = Math.min(60_000, Math.max(250, (Number.isFinite(retryAfter) ? retryAfter : 1) * 1000))
-        await response.body?.cancel().catch(() => undefined)
-        this.#logger?.warn('CurseForge rate limit hit; waiting', { delayMs, attempt: attempt + 1 })
-        if (attempt + 1 < this.#retries) await this.#sleep(delayMs)
-        continue
-      }
-      const transient = response.status === 401 || response.status === 403 || response.status >= 500
-      if (transient && attempt + 1 < this.#retries) {
-        lastStatus = response.status
-        await response.body?.cancel().catch(() => undefined)
-        this.#logger?.warn('CurseForge upstream rejected the request; retrying', {
-          status: response.status,
-          attempt: attempt + 1,
-        })
-        await this.#sleep(250 * (attempt + 1))
-        continue
-      }
-      if (!response.ok) {
-        await response.body?.cancel().catch(() => undefined)
-        throw new ModError('provider-error', `CurseForge HTTP ${response.status} for ${pathname}`, {
-          status: response.status,
-          pathname,
-        })
-      }
-      try {
-        return (await response.json()) as T
-      } catch (error) {
-        // Same contract as Modrinth: malformed bodies become provider errors.
-        throw new ModError(
-          'provider-error',
-          `CurseForge returned invalid JSON for ${pathname}: ${(error as Error).message}`,
-        )
-      }
-    }
-    throw new ModError('provider-error', `CurseForge rate limit persisted for ${pathname}`, {
-      status: lastStatus,
+    const response = await this.#http.request(pathname, {
+      query,
+      ...(init ? { method: init.method, body: init.body } : {}),
     })
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined)
+      throw new ModError('provider-error', `CurseForge HTTP ${response.status} for ${pathname}`, {
+        status: response.status,
+        pathname,
+      })
+    }
+    try {
+      return (await response.json()) as T
+    } catch (error) {
+      // Same contract as Modrinth: malformed bodies become provider errors.
+      throw new ModError(
+        'provider-error',
+        `CurseForge returned invalid JSON for ${pathname}: ${(error as Error).message}`,
+      )
+    }
   }
 
   async mod(id: number): Promise<CurseForgeMod> {
@@ -408,7 +367,7 @@ export class CurseForgeClient {
       {},
       { method: 'POST', body: JSON.stringify({ modIds: unique }) },
     )
-    return asArray<Record<string, unknown>>(body.data, 'mods').map((entry) => normalizeMod(entry, 0))
+    return providerList<Record<string, unknown>>(body.data, 'CurseForge', 'mods').map((entry) => normalizeMod(entry, 0))
   }
 
   async file(modId: number, fileId: number): Promise<CurseForgeFile> {
@@ -424,7 +383,7 @@ export class CurseForgeClient {
       {},
       { method: 'POST', body: JSON.stringify({ fileIds: ids }) },
     )
-    return asArray<Record<string, unknown>>(body.data, 'files').map(normalizeFile)
+    return providerList<Record<string, unknown>>(body.data, 'CurseForge', 'files').map(normalizeFile)
   }
 
   async files(
@@ -465,7 +424,7 @@ export class CurseForgeClient {
       index: String(index),
       pageSize: String(pageSize),
     })
-    const files = asArray<Record<string, unknown>>(body.data, 'files').map(normalizeFile)
+    const files = providerList<Record<string, unknown>>(body.data, 'CurseForge', 'files').map(normalizeFile)
     const pagination = body.pagination ?? {}
     return {
       files,
@@ -515,7 +474,7 @@ export class CurseForgeClient {
       pageSize: String(pageSize),
     })
     const pagination = body.pagination ?? {}
-    const data = asArray<Record<string, unknown>>(body.data, 'search results')
+    const data = providerList<Record<string, unknown>>(body.data, 'CurseForge', 'search results')
     return {
       // More hits than the requested page are never materialised.
       hits: data.slice(0, pageSize).map(normalizeSearchHit),

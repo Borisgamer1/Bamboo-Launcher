@@ -32,6 +32,7 @@ import type {
 import { profileImportService } from "../services/profileImport";
 import { mapProfileToInstance } from "../hooks/useInstances";
 import { LanguageType } from "../lib/translations";
+import { mainErrorText } from "../lib/mainErrors";
 import { useToast } from "./Toast";
 import { Dialog } from "./Dialog";
 import { dialogButton } from "./dialogSupport";
@@ -232,7 +233,7 @@ export const ProfileImportModal: React.FC<ProfileImportModalProps> = ({
         IMPORT_AUTO_DISMISS_MS,
       );
     } else {
-      const message = result.error || t("Import fehlgeschlagen", "Import failed");
+      const message = mainErrorText(result, lang, t("Import fehlgeschlagen", "Import failed"));
       setImportError(message);
       failBackgroundTask(taskId, message);
     }

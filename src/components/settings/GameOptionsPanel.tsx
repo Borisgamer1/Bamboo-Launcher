@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import { translations } from '../../lib/translations';
 import {
   Eye,
   Gamepad2,
@@ -96,11 +97,11 @@ export function GameOptionsPanel({ lang, values, onChange, onReplace, note }: Ga
           )}
           <ConfirmButton
             onConfirm={() => onReplace(resetGameOptionsForCategory(values, category))}
-            confirmLabel={t(lang, 'Wirklich zurücksetzen?', 'Really reset?')}
+            confirmLabel={translations[lang].common.resetConfirm}
             variant="secondary"
             icon={<RotateCcw className="h-3.5 w-3.5" />}
           >
-            {t(lang, 'Zurücksetzen', 'Reset')}
+            {translations[lang].common.reset}
           </ConfirmButton>
         </div>
       </div>

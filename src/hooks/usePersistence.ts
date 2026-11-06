@@ -51,7 +51,6 @@ export function usePersistence(options: UsePersistenceOptions): () => Promise<vo
         const profiles = snapshot.instances.map(profileFromInstance)
         await window.electronAPI?.instances.saveProfiles?.(profiles)
       }
-      console.log('[App] Saved all data')
     }
 
     const task = saveQueueRef.current.then(run, run).catch((error) => {

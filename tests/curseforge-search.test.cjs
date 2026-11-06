@@ -8,8 +8,8 @@
  *    at most pageSize 50 and index + pageSize <= 10,000, so those requests must
  *    be clamped before they leave the main process.
  *
- * The handler block is loaded from `main.js` itself and given a fake HTTP layer;
- * no Electron process or live CurseForge key is involved.
+ * The handler factory comes from the legacy bridge module and gets a fake HTTP
+ * layer; no Electron process or live CurseForge key is involved.
  */
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -18,22 +18,10 @@ const { pathToFileURL } = require('node:url')
 const { test } = require('node:test')
 
 const ROOT = path.join(__dirname, '..')
-const MAIN = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
 // The compiled copy main.js requires; `test:core` builds it before this runs.
-const { CURSEFORGE_CLASS_IDS } = require('../dist-electron/shared/curseforgeClassIds.js')
+const { createCurseForgeSearchHandler } = require('../dist-electron/legacy/curseforge.js')
 
 function loadHandlerFactory() {
-  const start = MAIN.indexOf('const CURSEFORGE_KEY_MISSING')
-  const end = MAIN.indexOf("ipc.handle('curseforge-search'", start)
-  assert.ok(start > 0 && end > start, 'the CurseForge search block must exist in main.js')
-  assert.ok(
-    MAIN.slice(end).startsWith("ipc.handle('curseforge-search', createCurseForgeSearchHandler({"),
-    'the tested factory must be the handler registered on the channel',
-  )
-  const { createCurseForgeSearchHandler } = new Function(
-    'CF_CLASS_IDS',
-    `${MAIN.slice(start, end)}; return { createCurseForgeSearchHandler };`,
-  )(CURSEFORGE_CLASS_IDS)
   return createCurseForgeSearchHandler
 }
 
@@ -100,14 +88,19 @@ test('every CurseForge type tab sends its own distinct classId', async () => {
 })
 
 test('the renderer starts a new paging sequence when the page size changes', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'src', 'components', 'ModsView.tsx'), 'utf8')
-  const start = source.indexOf('value={pageSize}')
-  const end = source.indexOf('</select>', start)
+  const filters = fs.readFileSync(path.join(ROOT, 'src', 'components', 'mods', 'ModsFilters.tsx'), 'utf8')
+  const start = filters.indexOf('value={pageSize}')
+  const end = filters.indexOf('</select>', start)
   assert.ok(start > 0 && end > start, 'the page-size control must exist')
-  const control = source.slice(start, end)
-  assert.match(control, /setPageSize\(/, 'the control updates the page size')
+  assert.match(filters.slice(start, end), /onPageSize\(/, 'the control updates the page size')
+  const view = fs.readFileSync(path.join(ROOT, 'src', 'components', 'ModsView.tsx'), 'utf8')
+  const handlerStart = view.indexOf('onPageSize={(size)')
+  const handlerEnd = view.indexOf('}', view.indexOf('handleFilterChange()', handlerStart))
+  assert.ok(handlerStart > 0 && handlerEnd > handlerStart, 'the page-size handler must exist')
+  const handler = view.slice(handlerStart, handlerEnd)
+  assert.match(handler, /setPageSize\(/, 'the handler updates the page size')
   assert.match(
-    control,
+    handler,
     /handleFilterChange\(\)/,
     'changing the page size must return to page 1 instead of reusing the old offset',
   )

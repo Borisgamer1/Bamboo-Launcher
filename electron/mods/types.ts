@@ -1,5 +1,27 @@
 export type ModLoader = 'fabric' | 'quilt' | 'forge' | 'neoforge' | 'legacy' | 'unknown'
 
+/** One jar Modrinth knows a newer build for, already shaped for the update run. */
+export interface InstanceModUpdate {
+  /** Installed file name, the key the renderer knows the row by. */
+  file: string
+  projectId: string
+  versionId: string
+  versionNumber: string
+  /** File of the newer version that has to be downloaded. */
+  fileName: string
+  url: string
+  /** Loaders and game versions of the newer build, so the update run can re-check it. */
+  loaders: string[]
+  gameVersions: string[]
+}
+
+export interface InstanceModUpdateResult {
+  /** Jars Modrinth knows, whether or not a newer build exists. */
+  resolved: string[]
+  /** Jars with a newer build, already shaped for the update run. */
+  updates: InstanceModUpdate[]
+}
+
 export type ProviderId = 'modrinth' | 'curseforge'
 
 export type UpdateChannel = 'release' | 'beta' | 'alpha'

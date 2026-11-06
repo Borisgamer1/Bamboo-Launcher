@@ -343,7 +343,9 @@ test('a custom BAMBOO_GAME_ROOT routes all four handlers into that root', async 
 })
 
 test('the shipped main process routes all four handlers through the bridge', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8')
+  const source = ['main.js', 'electron/legacy/profile-archive.ts', 'electron/legacy/content-ipc.ts']
+    .map((file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8'))
+    .join('\n')
   for (const call of [
     'importLegacyProfile(payload,',
     'exportLegacyProfile(payload)',

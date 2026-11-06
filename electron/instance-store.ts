@@ -108,7 +108,9 @@ export class InstanceStore {
       ...input,
       id,
       folderName,
-      loader: normalizeLoader(input.loader),
+      // A partial save (memory, cover, playtime) must not reset the loader to
+      // vanilla: that silently removed the loader filter from every update.
+      loader: normalizeLoader(input.loader ?? existing?.loader),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     } as LauncherInstance

@@ -10,6 +10,7 @@ const { fixtureServer, jar, sha1, sha512, tempDir } = require('./harness.cjs')
 
 const AdmZip = require('adm-zip')
 const { createNullLogger } = require('../dist-electron/logger.js')
+const { inspectJarMetadata } = require('../dist-electron/mods/jar-inspect.js')
 const {
   parseModMetadata,
   parseTomlSubset,
@@ -111,6 +112,40 @@ provides=["example-api"]
   assert.deepEqual(legacy.dependencies.map((dep) => dep.id), ['coremod'])
 
   assert.equal(parseModMetadata({ 'readme.txt': Buffer.from('x') }), undefined)
+})
+
+test('jar inspector reuses the core metadata and adds icon, description and authors', () => {
+  const dir = tempDir('jar-inspect')
+  try {
+    const zip = new AdmZip()
+    zip.addFile(
+      'fabric.mod.json',
+      Buffer.from(
+        JSON.stringify({
+          id: 'sodium',
+          name: 'Sodium',
+          version: '0.5.8',
+          description: 'Rendering engine',
+          authors: ['jellysquid3', { name: 'Other' }],
+          icon: 'assets/icon.png',
+        }),
+      ),
+    )
+    zip.addFile('assets/icon.png', Buffer.from([137, 80, 78, 71]))
+    const jarPath = path.join(dir, 'sodium.jar')
+    fs.writeFileSync(jarPath, zip.toBuffer())
+
+    const meta = inspectJarMetadata(jarPath)
+    assert.equal(meta.modName, 'Sodium')
+    assert.equal(meta.modVersion, '0.5.8')
+    assert.equal(meta.modLoader, 'fabric')
+    assert.equal(meta.description, 'Rendering engine')
+    assert.equal(meta.authors, 'jellysquid3, Other')
+    assert.equal(meta.iconBase64, 'data:image/png;base64,iVBORw=='
+    )
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('TOML subset strips comments after headers and values, keeps # in strings', () => {

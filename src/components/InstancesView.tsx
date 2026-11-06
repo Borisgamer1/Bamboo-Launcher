@@ -7,31 +7,16 @@ import {
   Plus,
   Search,
   Layers,
-  Settings,
-  RefreshCw,
-  ArrowLeft,
-  Package,
-  Image,
-  Shirt,
-  Globe,
   Upload,
-  Lock,
-  Unlock,
   AlertTriangle,
 } from "lucide-react";
 import { TabType } from "./Sidebar";
 import { translations, LanguageType } from "../lib/translations";
+import { mainErrorText } from "../lib/mainErrors";
 import { requestSettingsTarget } from "../lib/settingsNavigation";
-import {
-  categoryForTab,
-  categoryToProjectType,
-  instanceLoadsMods,
-  instanceLoadsShaders,
-} from "../lib/contentCategories";
 import { mergeKeybinds } from "../lib/keybinds";
 import { fetchVersionMap, VersionMap } from "../lib/versionApi";
 import { useToast } from "./Toast";
-import { ProfileExportModal } from "./ProfileExportModal";
 import { ProfileImportModal } from "./ProfileImportModal";
 import { InstanceContextMenu } from "./instances/InstanceContextMenu";
 import {
@@ -48,9 +33,8 @@ import { instanceFolderKeyOf as instanceFolderKey, uniqueInstanceFolder } from "
 import { mapProfileToInstance, type IpcProfile } from "../hooks/useInstances";
 import { ContentHeader } from "./ContentHeader";
 import { InstanceCard } from "./instances/InstanceCard";
-import { InstanceCoverPicker } from "./instances/InstanceCoverPicker";
-import { PlayArea } from "./instances/PlayArea";
-import { InstanceSettingsView } from "./instance-settings/InstanceSettingsView";
+import { InstanceDetailView, DetailViewBoundary, type DetailTab } from "./instances/InstanceDetailView";
+import { CreateInstanceDialog } from "./instances/CreateInstanceDialog";
 import { type LauncherPreferences } from "../lib/launcherPreferences";
 import {
   pickRandomInstanceCover,
@@ -65,7 +49,6 @@ import {
   errorMessage,
   type Instance,
 } from "./instances/instanceModel";
-import { ContentListView } from "./instances/content-list-view";
 
 // The record lives in the model module; existing importers keep their path.
 export type { ContentItem, Instance } from "./instances/instanceModel";
@@ -75,8 +58,6 @@ interface RunningInstance {
   folderName: string;
   startedAt: number;
 }
-
-type DetailTab = "mods" | "resourcepacks" | "shader" | "worlds" | "datapacks" | "settings";
 
 
 interface InstancesViewProps {
@@ -148,8 +129,6 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
       : null;
   const [analysisTarget, setAnalysisTarget] = useState<Instance | null>(null);
   const [detailTabState, setDetailTabState] = useState<{ instanceId: string; value: DetailTab }>({ instanceId: "", value: "mods" });
-  // Worlds are detected on disk, so the tab badge is fed by the Worlds tab itself.
-  const [detectedWorldCounts, setDetectedWorldCounts] = useState<Record<string, number>>({});
   const detailTab: DetailTab = selectedInstance && detailTabState.instanceId === selectedInstance.id ? detailTabState.value : "mods";
   const setDetailTab = (value: DetailTab) => setDetailTabState({ instanceId: selectedInstance?.id ?? "", value });
   const [showExportModal, setShowExportModal] = useState(false);
@@ -276,7 +255,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
 
   const handleCreateInstance = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newInstanceName.trim()) return;
+    if (!newInstanceName.trim() || !newInstanceVersion) return;
 
     const defaultRam = preferences.instanceDefaults.ramMb || 4096;
     const defaultJava = preferences.instanceDefaults.javaPath || "Automatisch";
@@ -314,16 +293,12 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
       createdAt: Date.now(),
     };
 
-    setInstances([newInst, ...instances]);
-    setCreateModalOpen(false);
-    setNewInstanceName("");
-    setNewInstanceVersion(newInstanceVersion);
-    setNewInstanceModloader("Fabric");
-    setNewInstanceModloaderVersion("");
-    setNewInstanceImage(pickRandomInstanceCover());
-
     const seeded = await window.electronAPI?.instances.create?.({
       folderName,
+      name: newInst.name,
+      version: newInst.minecraftVersion,
+      loader: newInst.modloader.toLowerCase(),
+      loaderVersion: newInst.modloaderVersion || '',
       options: {
         ...preferences.gameOptions,
         _mcVersion: newInst.minecraftVersion,
@@ -332,14 +307,22 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
         keyBindings: mergeKeybinds(preferences.keybinds, newInst.keybinds),
       },
     });
-    if (seeded && !seeded.success) {
-      addToast({ type: 'error', message: t.instanceOptionsFailed });
-    } else if (seeded?.folderName && seeded.folderName !== folderName) {
-      // The main process is the final authority on folder collisions.
-      setInstances(prev => prev.map(item =>
-        item.id === newInst.id ? { ...item, folderName: seeded.folderName } : item,
-      ));
+    if (!seeded?.success) {
+      // Nothing was written; do not leave a card that cannot launch.
+      addToast({
+        type: 'error',
+        message: mainErrorText(seeded, lang, t.instanceOptionsFailed),
+      });
+      return;
     }
+    // The main process is the final authority on folder collisions.
+    setInstances(prev => [{ ...newInst, folderName: seeded.folderName ?? folderName }, ...prev]);
+    setCreateModalOpen(false);
+    setNewInstanceName("");
+    setNewInstanceVersion(newInstanceVersion);
+    setNewInstanceModloader("Fabric");
+    setNewInstanceModloaderVersion("");
+    setNewInstanceImage(pickRandomInstanceCover());
   };
 
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<Instance | null>(null);
@@ -369,7 +352,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
         setRenameName('');
         addToast({ type: 'success', message: lang === 'de' ? 'Instanz umbenannt' : 'Instance renamed' });
       } else {
-        addToast({ type: 'error', message: result?.error || 'Rename failed' });
+        addToast({ type: 'error', message: mainErrorText(result, lang, 'Rename failed') });
       }
     } catch (e) {
       addToast({ type: 'error', message: errorMessage(e) || 'Rename failed' });
@@ -381,7 +364,9 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
     let failure: string | null = null;
     try {
       const result = await window.electronAPI?.instances.deleteFiles?.(folderName);
-      if (result && result.success === false) failure = result.error || 'unbekannt';
+      if (result && result.success === false) {
+        failure = mainErrorText(result, lang, lang === 'de' ? 'unbekannt' : 'unknown');
+      }
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);
     }
@@ -451,12 +436,21 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
       percent: 2,
     });
     try {
-      await window.electronAPI?.instances.repair?.({
+      const result = await window.electronAPI?.instances.repair?.({
         loader: instance.modloader.toLowerCase(),
         loaderVersion: instance.modloaderVersion || '',
         mcVersion: instance.minecraftVersion,
         folderName,
       });
+      if (result && result.success === false) {
+        // Validation stops before any work; show the mapped text, not a success.
+        failBackgroundTask(taskId, mainErrorText(result, lang, lang === 'de' ? 'Reparatur fehlgeschlagen' : 'Repair failed'));
+        addToast({
+          type: 'error',
+          message: mainErrorText(result, lang, lang === 'de' ? 'Reparatur fehlgeschlagen' : 'Repair failed'),
+        });
+        return;
+      }
       completeBackgroundTask(taskId);
       addToast({
         type: 'success',
@@ -484,7 +478,11 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
         folderName: instanceFolderKey(instance),
       });
       if (!result?.success || !result.profile) {
-        const message = result?.error || (lang === 'de' ? 'Klonen fehlgeschlagen' : 'Clone failed');
+        const message = mainErrorText(
+          result,
+          lang,
+          lang === 'de' ? 'Klonen fehlgeschlagen' : 'Clone failed',
+        );
         failBackgroundTask(taskId, message);
         addToast({ type: 'error', message });
         return;
@@ -516,7 +514,7 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
       } else {
         addToast({
           type: 'error',
-          message: result?.error || (lang === 'de' ? 'Verknüpfung fehlgeschlagen' : 'Shortcut failed'),
+          message: mainErrorText(result, lang, lang === 'de' ? 'Verknüpfung fehlgeschlagen' : 'Shortcut failed'),
         });
       }
     } catch (error) {
@@ -560,227 +558,82 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
   const isRunning = (folderName: string) =>
     runningInstances.some((ri) => ri.folderName === folderName);
 
+  const renameDialog = (
+    <Dialog
+      open={!!renameModal}
+      onClose={() => { setRenameModal(null); setRenameName(""); }}
+      title={renameShown ? (lang === "de" ? `"${renameShown.name}" umbenennen` : `Rename "${renameShown.name}"`) : ""}
+      titleId="rename-dialog-title"
+      closeLabel={lang === "de" ? "Schließen" : "Close"}
+      icon={<Edit3 className="h-4 w-4" />}
+      tone="accent"
+      footer={
+        <>
+          <button onClick={() => { setRenameModal(null); setRenameName(""); }} className={dialogButton.secondary}>
+            {lang === "de" ? "Abbrechen" : "Cancel"}
+          </button>
+          <button onClick={handleRenameInstance} disabled={!renameName.trim()} className={dialogButton.accent}>
+            {lang === "de" ? "Umbenennen" : "Rename"}
+          </button>
+        </>
+      }
+    >
+      <p className="mb-3">
+        {lang === "de" ? "Gib einen neuen Namen für die Instanz ein." : "Enter a new name for the instance."}
+      </p>
+      <input
+        data-autofocus
+        type="text"
+        value={renameName}
+        onChange={e => setRenameName(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter") handleRenameInstance(); }}
+        className="w-full bg-surface border border-stroke-strong rounded-xl px-4 py-2.5 text-regular text-ink font-medium outline-none focus:border-accent/50 transition-colors"
+        placeholder={lang === "de" ? "Neuer Name..." : "New name..."}
+      />
+    </Dialog>
+  );
+
   if (selectedInstance) {
     const inst = instances.find(i => i.id === selectedInstance.id) || selectedInstance;
     const running = isRunning(instanceFolderKey(inst));
     return (
       <DetailViewBoundary lang={lang}>
-      <div className="flex-1 h-full flex flex-col overflow-hidden p-0">
-        <div className="relative h-48 shrink-0 bg-black border-b border-hairline overflow-hidden">
-          {inst.thumbnail && (
-            <img
-              src={inst.thumbnail}
-              alt={inst.name}
-              className="w-full h-full object-cover opacity-40"
-              onError={(event) => { (event.target as HTMLImageElement).style.display = "none"; }}
-            />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-root via-root/60 to-transparent" />
-
-          <div className="absolute inset-0 p-6 flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => {
-                  setSelectedInstanceId(null);
-                  onClearSelectedInstanceOverride?.();
-                }}
-                className="p-2 rounded-xl bg-root/60 hover:bg-hover border border-stroke/80 text-ink-secondary hover:text-ink transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex items-end gap-5">
-              <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-stroke/80 shadow-2xl shrink-0 bg-black">
-                {inst.thumbnail && (
-                  <img
-                    src={inst.thumbnail}
-                    alt={inst.name}
-                    className="w-full h-full object-cover"
-                    onError={(event) => { (event.target as HTMLImageElement).style.display = "none"; }}
-                  />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-title2 font-semibold text-ink drop-shadow-lg">{inst.name}</h1>
-                <div className="flex items-center gap-3 mt-1.5">
-                  <span className="text-small font-medium theme-text theme-bg-light theme-border-md px-2.5 py-0.5 rounded-lg">{inst.minecraftVersion}</span>
-                  <span className="text-small font-medium text-info bg-info/15 border border-info/25 px-2.5 py-0.5 rounded-lg">{inst.modloader}{inst.modloaderVersion ? ` ${inst.modloaderVersion}` : ""}</span>
-                  <span className="text-small text-ink-secondary">
-                    {inst.modloader === "Vanilla" && inst.size}
-                    {inst.modloader !== "Vanilla" && (inst.content?.length ? `${inst.content.length} ${t.contentCountUnit}` : inst.size)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="ml-auto shrink-0 pb-0.5">
-                <PlayArea
-                  running={running}
-                  launching={!!launching && launchingFolder === instanceFolderKey(inst)}
-                  progress={launchProgress?.[instanceFolderKey(inst)]}
-                  hasAccount={!!hasAccount}
-                  onPlay={() => handleLaunchInstance(inst.id, { stopPropagation() {} } as React.MouseEvent)}
-                  onStop={() => onStopGame(inst.name, inst.folderName)}
-                  lang={lang}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-0.5 px-6 bg-root/30 border-b border-hairline shrink-0 overflow-x-auto custom-scrollbar">
-          {[
-            { id: "mods" as const, label: "Mods", icon: Package, count: (inst.content || []).filter(c => c.type === "mods").length },
-            { id: "resourcepacks" as const, label: "Resource Packs", icon: Image, count: (inst.content || []).filter(c => c.type === "resourcepacks").length },
-            { id: "shader" as const, label: t.shader, icon: Shirt, count: (inst.content || []).filter(c => c.type === "shaderpacks").length },
-            { id: "worlds" as const, label: t.worlds, icon: Globe, count: detectedWorldCounts[inst.id] ?? (inst.content || []).filter(c => c.type === "worlds").length },
-            { id: "datapacks" as const, label: "Data Packs", icon: Layers, count: (inst.content || []).filter(c => c.type === "datapacks").length },
-          ].map(tab => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setDetailTab(tab.id)}
-                className={`px-4 py-3 text-small font-medium flex items-center gap-2 transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer border-b-2 ${
-                  detailTab === tab.id
-                    ? "text-accent border-accent bg-accent/5"
-                    : "text-ink-secondary hover:text-ink border-transparent hover:border-rim"
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {tab.label}
-                <span className="text-micro font-medium bg-raised text-ink px-1.5 py-0.5 rounded-full">{tab.count}</span>
-              </button>
-            );
-          })}
-
-          <div className="flex-1" />
-
-          {inst.isModpack && (
-            <button
-              onClick={() => setDetailTab("mods")}
-              className={`shrink-0 px-3 py-3 text-small font-medium flex items-center gap-2 transition-colors cursor-pointer border-b-2 border-transparent ${
-                inst.ownContentManagement ? "text-success hover:text-success" : "text-ink-secondary hover:text-ink"
-              }`}
-              title={lang === "de" ? "Eigene Mods und Datapacks verwalten" : "Manage custom mods and data packs"}
-            >
-              {inst.ownContentManagement ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-              {lang === "de" ? "Eigene Mods" : "Custom mods"}
-            </button>
-          )}
-
-          <button
-            onClick={() => setDetailTab("settings")}
-            className={`px-4 py-3 text-small font-medium flex items-center gap-2 transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer border-b-2 ${
-              detailTab === "settings"
-                ? "theme-text theme-border theme-bg-subtle"
-                : "text-ink-secondary hover:text-ink border-transparent hover:border-rim"
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            {t.tabSettings}
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-          {((detailTab === "mods" && !instanceLoadsMods(inst.modloader)) ||
-            (detailTab === "shader" && !instanceLoadsShaders(inst.modloader))) && (
-            <div className="bg-warning/10 border border-warning/20 rounded-2xl p-4 flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
-              <p className="text-small font-medium text-warning">
-                {detailTab === "shader" ? t.vanillaNoShaderNotice : t.vanillaNoLoaderNotice}
-              </p>
-            </div>
-          )}
-
-          {["mods", "resourcepacks", "shader", "worlds", "datapacks"].includes(detailTab) && (
-            <DetailViewBoundary key={detailTab} lang={lang}>
-              <ContentListView
-                key={`${inst.id}:${inst.minecraftVersion}:${inst.modloader}:${inst.modloaderVersion || ""}`}
-                inst={inst}
-                instances={instances}
-                detailTab={detailTab}
-                lang={lang}
-                openModBrowserForInstance={(id) => {
-                  setSelectedInstanceId(null);
-                  sessionStorage.setItem('bamboo-project-type', categoryToProjectType(categoryForTab(detailTab)));
-                  sessionStorage.setItem('bamboo-project-source', detailTab === 'worlds' ? 'curseforge' : 'modrinth');
-                  openModBrowserForInstance(id);
-                }}
-                setInstances={setInstances}
-                setSelectedInstance={(next) => setSelectedInstanceId(next?.id ?? null)}
-                onWorldsDetected={(count) =>
-                  setDetectedWorldCounts(prev => (prev[inst.id] === count ? prev : { ...prev, [inst.id]: count }))
-                }
-              />
-            </DetailViewBoundary>
-          )}
-
-          {detailTab === "settings" && (
-            <InstanceSettingsView
-              instance={inst}
-              lang={lang}
-              preferences={preferences}
-              onUpdate={(patch) => handleInstanceUpdate(inst, patch)}
-              onRequestRename={() => { setRenameModal(inst); setRenameName(inst.name); }}
-              onRequestDelete={() => handleDeleteInstance(inst.id)}
-              onRequestImage={() => handleSelectImageForExistingInstance(inst.id)}
-              onExport={() => setShowExportModal(true)}
-              onOpenFolder={() => window.electronAPI?.instances.openFolder?.(inst.folderName || inst.name.toLowerCase().replace(/\s+/g, "-"))}
-              onRepair={() => void handleRepairInstance(inst)}
-              onChangeVersion={() => setVersionSwitchTarget(inst)}
-            />
-          )}
-        </div>
-
-        {selectedInstance && (
-          <ProfileExportModal
-            key={showExportModal ? "profile-export-open" : "profile-export-closed"}
-            isOpen={showExportModal}
-            onClose={() => setShowExportModal(false)}
-            instance={selectedInstance}
-            lang={lang}
-          />
-        )}
-
-        {deleteDialog}
-
-        <Dialog
-          open={!!renameModal}
-          onClose={() => { setRenameModal(null); setRenameName(""); }}
-          title={renameShown ? (lang === "de" ? `"${renameShown.name}" umbenennen` : `Rename "${renameShown.name}"`) : ""}
-          titleId="rename-dialog-title"
-          closeLabel={lang === "de" ? "Schließen" : "Close"}
-          icon={<Edit3 className="h-4 w-4" />}
-          tone="accent"
-          footer={
-            <>
-              <button onClick={() => { setRenameModal(null); setRenameName(""); }} className={dialogButton.secondary}>
-                {lang === "de" ? "Abbrechen" : "Cancel"}
-              </button>
-              <button onClick={handleRenameInstance} disabled={!renameName.trim()} className={dialogButton.accent}>
-                {lang === "de" ? "Umbenennen" : "Rename"}
-              </button>
-            </>
-          }
-        >
-          <p className="mb-3">
-            {lang === "de" ? "Gib einen neuen Namen für die Instanz ein." : "Enter a new name for the instance."}
-          </p>
-          <input
-            data-autofocus
-            type="text"
-            value={renameName}
-            onChange={e => setRenameName(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") handleRenameInstance(); }}
-            className="w-full bg-surface border border-stroke-strong rounded-xl px-4 py-2.5 text-regular text-ink font-medium outline-none focus:border-accent/50 transition-colors"
-            placeholder={lang === "de" ? "Neuer Name..." : "New name..."}
-          />
-        </Dialog>
-
-        {analysisSheet}
-        {versionSwitchModal}
-      </div>
+      <InstanceDetailView
+        inst={inst}
+        instances={instances}
+        lang={lang}
+        t={t}
+        running={running}
+        launching={launching}
+        launchingFolder={launchingFolder}
+        launchProgress={launchProgress}
+        hasAccount={hasAccount}
+        detailTab={detailTab}
+        setDetailTab={setDetailTab}
+        preferences={preferences}
+        showExportModal={showExportModal}
+        onBack={() => {
+          setSelectedInstanceId(null);
+          onClearSelectedInstanceOverride?.();
+        }}
+        setSelectedInstanceId={setSelectedInstanceId}
+        setInstances={setInstances}
+        openModBrowserForInstance={openModBrowserForInstance}
+        handleLaunchInstance={handleLaunchInstance}
+        onStopGame={onStopGame}
+        handleInstanceUpdate={handleInstanceUpdate}
+        handleSelectImageForExistingInstance={handleSelectImageForExistingInstance}
+        handleDeleteInstance={handleDeleteInstance}
+        handleRepairInstance={handleRepairInstance}
+        setRenameModal={setRenameModal}
+        setRenameName={setRenameName}
+        setShowExportModal={setShowExportModal}
+        setVersionSwitchTarget={setVersionSwitchTarget}
+      />
+      {deleteDialog}
+      {renameDialog}
+      {analysisSheet}
+      {versionSwitchModal}
       </DetailViewBoundary>
     );
   }
@@ -1002,147 +855,27 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
         lang={lang}
       />
 
-      <Dialog
+      <CreateInstanceDialog
         open={createModalOpen}
+        lang={lang}
+        t={t}
+        newInstanceName={newInstanceName}
+        setNewInstanceName={setNewInstanceName}
+        newInstanceVersion={newInstanceVersion}
+        setNewInstanceVersion={setNewInstanceVersion}
+        newInstanceModloader={newInstanceModloader}
+        setNewInstanceModloader={setNewInstanceModloader}
+        setNewInstanceModloaderVersion={setNewInstanceModloaderVersion}
+        newInstanceImage={newInstanceImage}
+        setNewInstanceImage={setNewInstanceImage}
+        loadingVersions={loadingVersions}
+        minecraftVersions={minecraftVersions}
+        effectiveModloaderVersion={effectiveModloaderVersion}
+        getModloaderVersions={getModloaderVersions}
         onClose={() => setCreateModalOpen(false)}
-        title={t.createInstance}
-        titleId="create-dialog-title"
-        closeLabel={lang === "de" ? "Schließen" : "Close"}
-        icon={<Plus className="h-4 w-4" />}
-        tone="accent"
-        bodyClassName="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 text-small text-ink-secondary"
-        footer={
-          <>
-            <button type="button" onClick={() => setCreateModalOpen(false)} className={dialogButton.secondary}>
-              {t.cancel}
-            </button>
-            <button
-              type="submit"
-              form="create-instance-form"
-              data-tour="instance-create-confirm"
-              className={dialogButton.accent}
-            >
-              {t.create}
-            </button>
-          </>
-        }
-      >
-        <form id="create-instance-form" onSubmit={handleCreateInstance} className="flex flex-col gap-4 text-left">
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="create-instance-name" className="text-micro font-medium text-ink-secondary uppercase tracking-label">
-                    {lang === "de" ? "Instanz Name" : "Instance name"}
-                  </label>
-                  <input
-                    id="create-instance-name"
-                    data-autofocus
-                    type="text"
-                    required
-                    value={newInstanceName}
-                    onChange={(e) => setNewInstanceName(e.target.value)}
-                    placeholder={t.instanceNamePlaceholder}
-                    className="w-full bg-surface/40 border border-stroke focus:theme-border rounded-xl py-2.5 px-4 text-regular text-ink placeholder:text-ink-tertiary outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter]"
-                  />
-                </div>
-
-                {loadingVersions ? (
-                  <div className="py-12 text-center flex flex-col items-center gap-3">
-                    <RefreshCw className="w-10 h-10 theme-text animate-spin" />
-                    <p className="text-small text-ink-secondary font-medium">{t.loadingVersions}</p>
-                  </div>
-                ) : minecraftVersions.length === 0 ? (
-                  <div className="py-12 text-center flex flex-col items-center gap-3">
-                    <p className="text-small text-ink-secondary font-medium">{t.noVersions}</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-micro font-medium text-ink-secondary uppercase tracking-label">Minecraft Version</label>
-                      <select
-                        value={newInstanceVersion}
-                        onChange={(e) => setNewInstanceVersion(e.target.value)}
-                        className="w-full bg-surface/40 border border-stroke focus:theme-border rounded-xl py-2.5 px-3 text-regular text-ink outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter]"
-                      >
-                        {minecraftVersions.map(ver => (
-                            <option key={ver} value={ver} className="bg-root">
-                              {ver}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-micro font-medium text-ink-secondary uppercase tracking-label">Modloader</label>
-                      <select
-                        value={newInstanceModloader}
-                        onChange={(e) => setNewInstanceModloader(e.target.value as Instance["modloader"])}
-                        className="w-full bg-surface/40 border border-stroke focus:theme-border rounded-xl py-2.5 px-3 text-regular text-ink outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter]"
-                      >
-                        <option value="Vanilla" className="bg-root">Vanilla</option>
-                        <option value="Fabric" className="bg-root">Fabric</option>
-                        <option value="Quilt" className="bg-root">Quilt</option>
-                        <option value="Neoforge" className="bg-root">Neoforge</option>
-                        <option value="Forge" className="bg-root">Forge</option>
-                      </select>
-                    </div>
-
-                    {newInstanceModloader !== "Vanilla" && (
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-micro font-medium text-ink-secondary uppercase tracking-label">Modloader Version</label>
-                        <select
-                          value={effectiveModloaderVersion}
-                          onChange={(e) => setNewInstanceModloaderVersion(e.target.value)}
-                          className="w-full bg-surface/40 border border-stroke focus:theme-border rounded-xl py-2.5 px-3 text-regular text-ink outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter]"
-                        >
-                          {getModloaderVersions(newInstanceVersion, newInstanceModloader).map(v => (
-                            <option key={v} value={v} className="bg-root">{v}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <InstanceCoverPicker
-                      value={newInstanceImage}
-                      onChange={setNewInstanceImage}
-                      lang={lang}
-                    />
-
-                  </>
-                )}
-        </form>
-      </Dialog>
+        onCreate={handleCreateInstance}
+      />
       </div>
     </div>
   );
 };
-
-class DetailViewBoundary extends React.Component<{ children: React.ReactNode; fallback?: React.ReactNode; lang: LanguageType }, { hasError: boolean }> {
-  constructor(props: { children: React.ReactNode; fallback?: React.ReactNode; lang: LanguageType }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(error: Error) {
-    console.error('[DetailViewBoundary] Error in instance detail view:', error);
-  }
-  render() {
-    if (this.state.hasError) {
-      const copy = translations[this.props.lang];
-      return this.props.fallback || (
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center max-w-md">
-            <AlertTriangle className="w-12 h-12 text-warning mx-auto mb-4" />
-            <h3 className="text-large font-semibold text-ink mb-2">{copy.instanceDetailErrorTitle}</h3>
-            <p className="text-regular text-ink-secondary mb-4">{copy.instanceDetailErrorBody}</p>
-            <button onClick={() => this.setState({ hasError: false })}
-              className="px-5 py-2.5 bg-raised hover:bg-selected rounded-xl text-small font-medium text-ink transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer">
-              {copy.retry}
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}

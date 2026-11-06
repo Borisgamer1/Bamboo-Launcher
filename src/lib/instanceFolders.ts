@@ -16,13 +16,16 @@ export function instanceFolderKeyOf(instance: FolderCarrier): string {
   return slugifyInstanceFolder(instance.name || instance.id || "instance");
 }
 
+// Must match profileFolderSlug in electron/instances/profile-registry.ts:
+// both sides resolve a missing folderName, and a different rule makes the
+// renderer address a folder the main process never created.
 export function slugifyInstanceFolder(value: string): string {
   return (
     String(value || "")
       .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-+|-+$/g, "")
+      .replace(/[^a-z0-9_-]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "")
       .slice(0, 64) || "instance"
   );
 }

@@ -1,28 +1,17 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { hashBuffer } from '../download/checksum'
+import { isVersionCompatible } from './compatibility'
+import { MODRINTH_LOADER_NAMES } from './loaders'
 import type { ModrinthClient } from './modrinth'
 import { chunked } from './provider'
-import type { ModLoader } from './types'
+import type {
+  InstanceModUpdate,
+  InstanceModUpdateResult,
+  ModLoader,
+} from './types'
 
-export interface InstanceModUpdateResult {
-  /** Jars Modrinth knows, whether or not a newer build exists. */
-  resolved: string[]
-  /** Jars with a newer build, already shaped for the update run. */
-  updates: InstanceModUpdate[]
-}
-
-/** One jar Modrinth knows a newer build for, already shaped for the update run. */
-export interface InstanceModUpdate {
-  /** Installed file name, the key the renderer knows the row by. */
-  file: string
-  projectId: string
-  versionId: string
-  versionNumber: string
-  /** File of the newer version that has to be downloaded. */
-  fileName: string
-  url: string
-}
+export type { InstanceModUpdate, InstanceModUpdateResult }
 
 interface HashEntry {
   size: number
@@ -72,6 +61,7 @@ export async function checkInstanceModUpdates(options: {
 
   const updates: InstanceModUpdate[] = []
   const resolved: string[] = []
+  const loaderName = options.loader ? MODRINTH_LOADER_NAMES[options.loader] : undefined
   for (const batch of chunked(files, BATCH_SIZE)) {
     const latest = await options.client.updateMany(
       batch.map((file) => file.sha1),
@@ -87,6 +77,17 @@ export async function checkInstanceModUpdates(options: {
       const primary = version.files.find((entry) => entry.primary) ?? version.files[0]
       if (!primary?.url) continue
       if (primary.hashes?.sha1?.toLowerCase() === file.sha1) continue
+      // The provider filters too, but a build for another loader or game version
+      // must never reach the instance: it is installed over the working jar.
+      if (
+        !isVersionCompatible(version, {
+          minecraftVersion: options.minecraftVersion,
+          ...(loaderName ? { acceptedLoaders: [loaderName] } : {}),
+          acceptUndeclaredLoaders: true,
+        })
+      ) {
+        continue
+      }
       updates.push({
         file: file.name,
         projectId: version.projectId,
@@ -94,6 +95,8 @@ export async function checkInstanceModUpdates(options: {
         versionNumber: version.versionNumber,
         fileName: primary.filename,
         url: primary.url,
+        loaders: version.loaders,
+        gameVersions: version.gameVersions,
       })
     }
   }

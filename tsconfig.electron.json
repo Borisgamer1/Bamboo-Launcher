@@ -12,6 +12,7 @@
       "node"
     ],
     "strict": true,
+    "allowJs": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitOverride": true,
@@ -22,6 +23,7 @@
     "declaration": false
   },
   "include": [
-    "electron/**/*.ts"
+    "electron/**/*.ts",
+    "electron/**/*.js"
   ]
 }

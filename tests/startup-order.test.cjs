@@ -101,10 +101,13 @@ class FakeRpcClient {
  * Boots the real main.js once. `coreModule` replaces `dist-electron/index.js`
  * when the failure branch is under test.
  */
-async function boot({ coreModule, isPackaged = false } = {}) {
+async function boot({ coreModule, isPackaged = false, windowState } = {}) {
   const appData = fs.mkdtempSync(path.join(os.tmpdir(), 'bamboo-startup-'))
   const gameRoot = path.join(appData, 'game')
   fs.mkdirSync(gameRoot, { recursive: true })
+  if (windowState !== undefined) {
+    fs.writeFileSync(path.join(gameRoot, 'window-state.json'), windowState)
+  }
   const timeline = []
   timeline.handlers = new Map()
   timeline.listeners = new Map()
@@ -161,6 +164,14 @@ test('auth IPC handlers exist before the window is created', async () => {
       `${entry.channel} was registered after the window was created`,
     )
   }
+})
+
+test('a corrupt window-state file must not block the window', async () => {
+  const timeline = await boot({ windowState: 'null' })
+  assert.ok(
+    timeline.some((entry) => entry.type === 'window'),
+    'a non-object state file must fall back to default bounds',
+  )
 })
 
 test('a packaged start loads the bundled renderer and never the dev server', async () => {

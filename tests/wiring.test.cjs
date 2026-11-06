@@ -51,7 +51,7 @@ test('electron entry boots, registers IPC and never returns tokens', async () =>
     assert.ok(handlers.has('bamboo:core:status'))
     assert.ok(handlers.has('bamboo:settings:save'))
     assert.ok(handlers.has('bamboo:accounts:list'))
-    assert.ok(handlers.has('bamboo:instances:upsert'))
+    assert.ok(handlers.has('bamboo:instances:list'))
 
     const trusted = { senderFrame: { url: 'file:///app/index.html' } }
     const untrusted = { senderFrame: { url: 'https://evil.example/' } }

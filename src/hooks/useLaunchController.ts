@@ -10,6 +10,7 @@ import { mergeKeybinds } from '../lib/keybinds'
 import { parseJvmArgs } from '../lib/gameOptions'
 import { instanceFolderKeyOf } from '../lib/instanceFolders'
 import type { LaunchProgress } from '../electron'
+import { mainErrorText } from '../lib/mainErrors'
 
 export interface RunningInstance {
   name: string
@@ -33,9 +34,8 @@ export interface LaunchControllerState {
   isLaunching: boolean
   launchingFolder: string
   launchProgress: Record<string, LaunchProgress>
-  launchGame: (instanceId?: string) => void
+  launchGame: (instanceId?: string, server?: { host: string; port?: number }) => boolean
   stopGame: (name: string, folderName?: string) => void
-  addRunningInstance: (name: string, folderName?: string) => void
 }
 
 export function useLaunchController({
@@ -61,15 +61,10 @@ export function useLaunchController({
     setLaunchingFolder('')
   }, [])
 
-  const addRunningInstance = useCallback((name: string, folderName?: string) => {
-    const folder = folderName || instanceFolderKeyOf({ name })
-    setRunningInstances((prev) => [...prev, { name, folderName: folder, startedAt: Date.now() }])
-  }, [])
-
-  const launchGame = (instanceId?: string) => {
+  const launchGame = (instanceId?: string, server?: { host: string; port?: number }): boolean => {
     const instance = instanceId ? instances.find((entry) => entry.id === instanceId) : null
     const target = instance || instances[0]
-    if (!target || isLaunching || launchInFlight.current) return
+    if (!target || isLaunching || launchInFlight.current) return false
 
     if (!activeAccount.id) {
       addToast({
@@ -78,7 +73,7 @@ export function useLaunchController({
           ? 'Kein Account ausgewählt – Account in den Einstellungen hinzufügen'
           : 'No account selected – add an account in Settings',
       })
-      return
+      return false
     }
 
     launchInFlight.current = true
@@ -124,6 +119,7 @@ export function useLaunchController({
         lang: preferences.instanceDefaults.minecraftLanguage,
         fullscreen,
         keyBindings,
+        ...(server ? { joinServer: server.host, joinPort: server.port ?? 25565 } : {}),
       },
       extraJvmArgs: jvmArgs,
       resolution,
@@ -139,17 +135,25 @@ export function useLaunchController({
 
     try {
       window.electronAPI?.launch.start?.(payload)
-      window.electronAPI?.launch.onReady?.(() => {
-        endLaunch()
-        if (preferences.behavior.minimizeOnLaunch) window.electronAPI?.window.minimize?.()
-      })
     } catch {
       console.warn('[Bamboo] Launch failed')
       endLaunch()
+      return false
     }
 
     setRunningInstances((prev) => [...prev, { name: target.name, folderName, startedAt: Date.now() }])
+    return true
   }
+
+  // One subscription for the whole controller; subscribing inside launchGame
+  // added a listener per start and never removed it.
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.launch.onReady?.(() => {
+      endLaunch()
+      if (preferences.behavior.minimizeOnLaunch) window.electronAPI?.window.minimize?.()
+    })
+    return () => { unsubscribe?.() }
+  }, [endLaunch, preferences.behavior.minimizeOnLaunch])
 
   useEffect(() => {
     const unsubscribe = window.electronAPI?.launch.onProgress?.((data) => {
@@ -211,7 +215,7 @@ export function useLaunchController({
       endLaunch()
       addToast({
         type: 'error',
-        message: data.message || (lang === 'de' ? 'Launch fehlgeschlagen' : 'Launch failed'),
+        message: mainErrorText({ error: data.message, code: data.code }, lang, lang === 'de' ? 'Launch fehlgeschlagen' : 'Launch failed'),
       })
     })
     return () => { unsubscribe?.() }
@@ -232,6 +236,5 @@ export function useLaunchController({
     launchProgress,
     launchGame,
     stopGame,
-    addRunningInstance,
   }
 }

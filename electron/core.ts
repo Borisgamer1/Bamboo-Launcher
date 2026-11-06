@@ -24,7 +24,7 @@ import type {
   LaunchHandle as LaunchProcessHandle,
   LaunchInstanceHooks,
 } from './launch/types'
-import { LaunchInstanceRequestSchema, type LaunchInstanceRequest } from './schemas'
+import { LaunchInstanceRequestSchema, type Account, type LaunchInstanceRequest } from './schemas'
 import { analyzeInstance, applyFixAction, undoFixAction } from './logs'
 import type { AnalysisResult, FixResult } from './logs/types'
 import { VersionResolver } from './version'
@@ -474,8 +474,19 @@ export class LauncherCore {
     )
   }
 
+  /** The account the UI shows: a signed-in Microsoft session wins over a stale
+   *  selectedAccountId left behind by an older offline profile. */
+  async activeAccount(): Promise<Account | undefined> {
+    const status = await this.auth.status()
+    if (status.signedIn && status.account) {
+      const account = await this.accounts.get(status.account.id)
+      if (account) return account
+    }
+    return this.accounts.getSelected()
+  }
+
   async getPlayerIdentity(): Promise<{ uuid: string | null; username: string | null; type: string } | null> {
-    const account = await this.accounts.getSelected()
+    const account = await this.activeAccount()
     if (!account) return null
     return {
       uuid: typeof account.uuid === 'string' && account.uuid.length > 0 ? account.uuid : null,
@@ -489,7 +500,7 @@ export class LauncherCore {
   }
 
   async getLaunchIdentity(accountId?: string): Promise<LaunchIdentity | undefined> {
-    const account = accountId ? await this.accounts.get(accountId) : await this.accounts.getSelected()
+    const account = accountId ? await this.accounts.get(accountId) : await this.activeAccount()
     if (!account) return undefined
     const accessToken = await this.auth.accessTokenFor(account)
     if (isModernMsAccount(account.type) && !accessToken) {

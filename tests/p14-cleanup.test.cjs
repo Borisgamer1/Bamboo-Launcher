@@ -170,7 +170,9 @@ test('P14 main.js keeps no duplicate Java scan, full log read or root literal', 
 })
 
 test('P14 main.js keeps no duplicate loader installers', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8')
+  const source = ['main.js', 'electron/legacy/launch-ipc.ts', 'electron/legacy/loader-install.ts']
+    .map((file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8'))
+    .join('\n')
   for (const legacy of [
     'installModloader',
     'installForgeLoader',
@@ -202,7 +204,7 @@ test('P14 main.js keeps no duplicate loader installers', () => {
   )
   assert.match(
     source,
-    /const legacyDirectory = profileDirOrNull\(rootPath, folderName\)/,
+    /const legacyDirectory = (?:options\.)?profileDirOrNull\(rootPath, folderName\)/,
     'launch-game must resolve the legacy profile directory it hands to the launch facade through the guard',
   )
 })

@@ -13,26 +13,11 @@ const os = require('node:os')
 const path = require('node:path')
 const { test } = require('node:test')
 
-const ROOT = path.join(__dirname, '..')
-// main.js writes the options.txt sync marker through these two globals.
-const shellLog = { debug() {}, info() {}, warn() {}, error() {} }
-const crypto = require('node:crypto')
+const { createInstanceOptions } = require('../dist-electron/legacy/instance-options.js')
+const silentLog = { debug() {}, info() {}, warn() {}, error() {} }
 
 function loadOptionsWriter() {
-  const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
-  const start = source.indexOf('function mcVersionNum(ver)')
-  const end = source.indexOf("ipc.handle('create-instance'")
-  assert.ok(start > 0 && end > start, 'options.txt writer block must exist in main.js')
-  const factory = new Function(
-    'fs',
-    'path',
-    'console',
-    'shellLog',
-    'crypto',
-    `${source.slice(start, end)}; return { buildOptionsTxt, writeFirstRunOptions, normalizeKeyBindings };`,
-  )
-  const silent = { log() {}, warn() {}, error() {} }
-  return factory(fs, path, silent, shellLog, crypto)
+  return createInstanceOptions(silentLog)
 }
 
 const DEFAULTS = {
@@ -43,26 +28,7 @@ const DEFAULTS = {
 }
 
 function loadOptionsApplier() {
-  const source = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')
-  const writerStart = source.indexOf('function mcVersionNum(ver)')
-  const writerEnd = source.indexOf("ipc.handle('create-instance'")
-  const start = source.indexOf('function applyLauncherGameOptions(gameDir, options) {')
-  const end = source.indexOf("ipc.handle('apply-options-patch'", start)
-  assert.ok(writerStart > 0 && writerEnd > writerStart, 'options.txt writer block must exist in main.js')
-  assert.ok(start > 0 && end > start, 'options.txt merge helper must exist in main.js')
-  const factory = new Function(
-    'fs',
-    'path',
-    'console',
-    'require',
-    'shellLog',
-    'crypto',
-    `${source.slice(writerStart, writerEnd)}\n${source.slice(start, end)};\n` +
-      'return { buildOptionsTxt, writeFirstRunOptions, applyLauncherGameOptions };',
-  )
-  const silent = { log() {}, warn() {}, error() {} }
-  const shim = (id) => require(id.startsWith('./') ? path.join(ROOT, id.slice(2)) : id)
-  return factory(fs, path, silent, shim, shellLog, crypto)
+  return createInstanceOptions(silentLog)
 }
 
 test('a new instance gets the launcher keybind defaults in its options.txt', (context) => {

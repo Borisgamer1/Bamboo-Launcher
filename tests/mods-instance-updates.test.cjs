@@ -75,6 +75,50 @@ test('one batched call returns the newer build for a known jar', async () => {
   assert.equal(result.updates[0].versionNumber, '2.0')
   assert.equal(result.updates[0].fileName, 'a-2.0.jar')
   assert.equal(result.updates[0].url, 'https://example.invalid/a-2.0.jar')
+  assert.deepEqual(result.updates[0].loaders, ['fabric'])
+  assert.deepEqual(result.updates[0].gameVersions, ['26.3'])
+})
+
+test('a newer build for another loader is not offered as an update', async () => {
+  clearModHashCache()
+  const old = 'old jar bytes'
+  const directory = instance({ 'a-1.0.jar': old })
+  const forgeBuild = {
+    ...version('proj-a', '2.0', 'a-2.0.jar', 'cafebabe'),
+    loaders: ['forge'],
+  }
+  const fake = client({ [sha1(old)]: forgeBuild })
+
+  const result = await checkInstanceModUpdates({
+    instanceDir: directory,
+    minecraftVersion: '26.3',
+    loader: 'fabric',
+    client: fake,
+  })
+
+  assert.deepEqual(result.resolved, ['a-1.0.jar'])
+  assert.deepEqual(result.updates, [])
+})
+
+test('a newer build for another Minecraft version is not offered as an update', async () => {
+  clearModHashCache()
+  const old = 'old jar bytes'
+  const directory = instance({ 'a-1.0.jar': old })
+  const otherMc = {
+    ...version('proj-a', '2.0', 'a-2.0.jar', 'cafebabe'),
+    gameVersions: ['1.20.1'],
+  }
+  const fake = client({ [sha1(old)]: otherMc })
+
+  const result = await checkInstanceModUpdates({
+    instanceDir: directory,
+    minecraftVersion: '26.3',
+    loader: 'fabric',
+    client: fake,
+  })
+
+  assert.deepEqual(result.resolved, ['a-1.0.jar'])
+  assert.deepEqual(result.updates, [])
 })
 
 test('an installed build that already is the newest counts as resolved, not as update', async () => {

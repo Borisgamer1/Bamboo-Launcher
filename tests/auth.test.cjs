@@ -1473,6 +1473,47 @@ test('scenario 3: a cold start offline keeps the session and shows it as expired
   assert.equal(identity.accessToken, 'MC-OLD')
 })
 
+test('launch identity follows the signed-in Microsoft account, not a stale offline selection', async () => {
+  const appData = tempDir('auth-identity-mismatch')
+  const box = makeBox()
+  const logger = createNullLogger()
+  const tokens = new TokenStore(path.join(appData, 'accounts.tokens.json'), box, logger)
+  const accounts = new AccountStore(path.join(appData, 'accounts.json'), tokens, logger)
+  await accounts.upsert({
+    id: UUID,
+    name: 'Alex',
+    uuid: UUID,
+    type: 'microsoft',
+    active: true,
+    expiresAt: Date.now() + 3_600_000,
+    accessToken: 'MC-OK',
+    refreshToken: 'MS-REFRESH',
+  })
+  // An older offline profile was selected last; the UI still shows Microsoft.
+  await accounts.upsert({
+    id: 'offline-proof',
+    name: 'OfflineProof',
+    uuid: '00000000000000000000000000000000',
+    type: 'offline',
+    active: true,
+  })
+
+  const core = await createCore({
+    appDataPath: appData,
+    safeStorage: box,
+    logger,
+    authPort: 0,
+    fetchImpl: async () => {
+      throw new Error('offline')
+    },
+  })
+
+  const identity = await core.getLaunchIdentity()
+  assert.equal(identity.name, 'Alex')
+  assert.equal(identity.type, 'microsoft')
+  assert.equal(identity.accessToken, 'MC-OK')
+})
+
 test('scenario 4: sign out while the browser flow is open, then sign in immediately', async () => {
   const appData = tempDir('scenario-signout-pending')
   const { accounts, tokens, logger } = makeStores(appData)

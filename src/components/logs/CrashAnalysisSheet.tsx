@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { translations } from '../../lib/translations';
 import {
   AlertTriangle,
   ClipboardCopy,
@@ -40,7 +41,7 @@ function actionLabel(action: LogFixAction, lang: LanguageType): string {
     case 'install-dependency':
       return text(lang, `Abhängigkeit installieren: ${action.modId}`, `Install dependency: ${action.modId}`)
     case 'open-path':
-      return text(lang, 'Ordner öffnen', 'Open folder')
+      return translations[lang].common.openFolder
     case 'open-url':
       return text(lang, 'Herstellerseite öffnen', 'Open vendor page')
   }
@@ -256,7 +257,7 @@ export function CrashAnalysisSheet({
       onClose={onClose}
       title={primary?.title || text(lang, 'Crash-Analyse', 'Crash analysis')}
       titleId="crash-analysis-dialog-title"
-      closeLabel={text(lang, 'Schließen', 'Close')}
+      closeLabel={translations[lang].common.close}
       icon={<ShieldAlert className="h-4 w-4" />}
       tone="danger"
       footer={
@@ -285,7 +286,7 @@ export function CrashAnalysisSheet({
             </button>
           )}
           <button type="button" onClick={onClose} className={dialogButton.secondary}>
-            {text(lang, 'Schließen', 'Close')}
+            {translations[lang].common.close}
           </button>
         </>
       }

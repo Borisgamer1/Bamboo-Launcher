@@ -21,6 +21,7 @@ import { isVersionCompatible, versionFileFor } from '../../lib/modVersions'
 import { LAUNCHER_VERSION } from '../../lib/version'
 import { EASE, MOTION, motionSafe } from '../../lib/motionTokens'
 import { formatMessage, translations, type LanguageType } from '../../lib/translations'
+import { mainErrorText } from '../../lib/mainErrors'
 import type { DownloadModPayload } from '../../electron'
 import { useToast } from '../Toast'
 import { ExternalMark } from './ContentActionIcons'
@@ -217,7 +218,7 @@ export const ContentDetailModal = ({
       const result = await window.electronAPI?.mods.download?.(payload);
 
       if (!result?.success) {
-        addToast({ type: 'error', message: result?.error || t.versionChangeFailed });
+        addToast({ type: 'error', message: mainErrorText(result, lang, t.versionChangeFailed) });
         return;
       }
 

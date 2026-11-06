@@ -22,6 +22,9 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 - Lokale Skins laden nach einem Neustart zuverlässig.
 - Einstellungen aus dem Launcher landen auch nach dem ersten Spielstart wieder in `options.txt`.
 - Die Oberfläche wird mit `strict: true` typgeprüft.
+- Fenster, Dialoge, Screenshots, Einstellungen, die Instanzordner-Regeln, Versionswechsel/Reparatur, Modpack-Installation sowie Profil-Export/Import liegen in eigenen Main-Prozess-Modulen statt in `main.js`.
+- Fortschritt langer Aufgaben läuft über einen gemeinsamen Sender; nicht erreichbare Alt-Kanäle und der unbenutzte Zip-Modpack-Schreiber sind entfernt.
+- Darstellung, Mod-Ergebniszeile und Weltliste der Instanz sind eigene Bausteine; der Instanz-Größen-Cache liegt in einem eigenen Modul.
 
 ### Behoben
 
@@ -36,6 +39,10 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 - Nach einem fehlgeschlagenen Start zeigt Discord wieder den Launcher statt dauerhaft „Starting…“.
 - Eine laufende Instanz lässt sich nicht mehr löschen; der Fehler erscheint als Hinweis, statt die Instanz halb zu entfernen.
 - Wird eine laufende Instanz umbenannt, ziehen Start-Registry und Core-Register mit.
+- Anlegen, Klonen und Löschen einer Instanz aktualisieren sofort das Core-Register, damit Update-Prüfung und Kosmetik-Spiegel ohne Neustart stimmen.
+- Jedes Speichern der Instanzliste gleicht Name, Version und Loader mit dem Core-Register ab. Eine Änderung kann dort nicht mehr veralten.
+- Fehlermeldungen kommen über stabile Codes in die englische Oberfläche statt als deutscher Rohtext.
+- Fehler beim Import, Export, bei der Modpack-Installation und beim lokalen Hochladen erscheinen auf Englisch, statt den deutschen Satz des Main-Prozesses zu zeigen.
 - Die Pfadprüfung beim Hashen von Inhaltsdateien vergleicht mit Pfadtrenner, nicht mit einer rohen Zeichenkette.
 
 ### New
@@ -51,6 +58,7 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 - Local skins now reload reliably after a restart.
 - Launcher settings reach `options.txt` again after the first game start.
 - The UI is type-checked with `strict: true`.
+- Window chrome, dialogs, screenshots, settings, the instance-folder rules and version switch/repair live in their own main-process modules instead of `main.js`.
 
 ### Fixed
 
@@ -65,6 +73,10 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 - After a failed launch Discord shows the launcher again instead of staying on "Starting…".
 - A running instance can no longer be deleted; the error is shown instead of removing it halfway.
 - Renaming a running instance moves the launch registry and the core register along.
+- Creating, cloning and deleting an instance updates the core register immediately, so update checks and the cosmetics mirror are correct without a restart.
+- Every save of the instance list copies name, version and loader into the core register, so an edit there can no longer go stale.
+- Errors reach the English UI through stable codes instead of raw German text.
+- Import, export, modpack install and local upload failures are shown in English instead of the main process's German sentence.
 - Content-file hashing checks the path with a separator instead of a raw prefix.
 
 ## 0.2.2 - 2026-10-31

@@ -16,7 +16,7 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 const DIALOGS = [
   ["src/App.tsx", "exit-dialog-title"],
   ["src/components/InstancesView.tsx", "delete-dialog-title"],
-  ["src/components/InstancesView.tsx", "create-dialog-title"],
+  ["src/components/instances/CreateInstanceDialog.tsx", "create-dialog-title"],
   ["src/components/InstancesView.tsx", "rename-dialog-title"],
   ["src/components/instances/content-list-view.tsx", "own-mods-warning-title"],
   ["src/components/ProfileImportModal.tsx", "import-dialog-title"],
@@ -26,6 +26,7 @@ const DIALOGS = [
 const CALL_SITES = [
   "src/App.tsx",
   "src/components/InstancesView.tsx",
+  "src/components/instances/CreateInstanceDialog.tsx",
   "src/components/instances/content-list-view.tsx",
   "src/components/ProfileImportModal.tsx",
   "src/components/ProfileExportModal.tsx",
@@ -92,14 +93,17 @@ test("dialog focus: focus is decided once, never observed and corrected", () => 
 });
 
 test("dialog focus: the create dialog's primary control is mounted, labelled and first", () => {
-  const source = read("src/components/InstancesView.tsx");
+  const source = read("src/components/instances/CreateInstanceDialog.tsx");
   const labelled = source.indexOf('htmlFor="create-instance-name"');
   const field = source.indexOf('id="create-instance-name"');
   const loading = source.indexOf("loadingVersions ?");
   assert.ok(labelled > 0 && field > 0, "the name field has a real label target");
   assert.ok(labelled < field, "the label precedes its input");
   assert.ok(field < loading, "the field mounts before the version list can gate it");
-  assert.ok(source.includes("returnFocusFallback={() => createTriggerRef.current}"), "delete names its fallback");
+  assert.ok(
+    read("src/components/InstancesView.tsx").includes("returnFocusFallback={() => createTriggerRef.current}"),
+    "delete names its fallback",
+  );
 });
 
 test("dialog props: what the primitive needs, it does not default", () => {
