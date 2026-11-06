@@ -48,19 +48,6 @@
       "file": "./furry-tail.cosmiq"
     },
     {
-      "id": "maxi-cape",
-      "name": "Maxi Cape",
-      "creator": "Bamboo Launcher",
-      "description": "Maxiiiiiiiiiiiiii",
-      "rarity": "Legendary",
-      "slots": [
-        "back",
-        "cape"
-      ],
-      "file": "./maxi-cape.cosmiq",
-      "image": "./previews/maxi-cape.png"
-    },
-    {
       "id": "strohhut",
       "name": "Strohhut",
       "creator": "Bamboo Launcher",
