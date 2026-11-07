@@ -62,6 +62,7 @@ test('the preload surface is namespaced and keeps the exact channel mapping', as
   const { api, calls } = loadBridge()
 
   assert.deepEqual(Object.keys(api).sort(), [
+    'accounts',
     'auth',
     'cosmetics',
     'dialogs',

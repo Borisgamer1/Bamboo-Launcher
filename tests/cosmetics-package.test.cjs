@@ -102,7 +102,10 @@ test('bundled catalog points at artwork that exists', () => {
   const cape = catalog.items.find((entry) => entry.id === 'bird-cape')
   assert.equal(cape.image, './previews/bird-cape.png')
   assert.ok(fs.existsSync(path.join(SHOP, cape.image)), 'preview file next to the catalog')
-  assert.equal(catalog.items.find((entry) => entry.id === 'strohhut').image, undefined)
+  for (const item of catalog.items) {
+    assert.equal(item.image, `./previews/${item.id}.png`, `${item.id} has a preview`)
+    assert.ok(fs.existsSync(path.join(SHOP, item.image)), `${item.id}: preview file next to the catalog`)
+  }
 })
 
 test('shop entries expose resolved artwork instead of a filesystem path', async () => {

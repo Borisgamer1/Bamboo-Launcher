@@ -15,13 +15,14 @@ import {
   KEYBIND_GROUPS,
   KEYBOARD_LAYOUTS,
   actionById,
+  detectKeyboardLabels,
+  detectedKeyLabel,
   formatKeyToken,
   keyboardLayout,
   keyTokenFromEvent,
   keyTokenFromMouseButton,
   keybindConflicts,
   layoutTokens,
-  type KeyboardKey,
   type KeyboardLayoutId,
 } from '../../lib/keybinds'
 import {
@@ -81,9 +82,6 @@ function keyState(actions: string[] | undefined): 'unused' | 'bound' | 'shared' 
   return actions.length > 1 ? 'shared' : 'bound'
 }
 
-function overlayKeyLabel(key: KeyboardKey): string {
-  return key.label
-}
 
 export function KeybindsPanel({
   lang,
@@ -132,6 +130,17 @@ export function KeybindsPanel({
   const [recording, setRecording] = useState<RecordingState | null>(null)
   const [hoveredToken, setHoveredToken] = useState<string | null>(null)
   const [selectedToken, setSelectedToken] = useState<string | null>(null)
+  const [, setLayoutReady] = useState(false)
+
+  // Use the labels Windows reports for the physical keys; a QWERTZ board must
+  // not show a US layout.
+  useEffect(() => {
+    let active = true
+    void detectKeyboardLabels().then((detected) => {
+      if (active && detected) setLayoutReady(true)
+    })
+    return () => { active = false }
+  }, [])
 
   const conflicts = useMemo(() => keybindConflicts(values), [values])
   const byToken = useMemo(() => tokenActions(values), [values])
@@ -266,7 +275,7 @@ export function KeybindsPanel({
                       }}
                     >
                       <span className={cx('px-0.5', ARROW_KEY_IDS.has(key.id) && 'text-[13px] font-semibold leading-none')}>
-                        {overlayKeyLabel(key)}
+                        {detectedKeyLabel(key)}
                       </span>
                       {state !== 'unused' && (
                         <span

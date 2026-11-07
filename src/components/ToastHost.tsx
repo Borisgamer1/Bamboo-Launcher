@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, AlertTriangle, X, Info, XCircle } from "lucide-react";
 import { useOverlayLayer } from "../lib/overlayLayers";
@@ -9,17 +9,28 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   useOverlayLayer("toast", toasts.length > 0);
 
+  const timers = useRef(new Map<string, number>());
+
+  const schedule = useCallback((id: string, duration: number) => {
+    window.clearTimeout(timers.current.get(id));
+    timers.current.set(
+      id,
+      window.setTimeout(() => {
+        timers.current.delete(id);
+        setToasts(prev => prev.filter(t => t.id !== id));
+      }, duration),
+    );
+  }, []);
+
   const addToast = useCallback((toast: Omit<ToastMessage, "id">) => {
     const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     setToasts(prev => [...prev, { ...toast, id }].slice(-3));
-
-    const duration = toast.duration || 3200;
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, duration);
-  }, []);
+    schedule(id, toast.duration || 3200);
+  }, [schedule]);
 
   const removeToast = useCallback((id: string) => {
+    window.clearTimeout(timers.current.get(id));
+    timers.current.delete(id);
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
@@ -55,10 +66,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 6, transition: motionSafe({ duration: MOTION.quick, ease: EASE.out }) }}
                 transition={motionSafe({ duration: MOTION.base, ease: EASE.expo })}
-                className="pointer-events-auto flex items-center gap-2.5 w-80 h-11 px-3 rounded-[var(--r-lg)] border border-rim bg-glass shadow-[var(--shadow-menu)] backdrop-blur-[16px] backdrop-saturate-[1.2]"
+                onMouseEnter={() => {
+                  window.clearTimeout(timers.current.get(toast.id));
+                }}
+                onMouseLeave={() => schedule(toast.id, 1800)}
+                className="group pointer-events-auto flex w-[22rem] items-start gap-2.5 px-3 py-2.5 rounded-[var(--r-lg)] border border-rim bg-glass shadow-[var(--shadow-menu)] backdrop-blur-[16px] backdrop-saturate-[1.2] transition-[width] duration-150 hover:w-[min(34rem,calc(100vw-2rem))]"
               >
-                <div className={`${textColor} shrink-0`} aria-hidden="true">{icon}</div>
-                <p className="text-small font-medium text-ink flex-1 truncate" title={toast.message}>{toast.message}</p>
+                <div className={`${textColor} mt-0.5 shrink-0`} aria-hidden="true">{icon}</div>
+                <p className="m-0 min-w-0 flex-1 whitespace-normal break-words text-small font-medium leading-5 text-ink line-clamp-2 group-hover:line-clamp-none">{toast.message}</p>
                 <button
                   onClick={() => removeToast(toast.id)}
                   aria-label="Schließen"

@@ -293,8 +293,9 @@ ipc.on('get-icons', (event) => {
 
 // Server status responses are cached briefly and identical in-flight requests
 // are shared, so refreshing the list or watching a typed address costs one
-// upstream call instead of one per render. api.mcsrvstat.us is free and needs
-// no key.
+// upstream call instead of one per render. mcstatus.io is the primary source
+// because mcsrvstat.us reports large networks like Hypixel as offline; the old
+// endpoint stays as a fallback for servers mcstatus does not resolve.
 const SERVER_STATUS_TTL_MS = 60 * 1000;
 const serverStatusCache = new Map();
 const serverStatusInFlight = new Map();
@@ -306,22 +307,50 @@ function normalizeServerAddress(value) {
     .replace(/\/+$/, '') || '';
 }
 
-async function fetchServerStatus(address) {
+// mcsrvstat answers through its own cache even when a large server blocks
+// direct status pings; mcstatus.io stays as the second source.
+async function fetchServerStatusPrimary(address) {
   const startedAt = Date.now();
   const url = `https://api.mcsrvstat.us/3/${encodeURIComponent(address)}`;
-  const res = await net.fetch(url, { signal: AbortSignal.timeout(4000) });
-  const duration = Date.now() - startedAt;
-  if (!res.ok) return { online: false, ping: 999, error: `HTTP ${res.status}` };
+  const res = await net.fetch(url, { signal: AbortSignal.timeout(5000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   return {
     online: data.online ?? false,
     playersOnline: data.players?.online ?? 0,
     playersMax: data.players?.max ?? 0,
     motd: data.motd?.clean?.join("\n") || "",
-    ping: duration,
+    ping: Date.now() - startedAt,
     version: data.version || "Unknown",
     icon: data.icon || null,
   };
+}
+
+async function fetchServerStatusFallback(address) {
+  const startedAt = Date.now();
+  const url = `https://api.mcstatus.io/v2/status/java/${encodeURIComponent(address)}`;
+  const res = await net.fetch(url, { signal: AbortSignal.timeout(4000) });
+  if (!res.ok) return { online: false, ping: 999, error: `HTTP ${res.status}` };
+  const data = await res.json();
+  return {
+    online: data.online ?? false,
+    playersOnline: data.players?.online ?? 0,
+    playersMax: data.players?.max ?? 0,
+    motd: data.motd?.clean || "",
+    ping: Date.now() - startedAt,
+    version: data.version?.name_clean || "Unknown",
+    icon: data.icon || null,
+  };
+}
+
+async function fetchServerStatus(address) {
+  try {
+    const primary = await fetchServerStatusPrimary(address);
+    if (primary.online) return primary;
+  } catch {
+    // Fall through to the older API; either source can be rate limited.
+  }
+  return fetchServerStatusFallback(address);
 }
 
 ipc.handle('ping-server', async (_event, serverIp) => {

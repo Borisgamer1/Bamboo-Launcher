@@ -42,6 +42,7 @@ test("tour: navigation and creation steps only advance by clicking", async () =>
     '[data-tour="instance-create"]',
     '[data-tour="instance-create-confirm"]',
     '[data-tour="nav-mods"]',
+    '[data-tour="nav-customize"]',
     '[data-tour="nav-settings"]',
     '[data-tour="settings-tab-gameOptions"]',
     '[data-tour="settings-tab-keybinds"]',

@@ -5,6 +5,7 @@ import {
   Crown,
   Download,
   Flag,
+  Info,
   Loader2,
   Package,
   RefreshCw,
@@ -14,7 +15,6 @@ import {
 import type {
   CosmeticPreview,
   CosmeticSlot,
-  CosmeticSyncStatus,
   InstalledCosmetic,
   ShopCatalog,
   ShopItem,
@@ -140,7 +140,6 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({ snapshot, lang, onRe
   const [busy, setBusy] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<InstalledCosmetic | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [sync, setSync] = useState<CosmeticSyncStatus | null>(null)
 
   const selectionKey = selection
     ? selection.kind === 'installed'
@@ -189,24 +188,6 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({ snapshot, lang, onRe
       })
       .catch((cause) => {
         if (!cancelled) setShopError(cause instanceof Error ? cause.message : String(cause))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [api])
-
-  // Local state only: which instances have the mod and a readable sync.json.
-  useEffect(() => {
-    if (!api) return
-    let cancelled = false
-    api
-      .syncStatus()
-      .then((value) => {
-        if (cancelled) return
-        setSync(value ?? null)
-      })
-      .catch(() => {
-        if (!cancelled) setSync(null)
       })
     return () => {
       cancelled = true
@@ -328,43 +309,25 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({ snapshot, lang, onRe
     )
   }
 
-  const total = sync?.instances.total ?? 0
-  const ready = sync?.instances.ready ?? 0
-  const syncText =
-    sync === null
-      ? de
-        ? 'Sync-Status nicht lesbar'
-        : 'Sync status unreadable'
-      : !sync.configured
-        ? de
-          ? 'Kein Supabase-Projekt in diesem Build'
-          : 'This build ships no Supabase project'
-        : ready === 0
-          ? de
-            ? 'Eingerichtet · noch keine Instanz bereit'
-            : 'Set up · no instance ready yet'
-          : de
-            ? `Bereit in ${ready} von ${total} Instanzen`
-            : `Ready in ${ready} of ${total} instances`
-  const syncDetail =
-    sync?.configured && sync.instances.missingMod > 0
-      ? de
-        ? `${sync.instances.missingMod} Instanz(en) ohne Mod-Jar`
-        : `${sync.instances.missingMod} instance(s) without the mod jar`
-      : null
+  // A back or cape cosmetic replaces the vanilla cape; showing both overlaps.
+  const cosmeticCoversBack = !!preview && preview.slots.some((slot) => slot !== 'head')
+  const vanillaCape =
+    !cosmeticCoversBack ? (snapshot?.capes.find((cape) => cape.active)?.url ?? null) : null
+  const focusView = preview?.slots.includes('head') ? 'front' : 'back'
 
   return (
     <>
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
         {/* The wardrobe mirror: the one place this tab gets material and light. */}
         <aside className="min-w-0 lg:sticky lg:top-6">
-          <section className={PANEL}>
+          <section className={PANEL} data-tour="cosmetics-stage">
             <div className="overflow-hidden rounded-t-[16px]">
               <CosmeticStage
                 skinUrl={snapshot?.skin.url ?? null}
                 variant={snapshot?.skin.variant ?? 'classic'}
                 preview={preview}
-                capeUrl={snapshot?.capes.find((cape) => cape.active)?.url ?? null}
+                capeUrl={vanillaCape}
+                focusView={focusView}
                 lang={lang}
               />
             </div>
@@ -393,7 +356,7 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({ snapshot, lang, onRe
                   ) : null}
 
                   {installedItem ? (
-                    <div className="mt-4 flex items-center gap-3 border-t border-hairline pt-3">
+                    <div className="mt-4 border-t border-hairline pt-3">
                       <button
                         type="button"
                         className="inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-micro font-medium text-ink-tertiary transition-colors duration-[var(--t-quick)] hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 disabled:opacity-35"
@@ -403,9 +366,6 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({ snapshot, lang, onRe
                         <Trash2 className="h-3.5 w-3.5" aria-hidden />
                         {de ? 'Löschen' : 'Delete'}
                       </button>
-                      <p className="m-0 ml-auto truncate text-micro text-ink-quaternary">
-                        {de ? 'Im Spiel: Pause → Cosmetics' : 'In game: Pause → Cosmetics'}
-                      </p>
                     </div>
                   ) : shopItem ? (
                     <div className="mt-4 border-t border-hairline pt-3">
@@ -441,28 +401,16 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({ snapshot, lang, onRe
             </div>
           </section>
 
-          <div className="mt-3 rounded-[12px] border border-hairline px-3 py-2.5">
-            <div className="flex items-center gap-2">
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  sync?.configured && ready > 0 ? 'bg-accent' : 'bg-ink-quaternary/50'
-                }`}
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1 truncate text-micro text-ink-tertiary">
-                {syncText}
-              </span>
-            </div>
-            {syncDetail ? (
-              <p className="m-0 mt-1 text-micro text-ink-quaternary">{syncDetail}</p>
-            ) : null}
-            {sync?.configured ? (
-              <p className="m-0 mt-1 text-micro leading-4 text-ink-quaternary">
+          <div className="mt-3 flex items-start gap-2.5 rounded-[var(--r-lg)] border border-accent/30 bg-accent/[0.07] px-3.5 py-3">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden />
+            <div className="min-w-0">
+              <p className="m-0 text-small font-medium text-ink">Minecraft 26.3 · Fabric</p>
+              <p className="m-0 mt-0.5 text-mini leading-5 text-ink-secondary">
                 {de
-                  ? 'Projekt kommt mit dem Launcher; bamboo/sync.json wird beim Start jeder Instanz geschrieben.'
-                  : 'The project ships with the launcher; bamboo/sync.json is written on every instance start.'}
+                  ? 'Cosmetics laufen nur in dieser Version. Einmal installiert, gelten sie für alle Instanzen.'
+                  : 'Cosmetics run on this version only. Installed once, they apply to every instance.'}
               </p>
-            ) : null}
+            </div>
           </div>
         </aside>
 
@@ -506,17 +454,6 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({ snapshot, lang, onRe
             </div>
 
             <div className="flex items-center gap-3">
-              <span
-                className="text-micro text-ink-quaternary"
-                title={
-                  de
-                    ? 'Cosmetics laufen nur mit Minecraft 26.3 (Fabric) und gelten für alle Instanzen.'
-                    : 'Cosmetics only run on Minecraft 26.3 (Fabric) and apply to every instance.'
-                }
-              >
-                26.3 Fabric · {de ? 'alle Instanzen' : 'all instances'}
-              </span>
-              <span className="h-3.5 w-px bg-hairline" aria-hidden />
               <button
                 type="button"
                 className={QUIET}

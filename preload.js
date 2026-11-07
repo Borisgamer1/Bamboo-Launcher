@@ -108,6 +108,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     import: (data) => invoke('import-profile', data),
   },
 
+  accounts: {
+    list: () => invoke('bamboo:accounts:list'),
+    setActive: (id) => invoke('bamboo:accounts:set-active', id),
+    remove: (id) => invoke('bamboo:accounts:remove', id),
+  },
+
   auth: {
     // Microsoft account auth (OAuth loopback flow). Replies carry account
     // metadata only - tokens stay in the OS secret store of the main process.

@@ -41,6 +41,12 @@ import { useContentUpload } from "../../hooks/useContentUpload";
 import { contentProjectUrl, fetchContentVersions } from "./contentDetailModel";
 import { instanceFolderKeyOf as instanceFolderKey } from "../../lib/instanceFolders";
 import {
+  beginBackgroundTask,
+  completeBackgroundTask,
+  failBackgroundTask,
+  updateBackgroundTask,
+} from "../../lib/backgroundTasks";
+import {
   LockedMark,
   UnlockedMark,
   VisibleMark,
@@ -119,12 +125,16 @@ export const ContentListView = ({
         type: typeDir,
       });
       if (cancelled || !Array.isArray(files) || files.length === 0) return;
+      // Shaderpacks ship config/notes as .txt next to the real .zip files.
+      const allowed = typeDir === 'mods' ? /\.jar(\.disabled)?$/i : /\.zip(\.disabled)?$/i;
+      const usable = files.filter((file) => allowed.test(file));
+      if (usable.length === 0) return;
       const known = new Set(
         (contentRef.current || [])
           .filter((item) => item.type === typeDir)
           .map((item) => String(item.fileName || '').toLowerCase()),
       );
-      const missing = files.filter((file) => !known.has(file.toLowerCase()));
+      const missing = usable.filter((file) => !known.has(file.toLowerCase()));
       if (missing.length === 0) return;
       const additions = missing.map<ContentItem>((file) => ({
         id: `disk:${typeDir}:${file}`,
@@ -472,13 +482,29 @@ export const ContentListView = ({
     if (updatable.length === 0) return;
     updatingAll.current = true;
     setUpdateAllProgress({ done: 0, total: updatable.length });
+    // Lives in the app-wide task bar, so navigating away keeps the run visible.
+    const taskId = `content-update:${instanceFolderKey(localInst)}`;
+    beginBackgroundTask({
+      id: taskId,
+      title: lang === 'de' ? `${localInst.name}: Updates` : `${localInst.name}: updates`,
+      detail: `0/${updatable.length}`,
+      percent: 0,
+    });
     let done = 0;
     try {
       for (const item of updatable) {
         await handleUpdate(item.id, { silent: true });
         done += 1;
         setUpdateAllProgress({ done, total: updatable.length });
+        updateBackgroundTask(taskId, {
+          percent: Math.round((done / updatable.length) * 100),
+          detail: `${done}/${updatable.length}`,
+        });
       }
+      completeBackgroundTask(taskId);
+    } catch (error) {
+      failBackgroundTask(taskId, errorMessage(error));
+      throw error;
     } finally {
       updatingAll.current = false;
       setUpdateAllProgress(null);
@@ -864,7 +890,7 @@ export const ContentListView = ({
                   {item.versionNumber && item.versionNumber !== item.version && (
                     <span className={`shrink-0 rounded-md border px-1.5 py-[3px] text-[11px] font-semibold leading-none ${item.enabled ? "border-hairline bg-root/70 text-ink-secondary" : "border-stroke/50 bg-root/60 text-ink-quaternary"}`}>{item.versionNumber}</span>
                   )}
-                  {item.version && (
+                  {item.version && !item.source && (
                     <span className={`shrink-0 rounded-md border px-1.5 py-[3px] text-[11px] font-semibold leading-none ${item.enabled ? "border-hairline bg-root/70 text-ink-secondary" : "border-stroke/50 bg-root/60 text-ink-quaternary"}`}>MC {item.version}</span>
                   )}
                   {item.source && (

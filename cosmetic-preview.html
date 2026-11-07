@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body { margin: 0; width: 560px; height: 820px; overflow: hidden; background: #f4f2ec; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'three'
+
+      const WIDTH = 560
+      const HEIGHT = 820
+      const params = new URLSearchParams(location.search)
+      const all = await (await fetch('/cosmetic-previews.json')).json()
+      const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+      renderer.setSize(WIDTH, HEIGHT)
+      renderer.setPixelRatio(1)
+      renderer.outputColorSpace = THREE.SRGBColorSpace
+      document.body.appendChild(renderer.domElement)
+
+      const scene = new THREE.Scene()
+      scene.background = new THREE.Color(0xf4f2ec)
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xb9b1a3, 2.2))
+      const key = new THREE.DirectionalLight(0xffffff, 2.4)
+      key.position.set(2.2, 4, 3.4)
+      scene.add(key)
+      const fill = new THREE.DirectionalLight(0xdfe8ff, 0.8)
+      fill.position.set(-3, 1.2, -2)
+      scene.add(fill)
+
+      function loadTexture(url) {
+        return new Promise((resolve, reject) => {
+          new THREE.TextureLoader().load(url, (texture) => {
+            texture.flipY = false
+            texture.colorSpace = THREE.SRGBColorSpace
+            texture.magFilter = THREE.NearestFilter
+            texture.minFilter = THREE.NearestFilter
+            texture.generateMipmaps = false
+            texture.needsUpdate = true
+            resolve(texture)
+          }, undefined, reject)
+        })
+      }
+
+      async function render(id) {
+        const preview = all[id]
+        const group = new THREE.Group()
+        const textures = await Promise.all(preview.parts.map((part) => loadTexture(part.texture)))
+        const geometries = []
+        preview.parts.forEach((part, index) => {
+          const geometry = new THREE.BufferGeometry()
+          geometry.setAttribute('position', new THREE.Float32BufferAttribute(part.positions, 3))
+          geometry.setAttribute('normal', new THREE.Float32BufferAttribute(part.normals, 3))
+          geometry.setAttribute('uv', new THREE.Float32BufferAttribute(part.uvs, 2))
+          geometry.setIndex(part.indices)
+          geometries.push(geometry)
+          group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+            map: textures[index],
+            roughness: 0.85,
+            metalness: 0,
+            transparent: true,
+            alphaTest: 0.1,
+            side: THREE.DoubleSide,
+          })))
+        })
+        const box = new THREE.Box3().setFromObject(group)
+        const size = box.getSize(new THREE.Vector3())
+        group.position.sub(box.getCenter(new THREE.Vector3()))
+        scene.add(group)
+        const height = Math.max(size.y, (size.x / WIDTH) * HEIGHT, size.z) * 1.28
+        const camera = new THREE.OrthographicCamera(-(height * WIDTH) / HEIGHT / 2, (height * WIDTH) / HEIGHT / 2, height / 2, -height / 2, 0.1, 100)
+        camera.position.copy(new THREE.Vector3(0.95, 0.72, 1.35).normalize().multiplyScalar(20))
+        camera.lookAt(0, 0, 0)
+        renderer.render(scene, camera)
+        const blob = await new Promise((resolve) => renderer.domElement.toBlob(resolve, 'image/png'))
+        scene.remove(group)
+        geometries.forEach((geometry) => geometry.dispose())
+        textures.forEach((texture) => texture.dispose())
+        return blob
+      }
+
+      if (params.get('all')) {
+        window.__progress = ''
+        for (const id of Object.keys(all)) {
+          const blob = await render(id)
+          const response = await fetch(`http://127.0.0.1:5198/save?id=${id}`, { method: 'POST', body: blob })
+          window.__progress += `${id}:${response.ok ? 'ok' : 'fail'} `
+        }
+        window.__done = true
+      } else {
+        const blob = await render(params.get('id'))
+        location.href = URL.createObjectURL(blob)
+        window.__done = true
+      }
+    </script>
+  </body>
+</html>

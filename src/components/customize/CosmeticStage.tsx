@@ -10,6 +10,8 @@ interface CosmeticStageProps {
   /** The selected package, or null for the bare player. */
   preview: CosmeticPreview | null
   capeUrl: string | null
+  /** Head cosmetics read from the front, capes and back items from behind. */
+  focusView: 'front' | 'back'
   lang: LanguageType
 }
 
@@ -22,13 +24,20 @@ export const CosmeticStage: React.FC<CosmeticStageProps> = ({
   variant,
   preview,
   capeUrl,
+  focusView,
   lang,
 }) => {
   const de = lang === 'de'
   const hostRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewerRef = useRef<CosmeticViewer | null>(null)
-  const [view, setView] = useState<'front' | 'back'>('back')
+  const [view, setView] = useState<'front' | 'back'>(focusView)
+  // Follow the selected cosmetic while keeping the manual toggle usable.
+  const [lastFocus, setLastFocus] = useState(focusView)
+  if (lastFocus !== focusView) {
+    setLastFocus(focusView)
+    setView(focusView)
+  }
 
   useEffect(() => {
     const host = hostRef.current

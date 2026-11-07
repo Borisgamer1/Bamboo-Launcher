@@ -114,6 +114,25 @@ export function buildTourStations({ hasInstances }: TourOptions): TourStation[] 
       },
     },
     {
+      target: '[data-tour="nav-customize"]',
+      advance: 'click',
+      title: { de: 'Cosmetics.', en: 'Cosmetics.' },
+      body: {
+        de: 'Capes, Hüte und Rücken-Accessoires für deinen Skin — installiert einmal, sichtbar in jeder Instanz.',
+        en: 'Capes, hats and back accessories for your skin — install once, visible in every instance.',
+      },
+      hint: { de: 'Klick auf Anpassen.', en: 'Click customize.' },
+    },
+    {
+      target: '[data-tour="cosmetics-stage"]',
+      advance: 'next',
+      title: { de: 'Im Spiel auswählen.', en: 'Pick it in game.' },
+      body: {
+        de: 'Cosmetics laufen nur mit Minecraft 26.3 (Fabric). Im Spiel öffnest du sie mit Pause → Cosmetics und wählst dort dein Paket.',
+        en: 'Cosmetics run on Minecraft 26.3 (Fabric) only. In game, open Pause → Cosmetics and pick your pack there.',
+      },
+    },
+    {
       target: '[data-tour="nav-settings"]',
       advance: 'click',
       title: { de: 'Die Einstellungen.', en: 'The settings.' },

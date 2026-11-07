@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { translations } from '../../lib/translations';
-import { AlertTriangle, Check, LogIn, LogOut, RefreshCw, UserRound } from 'lucide-react'
+import { AlertTriangle, Check, LogIn, LogOut, Plus, RefreshCw, UserRound } from 'lucide-react'
 import type { AccountSession } from '../../lib/accountSession'
+import type { AccountView } from '../../electron'
 import {
   Button,
   ConfirmButton,
@@ -11,7 +12,7 @@ import {
 import { cx, t } from './settingsUtils'
 import { authErrorText } from '../../lib/authErrors'
 
-type Busy = 'login' | 'refresh' | 'signout' | null
+type Busy = 'login' | 'refresh' | 'signout' | 'switch' | 'remove' | null
 
 function readableError(error: unknown, lang: Lang): string {
   const message = error instanceof Error ? error.message : String(error)
@@ -30,6 +31,7 @@ export function AccountsPanel({
   const [busy, setBusy] = useState<Busy>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [accounts, setAccounts] = useState<AccountView[]>([])
   const successTimer = useRef<number | undefined>(undefined)
 
   const announceSuccess = (message: string) => {
@@ -40,10 +42,34 @@ export function AccountsPanel({
 
   useEffect(() => () => window.clearTimeout(successTimer.current), [])
 
+  const loadAccounts = useCallback(async () => {
+    try {
+      const list = await window.electronAPI?.accounts?.list()
+      if (Array.isArray(list)) setAccounts(list)
+    } catch {
+      // The single-account card stays usable when the list cannot be read.
+    }
+  }, [])
+
   const { reload } = session
   useEffect(() => {
     void reload()
   }, [reload])
+
+  useEffect(() => {
+    let active = true
+    window.electronAPI?.accounts
+      ?.list()
+      .then((list) => {
+        if (active && Array.isArray(list)) setAccounts(list)
+      })
+      .catch(() => {
+        // The single-account card stays usable when the list cannot be read.
+      })
+    return () => {
+      active = false
+    }
+  }, [status?.account?.id])
 
   const signIn = async () => {
     setError('')
@@ -52,6 +78,7 @@ export function AccountsPanel({
     try {
       const next = await window.electronAPI?.auth.login?.()
       if (next) session.apply(next)
+      await loadAccounts()
       if (next?.signedIn) {
         announceSuccess(
           t(
@@ -94,6 +121,39 @@ export function AccountsPanel({
           ),
         )
       }
+    } catch (err) {
+      setError(readableError(err, lang))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const switchAccount = async (id: string) => {
+    if (busy !== null) return
+    setError('')
+    setBusy('switch')
+    try {
+      const list = await window.electronAPI?.accounts?.setActive?.(id)
+      if (Array.isArray(list)) setAccounts(list)
+      const next = await window.electronAPI?.auth.status?.()
+      if (next) session.apply(next)
+      announceSuccess(t(lang, 'Konto gewechselt.', 'Account switched.'))
+    } catch (err) {
+      setError(readableError(err, lang))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const removeAccount = async (id: string) => {
+    if (busy !== null) return
+    setError('')
+    setBusy('remove')
+    try {
+      const list = await window.electronAPI?.accounts?.remove?.(id)
+      if (Array.isArray(list)) setAccounts(list)
+      const next = await window.electronAPI?.auth.status?.()
+      if (next) session.apply(next)
     } catch (err) {
       setError(readableError(err, lang))
     } finally {
@@ -265,6 +325,86 @@ export function AccountsPanel({
                 {t(lang, 'Mit Microsoft anmelden', 'Sign in with Microsoft')}
               </Button>
             )}
+          </div>
+        </SettingsCard>
+      )}
+
+      {signedIn && (
+        <SettingsCard
+          title={t(lang, 'Konten', 'Accounts')}
+          description={t(
+            lang,
+            'Wechsle zwischen verbundenen Microsoft-Konten oder füge ein weiteres hinzu.',
+            'Switch between connected Microsoft accounts or add another one.',
+          )}
+        >
+          <div className="flex flex-col gap-2 px-5 py-4">
+            {accounts.map((entry) => {
+              const active = entry.id === account?.id
+              return (
+                <div
+                  key={entry.id}
+                  className="flex items-center gap-3 rounded-[var(--r-md)] border border-hairline px-3 py-2"
+                >
+                  {entry.avatar ? (
+                    <img
+                      src={entry.avatar}
+                      alt=""
+                      className="h-8 w-8 shrink-0 rounded-md border border-hairline bg-root [image-rendering:pixelated]"
+                    />
+                  ) : (
+                    <UserRound className="h-8 w-8 shrink-0 rounded-md border border-hairline p-1.5 text-ink-tertiary" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="m-0 truncate text-small font-medium text-ink">{entry.name}</p>
+                    <p className="m-0 text-micro text-ink-tertiary">
+                      {entry.type === 'microsoft' ? 'Microsoft' : entry.type}
+                    </p>
+                  </div>
+                  {active ? (
+                    <span className="inline-flex items-center gap-1.5 text-micro text-success">
+                      <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                      {t(lang, 'Aktiv', 'Active')}
+                    </span>
+                  ) : (
+                    <>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void switchAccount(entry.id)}
+                        disabled={busy !== null}
+                      >
+                        {t(lang, 'Wechseln', 'Switch')}
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => void removeAccount(entry.id)}
+                        disabled={busy !== null}
+                        aria-label={t(lang, 'Konto entfernen', 'Remove account')}
+                        className="text-ink-quaternary hover:text-danger cursor-pointer disabled:opacity-40"
+                      >
+                        <LogOut className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              )
+            })}
+
+            <div className="mt-1 flex items-center justify-between gap-3">
+              <span className="text-micro text-ink-tertiary">
+                {t(lang, 'Ein Konto ist immer aktiv.', 'One account is always active.')}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Plus className="h-3 w-3" />}
+                onClick={() => void signIn()}
+                disabled={busy !== null}
+              >
+                {t(lang, 'Weiteres Konto', 'Add another account')}
+              </Button>
+            </div>
           </div>
         </SettingsCard>
       )}

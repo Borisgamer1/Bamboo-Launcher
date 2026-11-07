@@ -28,7 +28,7 @@ const buildMenu = (t: (typeof translations)[LanguageType]) => [
   { id: "home", label: t.home, icon: Home },
   { id: "singleplayer", label: t.instances, icon: Compass, tour: "nav-instances" },
   { id: "mods", label: t.modBrowser, icon: Puzzle, tour: "nav-mods" },
-  { id: "customize", label: t.customize, icon: UserRound },
+  { id: "customize", label: t.customize, icon: UserRound, tour: "nav-customize" },
   { id: "multiplayer", label: t.multiplayer, icon: Server },
   { id: "screenshots", label: t.screenshots, icon: Camera },
 ] as const;

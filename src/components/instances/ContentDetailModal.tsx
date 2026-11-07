@@ -80,7 +80,7 @@ export const ContentDetailModal = ({
     curseforgeFileId?: number
   }[]>([]);
   const [fetchingVersions, setFetchingVersions] = useState(false);
-  const [installingVersion, setInstallingVersion] = useState(false);
+  const [installingVersion, setInstallingVersion] = useState<string | null>(null);
   const [installPercent, setInstallPercent] = useState(0);
   const [description, setDescription] = useState("");
   const [descriptionFormat, setDescriptionFormat] = useState<"markdown" | "html">("markdown");
@@ -196,7 +196,7 @@ export const ContentDetailModal = ({
     curseforgeFileId?: number
   }) => {
     setInstallPercent(8);
-    setInstallingVersion(true);
+    setInstallingVersion(ver.version_number);
     try {
       const folderName = instanceFolderKey(localInst);
       const category = categoryForTab(item.type);
@@ -249,7 +249,7 @@ export const ContentDetailModal = ({
       console.error('[ContentDetailModal] Fehler beim Version-Wechsel:', e);
       addToast({ type: 'error', message: t.versionChangeFailed });
     } finally {
-      setInstallingVersion(false);
+      setInstallingVersion(null);
       setInstallPercent(0);
     }
   };
@@ -267,7 +267,7 @@ export const ContentDetailModal = ({
           initial={{ scale: 0.95, y: 20 }}
           animate={{ scale: 1, y: 0 }}
           exit={{ scale: 0.95, y: 20, transition: motionSafe({ duration: MOTION.instant, ease: EASE.out }) }}
-          className="bg-root border border-stroke/80 rounded-2xl w-full max-w-[460px] max-h-[calc(100vh-2rem)] overflow-hidden shadow-2xl flex flex-col"
+          className="bg-root border border-stroke/80 rounded-2xl w-full max-w-[760px] max-h-[calc(100vh-2rem)] overflow-hidden shadow-2xl flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center gap-3 border-b border-hairline px-5 py-4">
@@ -378,7 +378,7 @@ export const ContentDetailModal = ({
             initial={{ scale: 0.95, y: 20 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.95, y: 20, transition: motionSafe({ duration: MOTION.instant, ease: EASE.out }) }}
-            className="bg-root border border-stroke/80 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl"
+            className="bg-root border border-stroke/80 rounded-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-5 border-b border-hairline flex items-center justify-between">
@@ -400,7 +400,7 @@ export const ContentDetailModal = ({
                       }
                       handleSwitchVersion(ver);
                     }}
-                    disabled={installingVersion || ver.version_number === item.versionNumber}
+                    disabled={installingVersion !== null || ver.version_number === item.versionNumber}
                     className={`flex items-center justify-between bg-surface/30 hover:bg-raised border border-stroke rounded-xl px-4 py-3 transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-left w-full ${
                       ver.version_number === item.versionNumber ? 'border-theme-text/30' : ''
                     }`}
@@ -418,7 +418,7 @@ export const ContentDetailModal = ({
                       {ver.version_number === item.versionNumber ? (
                         <span className="text-micro theme-text font-medium">{lang === 'de' ? 'Installiert' : 'Installed'}</span>
                       ) : (
-                        installingVersion ? (
+                        installingVersion === ver.version_number ? (
                           <span className="flex items-center gap-1.5 text-micro font-medium tabular-nums theme-text">
                             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                             {installPercent}%

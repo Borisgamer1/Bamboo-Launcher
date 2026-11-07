@@ -726,6 +726,22 @@ export interface ProfilesApi {
   import(data: ImportProfilePayload): Promise<ImportProfileResult>
 }
 
+export interface AccountView {
+  id: string
+  name: string
+  uuid: string
+  type: string
+  active: boolean
+  avatar?: string
+  hasToken: boolean
+}
+
+export interface AccountsApi {
+  list(): Promise<AccountView[] | undefined>
+  setActive(id: string): Promise<AccountView[] | undefined>
+  remove(id: string): Promise<AccountView[] | undefined>
+}
+
 export interface AuthApi {
   status(): Promise<MicrosoftAuthStatus | undefined>
   login(): Promise<MicrosoftAuthStatus | undefined>
@@ -921,6 +937,7 @@ export interface BambooApi {
   profiles: ProfilesApi
   tasks: TasksApi
   auth: AuthApi
+  accounts: AccountsApi
   skins: SkinsApi
   cosmetics: CosmeticsApi
   window: WindowApi

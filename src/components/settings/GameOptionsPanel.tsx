@@ -67,7 +67,7 @@ export function GameOptionsPanel({ lang, values, onChange, onReplace, note }: Ga
       )}
 
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-hairline">
-        <div className="flex items-center gap-0.5 overflow-x-hidden flex-nowrap">
+        <div className="flex min-w-0 flex-wrap items-center gap-0.5">
           {GAME_OPTION_CATEGORIES.map((entry) => {
             const Icon = CATEGORY_ICONS[entry.icon] || Monitor
             const active = entry.id === category

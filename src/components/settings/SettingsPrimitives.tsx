@@ -196,6 +196,7 @@ export function Slider({
   maxLabel,
   disabled,
   className,
+  valueClassName,
 }: {
   value: number
   min: number
@@ -207,6 +208,7 @@ export function Slider({
   maxLabel?: string
   disabled?: boolean
   className?: string
+  valueClassName?: string
 }) {
   const percent = max > min ? ((value - min) / (max - min)) * 100 : 0
   return (
@@ -224,7 +226,16 @@ export function Slider({
           className="settings-range flex-1"
           style={{ '--range-progress': `${percent}%` } as React.CSSProperties}
         />
-        <span className="w-20 shrink-0 whitespace-nowrap text-right font-mono text-micro font-medium tabular-nums text-ink">
+        <span
+          className={cx(
+            'w-20 shrink-0 whitespace-nowrap font-mono font-medium tabular-nums text-ink',
+            // "Unendlich" is a state, not a number: it has to read at a glance.
+            valueClassName ??
+              (formatValue && formatValue(value) === '∞'
+                ? 'text-title3 text-right leading-none'
+                : 'text-micro text-right'),
+          )}
+        >
           {formatValue ? formatValue(value) : value}
         </span>
       </div>

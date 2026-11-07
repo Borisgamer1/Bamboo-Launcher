@@ -173,19 +173,21 @@ export function createPlayerModel(variant: 'classic' | 'slim'): PlayerModel {
   const root = new THREE.Group()
   root.name = 'player'
 
+  // DoubleSide: a mirrored box net culls some underside faces otherwise, which
+  // left the bottom of the hand and parts of the arm overlay invisible.
   const skinMaterial = new THREE.MeshStandardMaterial({
     roughness: 0.92,
     metalness: 0,
     alphaTest: 0.5,
-    side: THREE.FrontSide,
+    side: THREE.DoubleSide,
   })
   const overlayMaterial = new THREE.MeshStandardMaterial({
     roughness: 0.92,
     metalness: 0,
-    alphaTest: 0.5,
+    alphaTest: 0.1,
     transparent: true,
     depthWrite: false,
-    side: THREE.FrontSide,
+    side: THREE.DoubleSide,
   })
   const capeMaterial = new THREE.MeshStandardMaterial({
     roughness: 0.95,

@@ -143,6 +143,33 @@ const TOKEN_LABELS: Record<string, Bilingual> = {
   'right.bracket': { de: ']', en: ']' },
 }
 
+/** Physical-key labels from the OS layout (QWERTZ shows Z on the Y key). */
+export const DETECTED_KEY_LABELS = new Map<string, string>()
+
+export async function detectKeyboardLabels(): Promise<boolean> {
+  const keyboard = (navigator as Navigator & {
+    keyboard?: { getLayoutMap?: () => Promise<Map<string, string>> }
+  }).keyboard
+  if (!keyboard?.getLayoutMap) return false
+  try {
+    const map = await keyboard.getLayoutMap()
+    map.forEach((label, code) => {
+      const match = /^Key([A-Z])$/.exec(code)
+      if (match && typeof label === 'string' && label.length > 0 && label.length <= 2) {
+        DETECTED_KEY_LABELS.set(match[1].toLowerCase(), label.toUpperCase())
+      }
+    })
+    return DETECTED_KEY_LABELS.size > 0
+  } catch {
+    return false
+  }
+}
+
+export function detectedKeyLabel(key: KeyboardKey): string {
+  const identifier = key.token?.replace(/^key\.keyboard\./, '') ?? ''
+  return (identifier.length === 1 && DETECTED_KEY_LABELS.get(identifier)) || key.label
+}
+
 export function formatKeyToken(token: string | undefined, lang: 'de' | 'en' = 'de'): string {
   if (!token || token === 'key.keyboard.unknown' || token === 'unknown') {
     return lang === 'de' ? 'Nicht belegt' : 'Unbound'
@@ -163,7 +190,7 @@ export function formatKeyToken(token: string | undefined, lang: 'de' | 'en' = 'd
     if (direct) {
       label = direct[lang]
     } else if (/^[a-z]$/.test(identifier)) {
-      label = identifier.toUpperCase()
+      label = DETECTED_KEY_LABELS.get(identifier) || identifier.toUpperCase()
     } else if (/^[0-9]$/.test(identifier)) {
       label = identifier
     } else if (/^f([1-9]|1[0-9]|2[0-4])$/.test(identifier)) {

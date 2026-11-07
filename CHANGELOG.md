@@ -7,6 +7,66 @@ version, so every release needs a block here in **both** languages.
 Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 `New` / `Better` / `Fixed` / `Removed` for English.
 
+## 0.2.4 - 2026-11-07
+
+### Neu
+
+- Mehrere Microsoft-Konten: weitere Konten verbinden, zwischen ihnen wechseln und einzelne wieder entfernen.
+- Eigener Statistik-Tab in den Instanz-Einstellungen mit Spielzeit, Sitzungen, Größe und Inhalten.
+- Instanzbild lässt sich direkt über das Bild im Kopf der Einstellungen ändern, inklusive der Launcher-Vorlagen.
+
+### Besser
+
+- Kosmetik-Shop: alle Pakete haben ein einheitliches 3D-Vorschaubild.
+- Cosmetics-Hinweis steht als eigener Block neben der Vorschau statt als Mini-Text am Rand; die Tour erklärt ihn.
+- Spieloptionen: Die Tabs laufen nicht mehr in eine Scrollleiste, sondern brechen sauber um.
+- Das Unendlich-Zeichen bei der Bildrate ist deutlich größer.
+- Mod-Detailansicht innerhalb einer Instanz ist breiter, damit Beschreibung und Versionen lesbar sind.
+- Tastaturbelegung nutzt die Labels des eingestellten Windows-Layouts, statt immer US-Layout.
+- Skin-Vorschau zeigt Kopf-Cosmetics von vorne und Cape-/Rücken-Cosmetics von hinten.
+- Mod-Updates einer Instanz laufen als Hintergrund-Aufgabe weiter, auch wenn man die Instanz verlässt.
+- Instanz-Einstellungen aufgeräumt: keine doppelten Einträge für Name, Ordner, Inhalt, Reparieren und Exportieren.
+- Toasts sind kürzer, zeigen bei Hover den vollen Text und bleiben stehen, solange der Zeiger darauf ist.
+- Instanzerstellung blendet Modloader aus, für die es keine Version der gewählten Minecraft-Version gibt.
+
+### Behoben
+
+- Unter Cosmetics wird das Vanilla-Cape ausgeblendet, sobald ein Cape- oder Rücken-Cosmetic aktiv ist.
+- Skin-Rendering zeigt Arm-Overlays und die Unterseite der Hände.
+- Serverstatus großer Netzwerke wie Hypixel meldet nicht mehr fälschlich offline.
+- Shader-Liste zeigt keine `.txt`-Konfigurationsdateien mehr.
+- Versionswechsel lädt die gewählte Version wirklich herunter; der Fortschritt erscheint nur noch in der Zeile der laufenden Version.
+- „MC Lokal“ steht nur noch an Dateien, die weder Modrinth noch CurseForge kennt.
+
+### New
+
+- Multiple Microsoft accounts: connect more accounts, switch between them and remove single ones again.
+- A dedicated statistics tab in the instance settings with playtime, sessions, size and content.
+- The instance image can be changed by clicking the image in the settings header, including the launcher's own presets.
+
+### Better
+
+- Cosmetics shop: every pack has a matching 3D preview image.
+- The cosmetics note is a proper block next to the preview instead of a tiny edge label; the tour explains it.
+- Game options: the tabs wrap instead of squeezing into a scrollbar.
+- The infinity sign for the framerate limit is much larger.
+- The mod detail view inside an instance is wider, so description and versions stay readable.
+- Keybinds use the labels of the configured Windows layout instead of always showing a US layout.
+- The skin preview shows head cosmetics from the front and cape or back cosmetics from behind.
+- Mod updates of an instance keep running in the background after leaving the instance.
+- Instance settings cleaned up: no duplicate entries for name, folder, content, repair and export.
+- Toasts are narrower, expand to the full text on hover and stay while the pointer is on them.
+- Instance creation hides modloaders that have no version for the selected Minecraft version.
+
+### Fixed
+
+- The vanilla cape is hidden under Cosmetics as soon as a cape or back cosmetic is active.
+- Skin rendering shows arm overlays and the underside of the hands.
+- Server status for large networks such as Hypixel no longer reports them offline.
+- The shader list no longer shows `.txt` config files.
+- Version switching actually downloads the chosen version; progress only appears in the row of the running version.
+- "MC Lokal" only appears on files neither Modrinth nor CurseForge knows.
+
 ## 0.2.3 - 2026-11-04
 
 ### Neu

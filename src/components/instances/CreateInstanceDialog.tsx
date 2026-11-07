@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Plus, RefreshCw } from "lucide-react";
 import { Dialog } from "../Dialog";
 import { dialogButton } from "../dialogSupport";
@@ -50,6 +50,23 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
   // Without a Minecraft version the instance cannot launch; the footer button
   // must not create one anyway when the version list failed to load.
   const canSubmit = !loadingVersions && minecraftVersions.length > 0 && Boolean(newInstanceVersion);
+  const allLoaders: Instance["modloader"][] = ["Vanilla", "Fabric", "Quilt", "Neoforge", "Forge"];
+  const availableLoaders = allLoaders.filter(
+    (loader) =>
+      loader === "Vanilla" ||
+      loadingVersions ||
+      getModloaderVersions(newInstanceVersion, loader).length > 0,
+  );
+
+  useEffect(() => {
+    if (loadingVersions || newInstanceModloader === "Vanilla") return;
+    if (getModloaderVersions(newInstanceVersion, newInstanceModloader).length > 0) return;
+    const fallback = allLoaders.find(
+      (loader) => loader !== "Vanilla" && getModloaderVersions(newInstanceVersion, loader).length > 0,
+    );
+    setNewInstanceModloader(fallback ?? "Vanilla");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newInstanceVersion, newInstanceModloader]);
   return (
       <Dialog
         open={open}
@@ -127,11 +144,11 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                         onChange={(e) => setNewInstanceModloader(e.target.value as Instance["modloader"])}
                         className="w-full bg-surface/40 border border-stroke focus:theme-border rounded-xl py-2.5 px-3 text-regular text-ink outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter]"
                       >
-                        <option value="Vanilla" className="bg-root">Vanilla</option>
-                        <option value="Fabric" className="bg-root">Fabric</option>
-                        <option value="Quilt" className="bg-root">Quilt</option>
-                        <option value="Neoforge" className="bg-root">Neoforge</option>
-                        <option value="Forge" className="bg-root">Forge</option>
+                        {availableLoaders.map((loader) => (
+                          <option key={loader} value={loader} className="bg-root">
+                            {loader}
+                          </option>
+                        ))}
                       </select>
                     </div>
 

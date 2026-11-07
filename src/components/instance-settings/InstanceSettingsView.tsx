@@ -18,6 +18,9 @@ import {
   Trash2,
   Wrench,
 } from 'lucide-react'
+import { Dialog } from '../Dialog'
+import { dialogButton } from '../dialogSupport'
+import { InstanceCoverPicker } from '../instances/InstanceCoverPicker'
 import type { Instance } from '../InstancesView'
 import type { LauncherPreferences } from '../../lib/launcherPreferences'
 import { formatDate, formatPlaytime } from '../../lib/launcherPreferences'
@@ -37,13 +40,14 @@ import {
 import { cx, t } from '../settings/settingsUtils'
 import { useToast } from '../Toast'
 
-type InstanceSection = 'overview' | 'game' | 'java' | 'danger'
+type InstanceSection = 'overview' | 'game' | 'java' | 'danger' | 'stats'
 
 const SECTIONS: { id: InstanceSection; label: { de: string; en: string }; icon: React.ElementType }[] = [
   { id: 'overview', label: { de: 'Übersicht', en: 'Overview' }, icon: Info },
   { id: 'game', label: { de: 'Spiel', en: 'Game' }, icon: Gamepad2 },
   { id: 'java', label: { de: 'Java & Speicher', en: 'Java & memory' }, icon: Coffee },
   { id: 'danger', label: { de: 'Erweitert', en: 'Advanced' }, icon: Wrench },
+  { id: 'stats', label: { de: 'Statistiken', en: 'Statistics' }, icon: Clock3 },
 ]
 
 export interface InstanceSettingsViewProps {
@@ -67,7 +71,6 @@ export function InstanceSettingsView({
   onUpdate,
   onRequestRename,
   onRequestDelete,
-  onRequestImage,
   onExport,
   onOpenFolder,
   onRepair,
@@ -78,6 +81,7 @@ export function InstanceSettingsView({
   const [section, setSection] = useState<InstanceSection>('overview')
   const [javaVersions, setJavaVersions] = useState<{ path: string; version: number; verStr: string }[]>([])
   const [scanningJava, setScanningJava] = useState(false)
+  const [coverOpen, setCoverOpen] = useState(false)
 
   const folderName = instance.folderName || instance.name.toLowerCase().replace(/\s+/g, '-')
   const created = instance.createdAt || Number(/\d{10,}/.exec(instance.id)?.[0]) || undefined
@@ -101,13 +105,21 @@ export function InstanceSettingsView({
   return (
     <div className="mx-auto flex w-full max-w-[980px] flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3 rounded-[var(--r-xl)] border border-stroke bg-surface/55 px-4 py-3.5">
-        <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-stroke bg-root">
+        <button
+          type="button"
+          onClick={() => setCoverOpen(true)}
+          className="group relative h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-stroke bg-root cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          aria-label={t(L, 'Vorschaubild ändern', 'Change thumbnail')}
+        >
           {instance.thumbnail ? (
             <img src={instance.thumbnail} alt="" className="h-full w-full object-cover" />
           ) : (
             <div className="h-full w-full bg-black" />
           )}
-        </div>
+          <span className="absolute inset-0 flex items-center justify-center bg-black/55 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+            <ImageIcon className="h-3.5 w-3.5 text-white" />
+          </span>
+        </button>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <h3 className="m-0 truncate text-regular font-semibold text-ink">{instance.name}</h3>
@@ -158,105 +170,13 @@ export function InstanceSettingsView({
       </div>
 
       {section === 'overview' && (
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            <StatTile
-              icon={<Clock3 className="h-3.5 w-3.5" />}
-              label={translations[L].common.playtime}
-              value={formatPlaytime(instance.playTimeMs, L)}
-              hint={t(L, 'Gesamte Spielzeit', 'Total playtime')}
-            />
-            <StatTile
-              icon={<RefreshCw className="h-3.5 w-3.5" />}
-              label={t(L, 'Sitzungen', 'Sessions')}
-              value={instance.sessionCount || 0}
-              hint={t(L, 'Abgeschlossene Starts', 'Completed launches')}
-            />
-            <StatTile
-              icon={<Clock3 className="h-3.5 w-3.5" />}
-              label={t(L, 'Zuletzt gespielt', 'Last played')}
-              value={instance.lastPlayedAt ? formatDate(instance.lastPlayedAt, L) : instance.lastPlayed || '—'}
-              hint={instance.lastPlayedAt ? formatDate(instance.lastPlayedAt, L) : undefined}
-            />
-            <StatTile
-              icon={<HardDrive className="h-3.5 w-3.5" />}
-              label={t(L, 'Größe', 'Size')}
-              value={instance.size || '—'}
-              hint={t(L, 'Auf der Festplatte', 'On disk')}
-            />
-            <StatTile
-              icon={<Package className="h-3.5 w-3.5" />}
-              label={t(L, 'Inhalte', 'Content')}
-              value={totalContent || instance.modCount || 0}
-              hint={t(L, 'Mods, Packs und Welten', 'Mods, packs and worlds')}
-            />
-            <StatTile
-              icon={<Info className="h-3.5 w-3.5" />}
-              label={t(L, 'Erstellt', 'Created')}
-              value={formatDate(created, L)}
-              hint={instance.isModpack ? t(L, 'Modpack-Instanz', 'Modpack instance') : t(L, 'Eigene Instanz', 'Custom instance')}
-            />
-          </div>
-
-          <SettingsCard title={t(L, 'Allgemein', 'General')}>
-            <SettingsRow
-              icon={<ImageIcon className="h-3.5 w-3.5" />}
-              title={t(L, 'Name', 'Name')}
-              description={instance.name}
-              control={
-                <Button variant="secondary" size="sm" icon={<Pencil className="h-3 w-3" />} onClick={onRequestRename}>
-                  {t(L, 'Umbenennen', 'Rename')}
-                </Button>
-              }
-            />
-            <SettingsRow
-              icon={<ImageIcon className="h-3.5 w-3.5" />}
-              title={t(L, 'Vorschaubild', 'Thumbnail')}
-              description={t(L, 'Wird auf der Instanz-Karte und in der Detailansicht verwendet.', 'Shown on the instance card and the detail header.')}
-              control={
-                <Button variant="secondary" size="sm" icon={<ImageIcon className="h-3 w-3" />} onClick={onRequestImage}>
-                  {t(L, 'Ändern', 'Change')}
-                </Button>
-              }
-            />
-            <SettingsRow
-              icon={<FolderOpen className="h-3.5 w-3.5" />}
-              title={t(L, 'Instanzordner', 'Instance folder')}
-              description={<span className="font-mono text-micro">{folderName}</span>}
-              control={
-                <Button variant="secondary" size="sm" icon={<FolderOpen className="h-3 w-3" />} onClick={onOpenFolder}>
-                  {t(L, 'Öffnen', 'Open')}
-                </Button>
-              }
-            />
-          </SettingsCard>
-
-          <SettingsCard
-            title={t(L, 'Schnellaktionen', 'Quick actions')}
-            description={t(L, 'Die wichtigsten Werkzeuge für diese Instanz.', 'The most useful tools for this instance.')}
-          >
-            <SettingsRow
-              icon={<Wrench className="h-3.5 w-3.5" />}
-              title={t(L, 'Installation reparieren', 'Repair installation')}
-              description={t(L, 'Prüft Version, Loader und Bibliotheken und lädt Fehlendes neu.', 'Checks the version, loader and libraries and re-downloads what is missing.')}
-              control={
-                <Button variant="secondary" size="sm" icon={<Wrench className="h-3 w-3" />} onClick={onRepair}>
-                  {t(L, 'Reparieren', 'Repair')}
-                </Button>
-              }
-            />
-            <SettingsRow
-              icon={<ExternalLink className="h-3.5 w-3.5" />}
-              title={t(L, 'Instanz exportieren', 'Export instance')}
-              description={t(L, 'Als Modrinth-Pack oder ZIP sichern.', 'Save as a Modrinth pack or ZIP.')}
-              control={
-                <Button variant="secondary" size="sm" icon={<ExternalLink className="h-3 w-3" />} onClick={onExport}>
-                  {translations[L].common.export}
-                </Button>
-              }
-            />
-          </SettingsCard>
-        </div>
+        <p className="m-0 px-1 text-mini leading-5 text-ink-tertiary">
+          {t(
+            L,
+            'Name, Bild und Ordner stehen oben. Version und Loader findest du unter Spiel, Spielzeit und Größe unter Statistiken.',
+            'Name, image and folder are above. Version and loader live under Game, playtime and size under Statistics.',
+          )}
+        </p>
       )}
 
       {section === 'game' && (
@@ -318,89 +238,29 @@ export function InstanceSettingsView({
                 />
               </>
             )}
-            <SettingsRow
-              title={t(L, 'Loader reparieren', 'Repair loader')}
-              description={t(L, 'Lädt Version und Loader neu, ohne Welten oder Configs zu löschen.', 'Re-downloads the version and loader without deleting worlds or configs.')}
-              control={
-                <Button variant="secondary" size="sm" icon={<Wrench className="h-3 w-3" />} onClick={onRepair}>
-                  {t(L, 'Reparieren', 'Repair')}
-                </Button>
-              }
-            />
           </SettingsCard>
 
-          <SettingsCard title={t(L, 'Spielverhalten', 'Game behavior')}>
-            <SettingsRow
-              title={t(L, 'Spielzeit erfassen', 'Track playtime')}
-              description={t(L, 'Bamboo misst die Laufzeit jeder Sitzung und summiert sie hier.', 'Bamboo measures each session and sums it up here.')}
-              control={<Badge tone="success">{formatPlaytime(instance.playTimeMs, L)}</Badge>}
-            />
-            <SettingsRow
-              title={t(L, 'Letzte Sitzung', 'Last session')}
-              description={t(L, 'Wird beim Beenden von Minecraft automatisch aktualisiert.', 'Updated automatically when Minecraft exits.')}
-              control={<Badge>{instance.lastPlayedAt ? formatDate(instance.lastPlayedAt, L) : '—'}</Badge>}
-            />
-            <SettingsRow
-              icon={<Package className="h-3.5 w-3.5" />}
-              title={t(L, 'Bamboo-Inhaltsverwaltung', 'Bamboo content management')}
-              description={
-                instance.isModpack
-                  ? t(
-                      L,
-                      'Deaktiviert automatische Modpack-Updates und erlaubt manuelles Hinzufügen von Mods.',
-                      'Disables automatic modpack updates and allows adding mods manually.',
-                    )
-                  : t(L, 'Mods, Resource Packs und Welten über den Launcher verwalten.', 'Manage mods, resource packs and worlds through the launcher.')
-              }
-              badge={instance.ownContentManagement ? <Badge tone="accent">{t(L, 'Manuell', 'Manual')}</Badge> : undefined}
-              control={
-                <Toggle
-                  checked={!!instance.ownContentManagement}
-                  onChange={(value) => onUpdate({ ownContentManagement: value })}
-                  label={t(L, 'Inhaltsverwaltung', 'Content management')}
-                />
-              }
-            />
-          </SettingsCard>
-
-          <SettingsCard title={t(L, 'Inhalte', 'Content')}>
-            <SettingsRow
-              icon={<Package className="h-3.5 w-3.5" />}
-              title={t(L, 'Installierte Inhalte', 'Installed content')}
-              description={t(
-                L,
-                `${totalContent} Einträge · ${(instance.content || []).filter((item) => item.type === 'mods').length} Mods`,
-                `${totalContent} entries · ${(instance.content || []).filter((item) => item.type === 'mods').length} mods`,
-              )}
-              control={
-                <Button variant="secondary" size="sm" icon={<FolderOpen className="h-3 w-3" />} onClick={onOpenFolder}>
-                  {translations[L].common.openFolder}
-                </Button>
-              }
-            />
-            <SettingsRow
-              title={t(L, 'Inhalte exportieren', 'Export content')}
-              description={t(L, 'Erstellt eine teilbare Instanz-Datei.', 'Creates a shareable instance file.')}
-              control={
-                <Button variant="secondary" size="sm" onClick={onExport}>
-                  {translations[L].common.export}
-                </Button>
-              }
-            />
-            {instance.isModpack && (
+          {(instance.isModpack || !!instance.modpackSource) && instance.ownContentManagement && (
+            <SettingsCard title={t(L, 'Inhaltsverwaltung', 'Content management')}>
               <SettingsRow
-                title={t(L, 'Eigene Mods erlauben', 'Allow custom mods')}
-                description={t(L, 'Verhindert, dass Modpack-Updates eigene Mods überschreiben.', 'Prevents modpack updates from overwriting your own mods.')}
+                icon={<Package className="h-3.5 w-3.5" />}
+                title={t(L, 'Bamboo-Inhaltsverwaltung', 'Bamboo content management')}
+                description={t(
+                  L,
+                  'Eigene Mods erlaubt; Modpack-Updates überschreiben sie nicht. Deaktivieren gibt die Verwaltung wieder ans Modpack ab.',
+                  'Custom mods allowed; modpack updates leave them alone. Turning it off hands management back to the modpack.',
+                )}
+                badge={<Badge tone="accent">{t(L, 'Manuell', 'Manual')}</Badge>}
                 control={
                   <Toggle
-                    checked={!!instance.ownContentManagement}
+                    checked
                     onChange={(value) => onUpdate({ ownContentManagement: value })}
-                    label={t(L, 'Eigene Mods', 'Custom mods')}
+                    label={t(L, 'Inhaltsverwaltung', 'Content management')}
                   />
                 }
               />
-            )}
-          </SettingsCard>
+            </SettingsCard>
+          )}
         </div>
       )}
 
@@ -436,6 +296,7 @@ export function InstanceSettingsView({
                     value={instance.ram || 4096}
                     onChange={(value) => onUpdate({ ram: value })}
                     formatValue={(value) => `${(value / 1024).toFixed(1).replace('.0', '')} GB`}
+                    valueClassName="text-title2 leading-none text-center font-semibold"
                     minLabel="1 GB"
                     maxLabel="16 GB"
                   />
@@ -514,14 +375,24 @@ export function InstanceSettingsView({
 
       {section === 'danger' && (
         <div className="flex flex-col gap-4">
-          <SettingsCard title={t(L, 'Instanz verwalten', 'Manage instance')}>
+          <SettingsCard title={t(L, 'Wartung', 'Maintenance')}>
             <SettingsRow
-              icon={<FolderOpen className="h-3.5 w-3.5" />}
-              title={translations[L].common.openFolder}
-              description={t(L, 'Öffnet den Instanzordner im Explorer.', 'Opens the instance folder in Explorer.')}
+              icon={<Wrench className="h-3.5 w-3.5" />}
+              title={t(L, 'Installation reparieren', 'Repair installation')}
+              description={t(L, 'Prüft Version, Loader und Bibliotheken und lädt Fehlendes neu.', 'Checks the version, loader and libraries and re-downloads what is missing.')}
               control={
-                <Button variant="secondary" size="sm" onClick={onOpenFolder}>
-                  {t(L, 'Öffnen', 'Open')}
+                <Button variant="secondary" size="sm" icon={<Wrench className="h-3 w-3" />} onClick={onRepair}>
+                  {t(L, 'Reparieren', 'Repair')}
+                </Button>
+              }
+            />
+            <SettingsRow
+              icon={<ExternalLink className="h-3.5 w-3.5" />}
+              title={t(L, 'Instanz exportieren', 'Export instance')}
+              description={t(L, 'Als Modrinth-Pack oder ZIP sichern.', 'Save as a Modrinth pack or ZIP.')}
+              control={
+                <Button variant="secondary" size="sm" icon={<ExternalLink className="h-3 w-3" />} onClick={onExport}>
+                  {translations[L].common.export}
                 </Button>
               }
             />
@@ -549,6 +420,72 @@ export function InstanceSettingsView({
           </SettingsCard>
         </div>
       )}
+
+      {section === 'stats' && (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+            <StatTile
+              icon={<Clock3 className="h-3.5 w-3.5" />}
+              label={translations[L].common.playtime}
+              value={formatPlaytime(instance.playTimeMs, L)}
+              hint={t(L, 'Gesamte Spielzeit', 'Total playtime')}
+            />
+            <StatTile
+              icon={<RefreshCw className="h-3.5 w-3.5" />}
+              label={t(L, 'Sitzungen', 'Sessions')}
+              value={instance.sessionCount || 0}
+              hint={t(L, 'Abgeschlossene Starts', 'Completed launches')}
+            />
+            <StatTile
+              icon={<Clock3 className="h-3.5 w-3.5" />}
+              label={t(L, 'Zuletzt gespielt', 'Last played')}
+              value={instance.lastPlayedAt ? formatDate(instance.lastPlayedAt, L) : instance.lastPlayed || '—'}
+              hint={instance.lastPlayedAt ? formatDate(instance.lastPlayedAt, L) : undefined}
+            />
+            <StatTile
+              icon={<HardDrive className="h-3.5 w-3.5" />}
+              label={t(L, 'Größe', 'Size')}
+              value={instance.size || '—'}
+              hint={t(L, 'Auf der Festplatte', 'On disk')}
+            />
+            <StatTile
+              icon={<Package className="h-3.5 w-3.5" />}
+              label={t(L, 'Inhalte', 'Content')}
+              value={totalContent || instance.modCount || 0}
+              hint={t(L, 'Mods, Packs und Welten', 'Mods, packs and worlds')}
+            />
+            <StatTile
+              icon={<Info className="h-3.5 w-3.5" />}
+              label={t(L, 'Erstellt', 'Created')}
+              value={formatDate(created, L)}
+              hint={instance.isModpack ? t(L, 'Modpack-Instanz', 'Modpack instance') : t(L, 'Eigene Instanz', 'Custom instance')}
+            />
+          </div>
+        </div>
+      )}
+
+      <Dialog
+        open={coverOpen}
+        onClose={() => setCoverOpen(false)}
+        title={t(L, 'Vorschaubild', 'Thumbnail')}
+        titleId="instance-cover-title"
+        closeLabel={translations[L].common.close}
+        tone="accent"
+        footer={
+          <button type="button" className={dialogButton.secondary} onClick={() => setCoverOpen(false)}>
+            {translations[L].common.close}
+          </button>
+        }
+      >
+        <InstanceCoverPicker
+          value={instance.thumbnail}
+          onChange={(value) => {
+            onUpdate({ thumbnail: value })
+            setCoverOpen(false)
+          }}
+          lang={lang}
+        />
+      </Dialog>
     </div>
   )
 }

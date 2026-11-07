@@ -10,7 +10,8 @@
       "slots": [
         "back"
       ],
-      "file": "./bamboo-sticks.cosmiq"
+      "file": "./bamboo-sticks.cosmiq",
+      "image": "./previews/bamboo-sticks.png"
     },
     {
       "id": "bird-cape",
@@ -34,7 +35,8 @@
       "slots": [
         "head"
       ],
-      "file": "./furry-ears.cosmiq"
+      "file": "./furry-ears.cosmiq",
+      "image": "./previews/furry-ears.png"
     },
     {
       "id": "furry-tail",
@@ -45,7 +47,8 @@
       "slots": [
         "back"
       ],
-      "file": "./furry-tail.cosmiq"
+      "file": "./furry-tail.cosmiq",
+      "image": "./previews/furry-tail.png"
     },
     {
       "id": "strohhut",
@@ -56,7 +59,8 @@
       "slots": [
         "head"
       ],
-      "file": "./strohhut.cosmiq"
+      "file": "./strohhut.cosmiq",
+      "image": "./previews/strohhut.png"
     },
     {
       "id": "wagasa",

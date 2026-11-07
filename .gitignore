@@ -54,3 +54,6 @@ mod/build/
 Thumbs.db
 .vscode/
 .idea/
+
+# generated for scripts/prepare-cosmetic-previews.cjs
+public/cosmetic-previews.json
