@@ -31,10 +31,17 @@ jobs:
             platform: windows-latest
             args: ''
             bundle: target/release/bundle
-          - name: macOS
+          # Zwei Architektur-Builds statt eines Universal-Builds: der Universal-
+          # Build verschmilzt nur die Haupt-Binary, der Bundler erwartet aber
+          # auch die CLI und bricht ab. Getrennt gebaut entstehen zwei DMGs.
+          - name: macOS (Apple Silicon)
             platform: macos-latest
-            args: '--target universal-apple-darwin'
-            bundle: target/universal-apple-darwin/release/bundle
+            args: '--target aarch64-apple-darwin'
+            bundle: target/aarch64-apple-darwin/release/bundle
+          - name: macOS (Intel)
+            platform: macos-latest
+            args: '--target x86_64-apple-darwin'
+            bundle: target/x86_64-apple-darwin/release/bundle
           - name: Linux
             platform: ubuntu-22.04
             args: ''
