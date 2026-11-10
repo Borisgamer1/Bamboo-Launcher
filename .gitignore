@@ -21,3 +21,9 @@
 *.log
 Thumbs.db
 .DS_Store
+
+# Lokale Arbeitsstände, die nicht zum Launcher gehören
+/tools
+/cosmiq-patch
+/gen
+/.freebuff
