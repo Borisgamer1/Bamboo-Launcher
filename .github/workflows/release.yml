@@ -31,6 +31,7 @@ jobs:
             platform: windows-latest
             args: ''
             bundle: target/release/bundle
+            arch: ''
           # Zwei Architektur-Builds statt eines Universal-Builds: der Universal-
           # Build verschmilzt nur die Haupt-Binary, der Bundler erwartet aber
           # auch die CLI und bricht ab. Getrennt gebaut entstehen zwei DMGs.
@@ -38,14 +39,17 @@ jobs:
             platform: macos-latest
             args: '--target aarch64-apple-darwin'
             bundle: target/aarch64-apple-darwin/release/bundle
+            arch: aarch64
           - name: macOS (Intel)
             platform: macos-latest
             args: '--target x86_64-apple-darwin'
             bundle: target/x86_64-apple-darwin/release/bundle
+            arch: x64
           - name: Linux
             platform: ubuntu-22.04
             args: ''
             bundle: target/release/bundle
+            arch: ''
     steps:
       - uses: actions/checkout@v4
         with:
@@ -95,6 +99,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
+          # Tauri nennt das macOS-Update-Paket für beide Architekturen gleich; ohne
+          # Architektur im Namen überschreibt der zweite Build den ersten und der
+          # Updater bekommt nur eine Plattform.
+          if [ -n '${{ matrix.arch }}' ]; then
+            version=$(node -p "require('./tauri.conf.json').version")
+            for file in '${{ matrix.bundle }}'/macos/*.app.tar.gz*; do
+              [ -e "$file" ] || continue
+              base=$(basename "$file")
+              mv "$file" "$(dirname "$file")/${base/Bamboo Launcher/Bamboo.Launcher_${version}_${{ matrix.arch }}}"
+            done
+          fi
+
           # bash 3.2 auf macOS kennt kein mapfile, und Dateinamen enthalten Leerzeichen.
           count=0
           while IFS= read -r -d '' file; do
@@ -133,4 +149,13 @@ jobs:
           node scripts/make-latest-json.mjs \
             --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG" \
             --dir "$folder"
+          node -e "
+            const feed = require('./$folder/latest.json')
+            const need = ['windows-x86_64', 'darwin-aarch64', 'darwin-x86_64', 'linux-x86_64']
+            const missing = need.filter((key) => !feed.platforms[key])
+            if (missing.length) {
+              console.error('Fehlende Plattformen im Feed: ' + missing.join(', '))
+              process.exit(1)
+            }
+          "
           gh release upload "$TAG" "$folder/latest.json" --clobber
