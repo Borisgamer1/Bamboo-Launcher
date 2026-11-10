@@ -171,5 +171,7 @@ jobs:
           # Feed und Notizen gehören nicht in die Liste, und die alten
           # Prüfsummen würden sich selbst mit einrechnen.
           rm -f "$folder/SHA256SUMS.txt" "$folder/latest.json" "$folder/RELEASE_NOTES.md"
-          ( cd "$folder" && find . -maxdepth 1 -type f -printf '%f\n' | sort | xargs -r sha256sum > SHA256SUMS.txt )
+          # Die Liste selbst steht nicht in der Liste, sonst prüft sha256sum -c sie
+          # gegen den Hash der leeren Datei und meldet einen Fehler.
+          ( cd "$folder" && find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -printf '%f\n' | sort | xargs -r sha256sum > SHA256SUMS.txt )
           gh release upload "$TAG" "$folder/SHA256SUMS.txt" --clobber
