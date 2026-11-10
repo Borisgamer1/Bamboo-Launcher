@@ -95,12 +95,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          mapfile -t files < <(find '${{ matrix.bundle }}' -type f \
+          # bash 3.2 auf macOS kennt kein mapfile, und Dateinamen enthalten Leerzeichen.
+          count=0
+          while IFS= read -r -d '' file; do
+            gh release upload "$TAG" "$file" --clobber
+            count=$((count + 1))
+          done < <(find '${{ matrix.bundle }}' -type f \
             \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' -o -name '*.deb' \
                -o -name '*.rpm' -o -name '*.AppImage' -o -name '*.AppImage.tar.gz' \
-               -o -name '*.app.tar.gz' -o -name '*.sig' \))
-          printf 'Hochgeladen: %s\n' "${files[@]}"
-          gh release upload "$TAG" "${files[@]}" --clobber
+               -o -name '*.app.tar.gz' -o -name '*.sig' \) -print0)
+          echo "$count Dateien hochgeladen"
 
   feed:
     name: latest.json
