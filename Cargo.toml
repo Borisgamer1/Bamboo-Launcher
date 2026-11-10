@@ -1,0 +1,58 @@
+[package]
+name = "bamboo-desktop"
+version = "0.2.5"
+edition = "2021"
+description = "Modern Minecraft Launcher"
+publish = false
+default-run = "bamboo-desktop"
+# Beide Binaries stehen unten explizit; die automatische Ableitung aus
+# `src/main.rs` würde sonst ein drittes Target mit dem Paketnamen anlegen.
+autobins = false
+
+[lib]
+# Der Crate-Name bleibt `bamboo_launcher`, damit alle Imports unverändert
+# bleiben; nur der Paketname muss zur GUI-Binary passen, die Tauri paketiert.
+name = "bamboo_launcher"
+
+[[bin]]
+name = "bamboo-launcher"
+path = "src/main.rs"
+
+[[bin]]
+name = "bamboo-desktop"
+# Nicht unter `src/bin/`: der Tauri-Bundler liest jeden Ordner dort als
+# zusätzliches Bin-Target und packt sonst ein nicht existierendes
+# `desktop.exe` in den Installer.
+path = "src/desktop/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "stream",
+    "rustls-tls",
+    "http2",
+    "charset",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+regex = "1.13.1"
+zip = "9.4.1"
+flate2 = "1"
+md-5 = "0.11.0"
+base64 = "0.23.1"
+sha2 = "0.11.1"
+rand = "0.10.3"
+keyring = "4.2.0"
+sha1 = "0.11.0"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

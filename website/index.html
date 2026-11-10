@@ -33,7 +33,7 @@
         <a href="#einstellungen">Einstellungen</a>
         <a href="#download">Download</a>
       </nav>
-      <span class="head-status"><i aria-hidden="true"></i>0.2.0 · Windows</span>
+      <span class="head-status"><i aria-hidden="true"></i>0.2.5 · Rust &amp; Tauri</span>
     </div>
   </header>
 
@@ -52,9 +52,9 @@
             <a class="btn btn-quiet" href="#download">Download &amp; Versionen</a>
           </div>
           <dl class="hero-meta">
-            <div><dt>Version</dt><dd>0.2.0</dd></div>
-            <div><dt>Plattform</dt><dd>Windows · x64</dd></div>
-            <div><dt>Downloads</dt><dd>Noch nicht veröffentlicht</dd></div>
+            <div><dt>Version</dt><dd>0.2.5</dd></div>
+            <div><dt>Plattform</dt><dd>Windows · macOS · Linux</dd></div>
+            <div><dt>Downloads</dt><dd><a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest">GitHub-Release</a></dd></div>
           </dl>
         </div>
 
@@ -230,23 +230,22 @@
         <div class="section-head">
           <p class="section-num">05 / Download</p>
           <div>
-            <h2 id="download-title">Ein Build. Noch kein öffentlicher Link.</h2>
+            <h2 id="download-title">0.2.5 für Windows, macOS und Linux.</h2>
             <p class="section-intro">
-              0.2.0 ist die einzige gebaute Version. Der Installer liegt als Windows-Paket vor;
-              ein öffentlich erreichbarer Ablageort fehlt noch. Deshalb steht hier kein Button,
-              der ins Leere führt – sondern der tatsächliche Stand des Artefakts.
+              Der Launcher läuft vollständig auf Rust und Tauri. Alle Pakete liegen am
+              GitHub-Release, und ab dieser Version aktualisiert sich der Launcher selbst.
             </p>
           </div>
         </div>
 
         <div class="release-grid">
           <div class="release-main">
-            <span class="status-chip"><i aria-hidden="true"></i>Nicht veröffentlicht</span>
-            <h3>Bamboo Launcher Setup 0.2.0.exe</h3>
+            <span class="status-chip"><i aria-hidden="true"></i>Veröffentlicht</span>
+            <h3>Bamboo Launcher 0.2.5</h3>
             <p>
-              Ein NSIS-Installer mit wählbarem Installationsordner, Desktop- und Startmenü-Verknüpfung.
-              Gebaut am 29. Oktober 2026. Es gibt keine älteren Releases,
-              keine Beta-Kanäle und keine automatischen Updates.
+              Windows bekommt MSI und NSIS-Setup, macOS ein universales DMG, Linux DEB,
+              RPM und AppImage. Danach holt „Nach Updates suchen“ jede neue Version im
+              Launcher, ohne Installer-Download.
             </p>
 
             <div class="dl-table" role="table" aria-label="Gebaute Versionen">
@@ -257,35 +256,42 @@
                 <span role="columnheader">Status</span>
               </div>
               <div class="dl-row" role="row">
-                <span role="cell"><strong>0.2.0</strong></span>
+                <span role="cell"><strong>0.2.5</strong></span>
                 <span role="cell">Windows 10/11 · x64</span>
-                <span role="cell">NSIS · 102,1 MiB</span>
-                <span role="cell"><span class="dl-off">Kein Download-Link</span></span>
+                <span role="cell">MSI · NSIS</span>
+                <span role="cell">Veröffentlicht</span>
+              </div>
+              <div class="dl-row" role="row">
+                <span role="cell"><strong>0.2.5</strong></span>
+                <span role="cell">macOS · universal</span>
+                <span role="cell">DMG</span>
+                <span role="cell">Veröffentlicht</span>
+              </div>
+              <div class="dl-row" role="row">
+                <span role="cell"><strong>0.2.5</strong></span>
+                <span role="cell">Linux · x64</span>
+                <span role="cell">DEB · RPM · AppImage</span>
+                <span role="cell">Veröffentlicht</span>
               </div>
             </div>
 
-            <dl class="spec-table">
-              <div><dt>Datei</dt><dd><code>Bamboo Launcher Setup 0.2.0.exe</code></dd></div>
-              <div><dt>Größe</dt><dd>107.109.300 Bytes · 102,1 MiB</dd></div>
-              <div><dt>Build</dt><dd>29. Oktober 2026 · 20:26 CET</dd></div>
-              <div><dt>SHA-512</dt><dd><code>0251828955b02f343e4365619c7e339f9dda968fc34194edfceab09025ebad90b027f1d2d72612659400781c90224f19984ee82670a189b16dbef18abb3984f5</code></dd></div>
-              <div><dt>Weitere Versionen</dt><dd>Keine. 0.2.0 ist der erste und einzige Build.</dd></div>
-              <div><dt>Status</dt><dd>Lokal gebaut · nicht veröffentlicht</dd></div>
-            </dl>
+            <p class="fine">
+              <a class="btn btn-primary" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest">Zum Release <span class="arrow" aria-hidden="true">→</span></a>
+            </p>
           </div>
 
           <aside class="release-aside">
             <div class="aside-block">
               <h4>Voraussetzungen</h4>
               <ul>
-                <li>Windows 10 oder 11 (x64)</li>
+                <li>Windows 10/11, macOS oder eine gängige Linux-Distribution</li>
                 <li>Minecraft: Java Edition mit Microsoft-Konto</li>
                 <li>Internetverbindung für Spiel- und Mod-Downloads</li>
               </ul>
             </div>
             <div class="aside-block">
-              <h4>Warum kein Button</h4>
-              <p>Der Installer hat noch keinen öffentlichen Host. Sobald ein Release-Kanal existiert, steht der Download an dieser Stelle – mit derselben Datei und derselben Prüfsumme.</p>
+              <h4>Update von 0.2.4</h4>
+              <p>Die 0.2.4 war noch Electron und kennt den neuen Updater nicht. Einmalig das Paket von Hand installieren, ab 0.2.5 läuft es über den Knopf im Launcher.</p>
             </div>
             <div class="aside-block">
               <h4>Stand der Aufnahmen</h4>
@@ -326,7 +332,7 @@
         </div>
       </div>
       <div class="footer-bottom">
-        <span>© 2026 Boris · Bamboo Launcher 0.2.0</span>
+        <span>© 2026 Boris · Bamboo Launcher 0.2.5</span>
         <span>Nicht mit Mojang Studios, Microsoft oder Discord verbunden.</span>
       </div>
     </div>

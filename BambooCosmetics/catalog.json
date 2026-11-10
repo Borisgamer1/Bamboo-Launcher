@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "bamboo-sticks",
+      "name": "Bamboo Sticks",
+      "creator": "Bamboo Launcher",
+      "description": "2 X shaped Bamboo Sticks",
+      "rarity": "Legendary",
+      "slots": [
+        "back"
+      ],
+      "file": "./packages/bamboo-sticks.cosmiq"
+    },
+    {
+      "id": "bird-cape",
+      "name": "Bird Cape",
+      "creator": "Bamboo Launcher",
+      "description": "Cape with Green Bird",
+      "rarity": "Legendary",
+      "slots": [
+        "back",
+        "cape"
+      ],
+      "file": "./packages/bird-cape.cosmiq",
+      "image": "./previews/bird-cape.png"
+    },
+    {
+      "id": "furry-ears",
+      "name": "Furry Ears",
+      "creator": "Bamboo Launcher",
+      "description": "Süße Pinke Furry Ohren",
+      "rarity": "Legendary",
+      "slots": [
+        "head"
+      ],
+      "file": "./packages/furry-ears.cosmiq"
+    },
+    {
+      "id": "furry-tail",
+      "name": "Furry Tail",
+      "creator": "Bamboo Launcher",
+      "description": "Pink Furry Tail",
+      "rarity": "Legendary",
+      "slots": [
+        "back"
+      ],
+      "file": "./packages/furry-tail.cosmiq"
+    },
+    {
+      "id": "strohhut",
+      "name": "Strohhut",
+      "creator": "Bamboo Launcher",
+      "description": "Ein einfacher Strohut mit rotem Band",
+      "rarity": "Legendary",
+      "slots": [
+        "head"
+      ],
+      "file": "./packages/strohhut.cosmiq"
+    },
+    {
+      "id": "wagasa",
+      "name": "Wagasa",
+      "creator": "Bamboo Launcher",
+      "description": "Zusammengeklappter Papierschirm auf dem Rücken",
+      "rarity": "Legendary",
+      "slots": [
+        "back"
+      ],
+      "file": "./packages/wagasa.cosmiq",
+      "image": "./previews/wagasa.png"
+    }
+  ]
+}

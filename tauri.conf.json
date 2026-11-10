@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Bamboo Launcher",
+  "version": "0.2.5",
+  "identifier": "de.bamboo.launcher.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "./ui/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Bamboo Launcher",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "decorations": false,
+        "resizable": true,
+        "center": true,
+        "visible": false,
+        "backgroundColor": "#121212",
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": ["default"]
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYwREJBQzY0NTFCNzc0OEMKUldTTWRMZFJaS3piOFA0WGk1SXljMldIalh5ZFBXM1RUcmV6eHlXSkNlMERCc2RLNkVDVHFteVAK"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Game",
+    "shortDescription": "Modern Minecraft launcher",
+    "longDescription": "Bamboo Launcher manages Minecraft instances, modpacks, mods, worlds and cosmetics.",
+    "copyright": "© 2026 Bamboo Launcher"
+  }
+}

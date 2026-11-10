@@ -1,193 +1,125 @@
-name: release
+name: Release
 
+# Baut die Installer für Windows, macOS und Linux und hängt sie an das Release
+# des gepushten Tags. Der letzte Job schreibt `latest.json` aus allen
+# hochgeladenen Artefakten, damit der Updater jede Plattform bedient.
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag, der gebaut und veröffentlicht wird (z. B. v0.2.5)'
+        required: true
 
 permissions:
   contents: write
 
-# One release run at a time: the publish job uploads all platforms into the
-# same GitHub release, so two runs (or a rerun racing the first) would collide.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  verify:
-    name: verify
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Check tag matches package version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          TAG=${GITHUB_REF_NAME#v}
-          if [ "$VERSION" != "$TAG" ]; then
-            echo "package.json is $VERSION but tag is $TAG" >&2
-            exit 1
-          fi
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Core tests with external network blocked
-        run: npm run test:offline
-
   build:
-    name: build-${{ matrix.platform }}
-    needs: verify
-    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            platform: win
-            artifact: windows
-          - os: macos-latest
-            platform: mac
-            artifact: macos
-          - os: ubuntu-latest
-            platform: linux
-            artifact: linux
-    defaults:
-      run:
-        shell: bash
+          - name: Windows
+            platform: windows-latest
+            args: ''
+            bundle: target/release/bundle
+          - name: macOS
+            platform: macos-latest
+            args: '--target universal-apple-darwin'
+            bundle: target/universal-apple-darwin/release/bundle
+          - name: Linux
+            platform: ubuntu-22.04
+            args: ''
+            bundle: target/release/bundle
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: ui/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
 
-      # The installer ships the CurseForge key, the sources do not. The file is
-      # gitignored, so every platform has to receive it from the secret.
-      - name: Provide the bundled CurseForge key
-        env:
-          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+      - name: macOS-Ziele
+        if: matrix.platform == 'macos-latest'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Linux-Abhängigkeiten
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
-          if [ -z "$CURSEFORGE_API_KEY" ]; then
-            echo "Missing repository secret CURSEFORGE_API_KEY: the installer would ship without a key." >&2
-            exit 1
-          fi
-          mkdir -p resources
-          printf '%s\n' "$CURSEFORGE_API_KEY" > resources/curseforge-key.txt
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      # Renderer and main process are generated, never in the repository. Without
-      # this step the installer ships an asar with no dist/ and no dist-electron/
-      # and crashes on launch with "Cannot find module dist-electron/...".
-      - name: Build renderer and main process
-        run: npm run build
+      - run: npm --prefix ui ci
 
-      # Each job builds only its own platform and never publishes. The publish
-      # job below uploads everything together, which avoids parallel writers on
-      # the same release.
-      - name: Build ${{ matrix.platform }}
+      - name: Bauen und signieren
+        shell: bash
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --${{ matrix.platform }} --publish never
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm --prefix ui run tauri -- build ${{ matrix.args }}
 
-      - name: Upload ${{ matrix.platform }} artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          if-no-files-found: error
-          path: |
-            release/*.exe
-            release/*.blockmap
-            release/latest.yml
-            release/*.dmg
-            release/*.zip
-            release/latest-mac.yml
-            release/*.AppImage
-            release/*.deb
-            release/latest-linux.yml
+      - name: Release anlegen
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --title "Bamboo Launcher $TAG" --generate-notes
 
-  publish:
-    name: publish
+      - name: Pakete hochladen
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          mapfile -t files < <(find '${{ matrix.bundle }}' -type f \
+            \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' -o -name '*.deb' \
+               -o -name '*.rpm' -o -name '*.AppImage' -o -name '*.AppImage.tar.gz' \
+               -o -name '*.app.tar.gz' -o -name '*.sig' \))
+          printf 'Hochgeladen: %s\n' "${files[@]}"
+          gh release upload "$TAG" "${files[@]}" --clobber
+
+  feed:
+    name: latest.json
     needs: build
-    # workflow_dispatch builds without publishing: a manual run has no tag, and
-    # the version guard above only runs for tags.
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: package-lock.json
+          node-version: 20
 
-      - name: Download all platform artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release
-          merge-multiple: true
-
-      - name: List artifacts
-        run: ls -lh release
-
-      - name: Publish GitHub release
+      - name: Feed aus den Release-Dateien bauen
+        shell: bash
         env:
-          # A PAT is only required when this workflow runs in a different repo
-          # than the public release repository (publish.repo in package.json).
-          GH_TOKEN: ${{ secrets.GH_RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          shopt -s nullglob
-          files=(
-            release/*.exe
-            release/*.blockmap
-            release/*.dmg
-            release/*.zip
-            release/*.AppImage
-            release/*.deb
-            release/latest.yml
-            release/latest-mac.yml
-            release/latest-linux.yml
-          )
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No release artifacts were downloaded." >&2
-            exit 1
-          fi
-          # electron-builder 26's publish command rejects its own config
-          # (publish becomes undefined), so GitHub CLI does the upload. A rerun
-          # reuses an existing release and replaces the assets.
-          TAG="$GITHUB_REF_NAME"
-          TITLE="Bamboo Launcher $TAG - Beta"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${files[@]}" --clobber
-            gh release edit "$TAG" --title "$TITLE" --draft=false --prerelease=false --latest
-          else
-            gh release create "$TAG" "${files[@]}" --title "$TITLE" --latest --verify-tag
-          fi
-
-      # A release without latest.yml silently kills updates for every installed
-      # launcher (that is what happened to v0.2.1). Fail the workflow instead.
-      - name: Verify update feed
-        run: node scripts/check-update-feed.cjs --remote
+          version=$(node -p "require('./tauri.conf.json').version")
+          folder="release/v$version"
+          mkdir -p "$folder"
+          gh release download "$TAG" --dir "$folder" --clobber
+          gh release view "$TAG" --json body -q .body > "$folder/RELEASE_NOTES.md"
+          node scripts/make-latest-json.mjs \
+            --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG" \
+            --dir "$folder"
+          gh release upload "$TAG" "$folder/latest.json" --clobber

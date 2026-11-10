@@ -1,0 +1,36 @@
+{
+  "name": "bamboo-launcher-ui",
+  "private": true,
+  "version": "0.2.5",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "check:bridge": "node scripts/check-bridge.mjs",
+    "tauri": "cd .. && tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.1",
+    "dompurify": "^3.4.17",
+    "framer-motion": "^12.42.2",
+    "lucide-react": "0.475.0",
+    "marked": "^18.1.2",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "skinview3d": "^3.4.2",
+    "three": "^0.156.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.2",
+    "@tauri-apps/cli": "^2.9.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.185.1",
+    "@vitejs/plugin-react": "^6.0.1",
+    "tailwindcss": "^4.3.2",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "cosmiq.local-equipped.v3",
+  "selections": [
+    {
+      "fileName": "wagasa.cosmiq",
+      "projectId": "bamboo:wagasa",
+      "sourceRevision": 1,
+      "textureVariantId": "default"
+    }
+  ]
+}

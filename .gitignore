@@ -1,59 +1,23 @@
-# Bamboo Launcher repository ignores.
-# Only generated output, local state and secrets belong here. Source, tests,
-# CI configuration, docs and bundled resources must stay visible to git.
+/target
 
-# Dependencies
-node_modules/
-
-# Build output
-/dist/
-/dist-electron/
-/release/
-/build-release/
-
-# Local runtime data
-/logs/
-*.log
-*.log.gz
-desktop.db
-desktop.db-shm
-desktop.db-wal
-.freebuff/
-.wrangler/
-.code-review-graph/
-.e2e-auth/
-*.tmp
-*.temp
-nul
-
-# Tool caches
-.eslintcache
-.vite/
-.cache/
-coverage/
+# Frontend
+/ui/node_modules
+/ui/dist
+/ui/.vite
 *.tsbuildinfo
 
-# Gradle output for the standalone mod/
-mod/.gradle/
-mod/build/
+# Tauri-generierte Schemas
+/gen/schemas
 
-# Local environment configuration and secrets
+# Alte Electron-Arbeitskopien und Entwicklungs-Screenshots
+/.mc-worktrees
+/screenshots
+
+# Gebaute Release-Pakete (liegen unter release/)
+/release
+
+# Lokale Geheimnisse und Logs
 .env
-.env.*
-!.env.example
-*.local
-
-# Shipped CurseForge key: present in local builds, never in the repository.
-/resources/curseforge-key.txt
-
-# Scratch files from local UI/Minecraft probing
-.tmp-*
-
-# OS and editor files
-.DS_Store
+*.log
 Thumbs.db
-.vscode/
-.idea/
-
-# generated for scripts/prepare-cosmetic-previews.cjs
-public/cosmetic-previews.json
+.DS_Store
