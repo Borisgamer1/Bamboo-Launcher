@@ -1,5 +1,5 @@
 ﻿import React, { Component, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-motion";
+import { motion, MotionConfig, useReducedMotion } from "framer-motion";
 import { AlertCircle } from "lucide-react";
 import { RunningInstanceBadge } from "./components/RunningInstanceBadge";
 import { BackgroundTaskBar } from "./components/BackgroundTaskBar";
@@ -233,6 +233,14 @@ function App() {
   // to the custom theme only.
   const presetLook = themeState.mode === 'preset';
 
+  // The first paint must not fade in: a cold start already takes a moment, and
+  // an opacity animation on top of it made the window look half-transparent
+  // while the first data arrived. Tab switches afterwards keep the motion.
+  const paintedOnce = useRef(false);
+  useEffect(() => {
+    paintedOnce.current = true;
+  }, []);
+
   return (
     <ErrorBoundary>
     <MotionConfig
@@ -273,12 +281,10 @@ function App() {
 
         <main tabIndex={-1} className="flex-1 overflow-hidden relative">
           <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center"><div className="w-6 h-6 border-2 border-stroke-strong border-t-stroke-strong rounded-full animate-spin" /></div>}>
-          <AnimatePresence>
             <motion.div
               key={navigation.activeTab}
-              initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+              initial={reduceMotion || !paintedOnce.current ? false : { opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
               transition={reduceMotion ? { duration: 0 } : { duration: MOTION.base, ease: EASE.out }}
               className="absolute inset-0 flex flex-col"
             >
@@ -350,7 +356,6 @@ function App() {
                 />
               )}
             </motion.div>
-          </AnimatePresence>
           </Suspense>
         </main>
 
