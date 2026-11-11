@@ -3,7 +3,7 @@
 use bamboo_launcher::config::{MemorySettings, Resolution};
 use bamboo_launcher::java::JavaRuntime;
 use bamboo_launcher::launcher::{
-    build_launch_plan, spawn_process, Account, LaunchEvent, LaunchOptions,
+    apply_options_once, build_launch_plan, spawn_process, Account, LaunchEvent, LaunchOptions,
 };
 use bamboo_launcher::version;
 use serde_json::json;
@@ -12,6 +12,30 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+/// Sprache und Panel-Optionen gehören nur dem ersten Start: Was danach im
+/// Spiel geändert wird, darf kein weiterer Start überschreiben.
+#[test]
+fn options_are_written_only_on_the_first_start() {
+    let dir = temp_root();
+    std::fs::create_dir_all(&dir).unwrap();
+    let values = [("renderDistance".to_string(), "8".to_string())];
+
+    assert!(apply_options_once(&dir, "de_de", &values).unwrap());
+    let first = std::fs::read_to_string(dir.join("options.txt")).unwrap();
+    assert!(first.contains("lang:de_de"), "{first}");
+    assert!(first.contains("renderDistance:8"), "{first}");
+
+    // So, wie das Spiel die Datei zurückschreibt.
+    std::fs::write(dir.join("options.txt"), "lang:en_us\nrenderDistance:4\n").unwrap();
+
+    assert!(!apply_options_once(&dir, "de_de", &values).unwrap());
+    let second = std::fs::read_to_string(dir.join("options.txt")).unwrap();
+    assert!(second.contains("lang:en_us"), "{second}");
+    assert!(second.contains("renderDistance:4"), "{second}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
 
 fn temp_root() -> PathBuf {
     let id = COUNTER.fetch_add(1, Ordering::Relaxed);

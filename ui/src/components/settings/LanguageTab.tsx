@@ -46,8 +46,8 @@ export function LanguageTab({ lang: L, onLauncherLanguage, preferences, updatePr
         title={t(L, 'Minecraft-Sprache', 'Minecraft language')}
         description={t(
           L,
-          'Wird bei jedem Start in die options.txt der Instanz geschrieben und überschreibt eine im Spiel gewählte Sprache.',
-          'Written to the instance’s options.txt on every launch, overriding a language picked in game.',
+          'Gilt beim ersten Start einer Instanz; danach zählt, was im Spiel gewählt ist.',
+          'Applies on an instance’s first launch; after that the in-game choice wins.',
         )}
       >
         <SettingsRow

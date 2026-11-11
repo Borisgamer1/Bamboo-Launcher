@@ -17,6 +17,7 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 ### Besser
 
 - Vor jedem Start wird die Microsoft-Anmeldung still aufgefrischt, wenn ihr Token in den nächsten zehn Minuten abläuft. Der Start wartet höchstens acht Sekunden darauf, danach läuft er mit dem alten Token weiter.
+- Sprache und Standard-Optionen schreibt der Launcher nur beim allerersten Start einer Instanz. Danach gehören die Werte dem Spiel: Änderungen im Spiel werden nicht mehr bei jedem Start überschrieben.
 - Der Start der Instanz beginnt erst, wenn die Oberfläche fertig gerendert hat; der Launcher schiebt sich nicht mehr vor das Spiel und der Fortschritt ist von der ersten Sekunde an sichtbar.
 - Der Screenshot-Tab zeigt beim Laden sechs Platzhalter-Kacheln statt eines leeren Rasters.
 - Das Fenster für den Versionswechsel ist breiter, und Fabric-, Forge- und NeoForge-Versionen stehen nummerisch sortiert mit der neuesten oben.
@@ -33,6 +34,7 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 ### Entfernt
 
 - Der leere Tab „Übersicht“ in den Instanz-Einstellungen.
+- Der Knopf „Alle aktualisieren“ über der Instanzenliste. Modpacks werden dort aktualisiert, wo sie hingehören: in der Instanz.
 
 ### New
 
@@ -42,6 +44,7 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 ### Better
 
 - Before every launch the Microsoft session is refreshed silently when its token expires within ten minutes. The launch waits at most eight seconds for it, then continues with the old token.
+- Language and default options are written only on an instance's very first launch. After that the values belong to the game, so in-game changes are no longer overwritten on every start.
 - An instance launch starts only after the interface has rendered; the launcher no longer pushes itself in front of the game, and the progress bar is visible from the first second.
 - The screenshots tab shows six placeholder tiles while loading instead of an empty grid.
 - The version switch window is wider, and Fabric, Forge and NeoForge versions are sorted numerically with the newest on top.
@@ -57,6 +60,7 @@ Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 ### Removed
 
 - The empty "Overview" tab in the instance settings.
+- The "Update all" button above the instance list. Modpacks are updated where they belong: in the instance.
 
 ## 0.2.5 - 2026-11-10
 

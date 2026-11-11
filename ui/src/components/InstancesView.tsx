@@ -8,7 +8,6 @@ import {
   Search,
   Layers,
   Upload,
-  RefreshCw,
   AlertTriangle,
 } from "lucide-react";
 import { TabType } from "./Sidebar";
@@ -18,7 +17,6 @@ import { requestSettingsTarget } from "../lib/settingsNavigation";
 import { mergeKeybinds } from "../lib/keybinds";
 import { fetchVersionMap, VersionMap } from "../lib/versionApi";
 import { useToast } from "./Toast";
-import { useUpdateAllModpacks } from "../hooks/useUpdateAllModpacks";
 import { ProfileImportModal } from "./ProfileImportModal";
 import { InstanceContextMenu } from "./instances/InstanceContextMenu";
 import {
@@ -150,11 +148,6 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
   }, []);
 
   const { addToast } = useToast();
-  const {
-    updating: updatingAllModpacks,
-    progress: modpackBatchProgress,
-    updateAll: updateAllModpacks,
-  } = useUpdateAllModpacks({ instances, setInstances, lang, addToast });
 
   const launchWriteRef = useRef(
     new Map<string, { timer: number; patch: InstanceLaunchSettingsPatch }>(),
@@ -647,23 +640,6 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
         title={t.launcherInstances}
         actions={
           <>
-            <button
-              onClick={() => void updateAllModpacks()}
-              disabled={updatingAllModpacks}
-              title={
-                lang === "de"
-                  ? "Alle Modrinth-Modpacks prüfen und aktualisieren"
-                  : "Check and update every Modrinth pack"
-              }
-              className="h-8 px-3 rounded-lg border border-rim bg-hover text-small font-medium text-ink hover:bg-selected disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] flex items-center gap-1.5 cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${updatingAllModpacks ? "animate-spin" : ""}`} />
-              {updatingAllModpacks && modpackBatchProgress
-                ? `${modpackBatchProgress.done}/${modpackBatchProgress.total}`
-                : lang === "de"
-                  ? "Alle aktualisieren"
-                  : "Update all"}
-            </button>
             <button
               onClick={() => setShowImportModal(true)}
               className="h-8 px-3 rounded-lg border border-rim bg-hover text-small font-medium text-ink hover:bg-selected transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] flex items-center gap-1.5 cursor-pointer"

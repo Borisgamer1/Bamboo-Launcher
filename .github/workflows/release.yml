@@ -46,7 +46,7 @@ jobs:
             bundle: target/x86_64-apple-darwin/release/bundle
             arch: x64
           - name: Linux
-            platform: ubuntu-22.04
+            platform: ubuntu-24.04
             args: ''
             bundle: target/release/bundle
             arch: ''
@@ -70,7 +70,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Linux-Abhängigkeiten
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         timeout-minutes: 15
         run: |
           # Der Runner bringt fertige Paketlisten mit; ein hängendes update darf
@@ -134,7 +134,7 @@ jobs:
   feed:
     name: latest.json
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:

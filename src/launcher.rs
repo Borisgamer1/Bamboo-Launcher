@@ -394,6 +394,30 @@ pub fn apply_language(game_dir: &Path, language: &str) -> Result<bool> {
     Ok(true)
 }
 
+/// Marker im Instanzordner: Die Panel-Optionen sind einmal geschrieben.
+const OPTIONS_MARKER: &str = ".bamboo-options-applied";
+
+/// Schreibt Sprache und Panel-Optionen nur beim allerersten Start.
+///
+/// Danach gehören die Werte dem Spiel: Was im Spiel geändert wird, bleibt
+/// stehen, statt bei jedem Start von den Launcher-Standardwerten überschrieben
+/// zu werden. `Ok(false)` heißt, dass schon einmal geschrieben wurde.
+pub fn apply_options_once<K: AsRef<str>>(
+    game_dir: &Path,
+    language: &str,
+    values: &[(K, String)],
+) -> Result<bool> {
+    if game_dir.join(OPTIONS_MARKER).is_file() {
+        return Ok(false);
+    }
+    apply_language(game_dir, language)?;
+    if !values.is_empty() {
+        apply_options(game_dir, values)?;
+    }
+    std::fs::write(game_dir.join(OPTIONS_MARKER), b"1\n")?;
+    Ok(true)
+}
+
 /// Setzt den Vollbild-Schalter, den die Oberfläche für die Instanz vorgibt.
 ///
 /// Ohne diesen Eintrag entscheidet allein die `options.txt`: War dort noch

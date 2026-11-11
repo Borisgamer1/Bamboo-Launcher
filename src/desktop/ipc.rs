@@ -1335,18 +1335,23 @@ async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::Ga
         None => (root.clone(), None),
     };
 
-    // Alle Werte aus dem Einstellungs-Panel stehen nur in der options.txt des
-    // Spielverzeichnisses; vor jedem Start setzen, damit eine geänderte
-    // Einstellung auch für bestehende Instanzen greift. Schlägt das Schreiben
-    // fehl, startet das Spiel trotzdem – beides ist kein Startkriterium.
+    // Sprache und Panel-Optionen gelten nur beim allerersten Start der
+    // Instanz. Danach gehören die Werte dem Spiel: Was im Spiel geändert wird,
+    // bleibt stehen, statt bei jedem Start von den Launcher-Standardwerten
+    // überschrieben zu werden. Schlägt das Schreiben fehl, startet das Spiel
+    // trotzdem – beides ist kein Startkriterium.
     if let Some(game_options) = payload.get("gameOptions").and_then(Value::as_object) {
-        // Die Sprache prüft und schreibt `apply_language`, weil sie zusätzlich
-        // die YOSBR-Vorgabedatei pflegt und ungültige Codes ablehnt.
         let language = game_options
             .get("lang")
             .and_then(Value::as_str)
             .unwrap_or("");
-        let _ = launcher::apply_language(&working_dir, language);
+        let mut pairs = game_settings::options_from_ui(game_options);
+        if let Some(keybinds) = game_options.get("keyBindings").and_then(Value::as_object) {
+            pairs.extend(game_settings::keybinds_from_ui(keybinds));
+        }
+        // Pflegt zusätzlich die YOSBR-Vorgabedatei und lehnt ungültige
+        // Sprachcodes ab, bevor etwas geschrieben wird.
+        let _ = launcher::apply_options_once(&working_dir, language, &pairs);
 
         // Vollbild ist keine Option des Panels, sondern eine Startvorgabe der
         // Instanz. Ohne diesen Eintrag entscheidet allein die options.txt:
@@ -1354,14 +1359,6 @@ async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::Ga
         // Fenster, egal was im Launcher eingestellt war.
         if let Some(fullscreen) = game_options.get("fullscreen").and_then(Value::as_bool) {
             let _ = launcher::apply_fullscreen(&working_dir, fullscreen);
-        }
-
-        let mut pairs = game_settings::options_from_ui(game_options);
-        if let Some(keybinds) = game_options.get("keyBindings").and_then(Value::as_object) {
-            pairs.extend(game_settings::keybinds_from_ui(keybinds));
-        }
-        if !pairs.is_empty() {
-            let _ = launcher::apply_options(&working_dir, &pairs);
         }
     }
 
