@@ -75,8 +75,10 @@ jobs:
         run: |
           # Der Runner bringt fertige Paketlisten mit; ein hängendes update darf
           # den Build nicht blockieren.
-          sudo apt-get update -o Acquire::Retries=2 -o Acquire::http::Timeout=25 || true
-          sudo apt-get install -y --no-install-recommends             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          # IPv4 und harte Zeitlimits: der IPv6-Weg zu archive.ubuntu.com
+          # blockiert auf den Runnern, und ohne timeout haengt der Schritt.
+          timeout 150 sudo -E apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=20             -o Acquire::Retries=0 update || true
+          timeout 420 sudo -E apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=20             -o Acquire::Retries=1 install -y --no-install-recommends             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - run: npm --prefix ui ci
 
@@ -134,6 +136,9 @@ jobs:
   feed:
     name: latest.json
     needs: build
+    # Auch wenn eine Plattform scheitert: Windows und macOS sollen ihren Feed
+    # bekommen, statt dass der ganze Release ohne latest.json dasteht.
+    if: always()
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -162,10 +167,7 @@ jobs:
             const feed = require('./$folder/latest.json')
             const need = ['windows-x86_64', 'darwin-aarch64', 'darwin-x86_64', 'linux-x86_64']
             const missing = need.filter((key) => !feed.platforms[key])
-            if (missing.length) {
-              console.error('Fehlende Plattformen im Feed: ' + missing.join(', '))
-              process.exit(1)
-            }
+            if (missing.length) console.warn('Fehlende Plattformen im Feed: ' + missing.join(', '))
           "
           gh release upload "$TAG" "$folder/latest.json" --clobber
 
