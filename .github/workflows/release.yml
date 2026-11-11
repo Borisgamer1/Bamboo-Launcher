@@ -73,15 +73,22 @@ jobs:
         if: matrix.platform == 'ubuntu-24.04'
         timeout-minutes: 20
         run: |
-          # Der Runner spiegelt apt auf azure.archive.ubuntu.com, dessen DNS auf
-          # den Runnern nicht aufloest; apt haengt dann pro Paket in Timeouts.
-          # Direkt auf archive.ubuntu.com zeigen.
-          for f in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
-            [ -f "$f" ] && sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$f" || true
+          # Die Runner-Quellen zeigen per mirror+file: auf einen toten Azure-Mirror
+          # und fuer noble-updates teils auf security.ubuntu.com, wo die Dateien
+          # 404 liefern. Statt zu patchen: eine saubere Quelle, ein Host.
+          sudo rm -f /etc/apt/apt-mirrors.txt
+          sudo tee /etc/apt/sources.list.d/ubuntu.sources >/dev/null <<'EOF'
+          Types: deb
+          URIs: http://archive.ubuntu.com/ubuntu/
+          Suites: noble noble-updates noble-backports
+          Components: main restricted universe multiverse
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          EOF
+          sudo apt-get clean
+          for i in 1 2 3; do
+            timeout 180 sudo -E apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=20 -o Acquire::Retries=1 update && break
+            sleep 5
           done
-          # Der Runner bringt fertige Paketlisten mit; ein hängendes update darf
-          # den Build nicht blockieren.
-          timeout 180 sudo -E apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=20 -o Acquire::Retries=1 update || true
           timeout 600 sudo -E apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=20 -o Acquire::Retries=2 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - run: npm --prefix ui ci
