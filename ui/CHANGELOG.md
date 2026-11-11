@@ -7,6 +7,52 @@ version, so every release needs a block here in **both** languages.
 Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 `New` / `Better` / `Fixed` / `Removed` for English.
 
+## 0.2.7 - 2026-11-11
+
+### Neu
+
+- **Neue Startseite „Weiterspielen“:** Die letzte Welt steht als große Karte oben, darunter folgen Welten, Server und Profile. Ein Klick startet, der Laufzustand ist direkt sichtbar. Die Startseite liegt auf dem Theme-Hintergrund.
+- **Quick Play für Welten:** Ab Minecraft 1.20 öffnet „Weiter spielen“ die Welt direkt, ohne Umweg über das Hauptmenü. Ältere Versionen starten weiterhin das Profil.
+- **Welten und Server anpinnen:** Favoriten stehen oben und bleiben lokal gespeichert. Server merken sich außerdem den letzten Beitritt.
+- **Server direkt von der Startseite:** Ping, Spielerzahl und das passende Profil stehen neben dem Server. „Beitreten“ startet die Instanz und verbindet; das Plus öffnet direkt den Server-Dialog.
+- **Hintergrund und Effekte auch bei Preset-Themes:** Bild, Partikel und Glow lassen sich in Darstellung jetzt unabhängig abschalten, ohne auf eigene Farben zu wechseln.
+- **CurseForge-Key beim Umstieg:** Der Key aus der alten Electron-Fassung wird übernommen. Fehlt er in der Mod-Suche, führt „Key hinterlegen“ direkt zu Einstellungen → Erweitert.
+
+### Besser
+
+- Die Startseite zeigt relative Spielzeit, Version, Loader und den letzten Serverstatus statt einer Sammlung von Links.
+- Startende Instanzen zeigen „Startet“ mit Spinner; erst wenn das Spiel läuft, wechselt der Knopf auf „Beenden“.
+- Profil- und Serverlisten sortieren angepinnte Einträge nach oben und lassen sich ohne Umweg über die jeweilige Ansicht starten.
+- Die Bamboo-Marker vor Überschriften sind entfernt; die Startseite arbeitet mit Typografie, Abständen und einer Akzentfarbe statt mit Dekoration.
+
+### Behoben
+
+- Ohne Hintergrundbild zeigte der Start einen falschen Basiston statt der Theme-Fläche.
+- Helligkeit und Unschärfe wurden bei Preset-Themes ignoriert; beide Regler wirken jetzt auch dort.
+- Ein Weltname für Quick Play wird vor dem Start geprüft: nur ein direkter Ordnername aus `saves/` erreicht das Spiel.
+
+### New
+
+- **New “Continue playing” home:** The last world is the large hero, followed by worlds, servers and profiles. One click starts it, and the running state is visible right there. The page sits on the theme background.
+- **Quick Play for worlds:** From Minecraft 1.20, “Continue” opens the world directly instead of stopping at the main menu. Older versions still start the profile.
+- **Pin worlds and servers:** Favourites stay on top and are saved locally. Servers also remember the last join.
+- **Servers on the home page:** Ping, player count and the matching profile sit next to each server. “Join” starts the instance and connects; the plus opens the server dialog directly.
+- **Background and effects for preset themes:** Image, particles and glow can now be switched off independently under Appearance without changing to custom colours.
+- **CurseForge key survives the switch:** The key from the old Electron build is picked up. When it is missing in mod search, “Add key” opens Settings → Advanced directly.
+
+### Better
+
+- The home page shows relative play time, version, loader and last server status instead of a collection of links.
+- Starting instances show “Starting” with a spinner; only a running game switches the button to “Stop”.
+- Profile and server lists sort pinned entries to the top and can start them without opening the full view.
+- The bamboo markers before headings are gone; the home page relies on type, spacing and one accent colour instead of decoration.
+
+### Fixed
+
+- Without a background image the home page showed the wrong base tone instead of the theme surface.
+- Brightness and blur were ignored for preset themes; both sliders now apply there too.
+- A Quick Play world name is checked before launch: only a direct folder name from `saves/` reaches the game.
+
 ## 0.2.6 - 2026-11-11
 
 ### Neu

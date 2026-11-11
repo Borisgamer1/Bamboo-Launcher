@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { ServerItem } from '../components/multiplayer/types'
 
 export interface ServersState {
   servers: ServerItem[]
   setServers: Dispatch<SetStateAction<ServerItem[]>>
+  markJoined: (id: string) => void
+  togglePinned: (id: string) => void
 }
 
 const SERVERS_STORAGE_KEY = 'bamboo-servers'
@@ -38,6 +40,8 @@ function readSavedServers(): ServerItem[] {
         version: '',
         icon: typeof saved.icon === 'string' && saved.icon ? saved.icon : DEFAULT_SERVER_ICON,
         isPinging: false,
+        lastJoinedAt: typeof saved.lastJoinedAt === 'number' ? saved.lastJoinedAt : undefined,
+        pinned: saved.pinned === true,
       }]
     })
   } catch {
@@ -49,7 +53,14 @@ function writeSavedServers(servers: ServerItem[]): void {
   try {
     localStorage.setItem(
       SERVERS_STORAGE_KEY,
-      JSON.stringify(servers.map(({ id, name, ip, icon }) => ({ id, name, ip, icon }))),
+      JSON.stringify(servers.map(({ id, name, ip, icon, lastJoinedAt, pinned }) => ({
+        id,
+        name,
+        ip,
+        icon,
+        ...(lastJoinedAt ? { lastJoinedAt } : {}),
+        ...(pinned ? { pinned: true } : {}),
+      }))),
     )
   } catch {
     // A full or unavailable localStorage must not break the server list.
@@ -63,5 +74,17 @@ export function useServers(): ServersState {
     writeSavedServers(servers)
   }, [servers])
 
-  return { servers, setServers }
+  const markJoined = useCallback((id: string) => {
+    setServers((prev) => prev.map((server) =>
+      server.id === id ? { ...server, lastJoinedAt: Date.now() } : server,
+    ))
+  }, [])
+
+  const togglePinned = useCallback((id: string) => {
+    setServers((prev) => prev.map((server) =>
+      server.id === id ? { ...server, pinned: !server.pinned } : server,
+    ))
+  }, [])
+
+  return { servers, setServers, markJoined, togglePinned }
 }

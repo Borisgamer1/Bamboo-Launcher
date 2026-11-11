@@ -1451,6 +1451,21 @@ async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::Ga
             (host.to_string(), port)
         });
 
+    // Quick Play erwartet einen einzelnen Ordnernamen aus `saves/`, nie einen
+    // Pfad. Alles andere wird verworfen, statt es an das Spiel zu reichen.
+    let quick_play_world = payload
+        .get("quickPlayWorld")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|world| {
+            !world.is_empty()
+                && *world != "."
+                && *world != ".."
+                && !world.contains('/')
+                && !world.contains('\\')
+        })
+        .map(str::to_string);
+
     let options = LaunchOptions {
         account,
         memory,
@@ -1460,7 +1475,7 @@ async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::Ga
         resolution,
         demo: settings.demo_mode,
         server,
-        quick_play_world: None,
+        quick_play_world,
     };
 
     let plan = launcher::build_launch_plan(&content_root, &version_id, &working_dir, &options)
@@ -1883,6 +1898,10 @@ pub(crate) fn curseforge_api_key() -> Option<String> {
                 .ok()
                 .and_then(|settings| settings.curseforge_api_key)
         })
+        // Electron schrieb unter `<appdata>/bamboo-launcher` – ein anderer
+        // Ordner als `BambooLauncher`. Ohne diesen Rückfall meldet der
+        // Launcher nach dem Wechsel „Key fehlt“, obwohl einer hinterlegt ist.
+        .or_else(config::legacy_curseforge_api_key)
         .map(|key| key.trim().to_string())
         .filter(|key| !key.is_empty())
 }

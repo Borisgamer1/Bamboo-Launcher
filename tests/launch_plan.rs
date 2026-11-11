@@ -239,6 +239,37 @@ fn builds_complete_launch_command() {
 }
 
 #[test]
+fn quick_play_world_starts_inside_a_save() {
+    let root = temp_root();
+    write_version(&root, "1.20.1", &vanilla_json());
+    write_native_jar(&root);
+
+    let mut launch = options(java_stub());
+    launch.server = None;
+    launch.quick_play_world = Some("Meine Welt".to_string());
+
+    let plan = build_launch_plan(
+        &root,
+        "1.20.1",
+        &root.join("instances").join("Test"),
+        &launch,
+    )
+    .expect("Weltstart muss einen Plan bauen");
+
+    let command = &plan.command;
+    assert_eq!(
+        argument_after(command, "--quickPlaySingleplayer"),
+        Some("Meine Welt")
+    );
+    assert!(!command
+        .iter()
+        .any(|argument| argument == "--quickPlayMultiplayer"));
+    assert!(!command.iter().any(|argument| argument == "--server"));
+
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[test]
 fn second_launch_survives_natives_locked_by_the_running_game() {
     let root = temp_root();
     write_version(&root, "1.20.1", &vanilla_json());

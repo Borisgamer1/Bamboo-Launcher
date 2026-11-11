@@ -96,7 +96,7 @@ bauen:
 
 ```bash
 node scripts/make-latest-json.mjs \
-  --base-url https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.6
+  --base-url https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7
 ```
 
 Das Skript schreibt `release/v<version>/latest.json`. Diese Datei und alle
@@ -109,7 +109,7 @@ passen.
 Der normale Weg ist ein Tag: [`.github/workflows/release.yml`](.github/workflows/release.yml)
 baut auf GitHub Windows, macOS (universal) und Linux, hängt alle Pakete samt
 `.sig` an das Release des Tags und schreibt am Ende `latest.json` aus den
-hochgeladenen Dateien. Ein Push von `v0.2.6` veröffentlicht also alles, was der
+hochgeladenen Dateien. Ein Push von `v0.2.7` veröffentlicht also alles, was der
 Updater braucht.
 
 Dafür muss im Repository unter *Settings → Secrets and variables → Actions* der

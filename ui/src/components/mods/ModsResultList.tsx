@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Puzzle, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, KeyRound, Puzzle, RefreshCw } from "lucide-react";
 import { translations, formatNumber, type LanguageType } from "../../lib/translations";
 import { canRetryCurseForge, type CurseForgeFailure } from "../../lib/curseforge";
 import { CurseForgeFailureNotice } from "./CurseForgeFailureNotice";
@@ -67,6 +67,7 @@ interface ModsResultListProps {
   onSortChange: (sort: "relevance" | "downloads" | "follows" | "newest" | "updated") => void;
   onPageChange: (page: number) => void;
   onRetry: () => void;
+  onOpenSettings?: () => void;
   isInstalledInContext: (slug: string) => boolean;
   onOpenDetail: (mod: ModrinthHit) => void;
   onInstall: (mod: ModrinthHit) => void;
@@ -96,6 +97,7 @@ export const ModsResultList: React.FC<ModsResultListProps> = ({
   onSortChange,
   onPageChange,
   onRetry,
+  onOpenSettings,
   isInstalledInContext,
   onOpenDetail,
   onInstall,
@@ -203,8 +205,17 @@ export const ModsResultList: React.FC<ModsResultListProps> = ({
                 failure={searchError}
                 lang={lang}
                 className="py-24"
-                actions={canRetryCurseForge(searchError) ? (
-                  <>
+                actions={
+                  searchError.code === 'missing-key' && onOpenSettings ? (
+                    <button
+                      type="button"
+                      onClick={onOpenSettings}
+                      className="px-3 py-1.5 rounded-lg bg-surface border border-stroke hover:border-rim text-small font-medium text-ink flex items-center gap-1.5 transition-[color,background-color,border-color,box-shadow,opacity] cursor-pointer"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      {t.cfAddKey}
+                    </button>
+                  ) : canRetryCurseForge(searchError) ? (
                     <button
                       type="button"
                       onClick={onRetry}
@@ -213,8 +224,8 @@ export const ModsResultList: React.FC<ModsResultListProps> = ({
                       <RefreshCw className="w-3.5 h-3.5" />
                       {t.cfRetry}
                     </button>
-                  </>
-                ) : undefined}
+                  ) : undefined
+                }
               />
             )}
           </div>

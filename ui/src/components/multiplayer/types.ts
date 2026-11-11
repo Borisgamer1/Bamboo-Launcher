@@ -10,4 +10,6 @@ export interface ServerItem {
   icon: string
   isPinging?: boolean
   online?: boolean
+  lastJoinedAt?: number
+  pinned?: boolean
 }

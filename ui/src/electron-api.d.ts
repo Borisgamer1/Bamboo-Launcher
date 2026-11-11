@@ -177,6 +177,8 @@ export interface LaunchGamePayload {
   javaPath?: string
   authData?: { type: string; name: string; uuid?: string }
   gameOptions?: Record<string, unknown>
+  /** Save folder to open directly; ignored on versions older than 1.20. */
+  quickPlayWorld?: string
   extraJvmArgs?: string[]
   resolution?: { width: number; height: number }
 }

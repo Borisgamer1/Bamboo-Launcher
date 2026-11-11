@@ -8,6 +8,7 @@ import type { ToastMessage } from '../components/Toast'
 import { savedJvmArgs } from '../lib/launcherPreferences'
 import { mergeKeybinds } from '../lib/keybinds'
 import { parseJvmArgs } from '../lib/gameOptions'
+import { supportsQuickPlay } from '../lib/quickPlay'
 import { instanceFolderKeyOf } from '../lib/instanceFolders'
 import type { LaunchProgress, PreflightIssue } from '../electron-api'
 import { mainErrorText } from '../lib/mainErrors'
@@ -36,6 +37,7 @@ export interface LaunchPreflightPrompt {
   instanceId: string
   name: string
   server?: { host: string; port?: number }
+  world?: string
   checkedMods: number
   issues: PreflightIssue[]
 }
@@ -45,7 +47,7 @@ export interface LaunchControllerState {
   isLaunching: boolean
   launchingFolder: string
   launchProgress: Record<string, LaunchProgress>
-  launchGame: (instanceId?: string, server?: { host: string; port?: number }) => boolean
+  launchGame: (instanceId?: string, server?: { host: string; port?: number }, world?: string) => boolean
   stopGame: (name: string, folderName?: string) => void
   /** Start findings waiting for the user's decision, if any. */
   preflight: LaunchPreflightPrompt | null
@@ -90,6 +92,7 @@ export function useLaunchController({
   const startTarget = (
     target: Instance,
     server?: { host: string; port?: number },
+    world?: string,
   ): boolean => {
     const folderName = instanceFolderKeyOf(target)
     if (launchesInFlight.current.has(folderName)) return false
@@ -147,6 +150,7 @@ export function useLaunchController({
         keyBindings,
         ...(server ? { joinServer: server.host, joinPort: server.port ?? 25565 } : {}),
       },
+      ...(world && supportsQuickPlay(target.minecraftVersion) ? { quickPlayWorld: world } : {}),
       extraJvmArgs: jvmArgs,
       resolution,
     }
@@ -182,7 +186,7 @@ export function useLaunchController({
    * nicht verfügbar oder schlägt sie fehl, startet das Spiel wie bisher. Nur
    * bei Befunden hält der Start an und wartet auf „Trotzdem starten“.
    */
-  const launchGame = (instanceId?: string, server?: { host: string; port?: number }): boolean => {
+  const launchGame = (instanceId?: string, server?: { host: string; port?: number }, world?: string): boolean => {
     const instance = instanceId ? instances.find((entry) => entry.id === instanceId) : null
     const target = instance || instances[0]
     if (!target) return false
@@ -201,7 +205,7 @@ export function useLaunchController({
     }
 
     const check = window.electronAPI?.instances.preflight
-    if (!check) return startTarget(target, server)
+    if (!check) return startTarget(target, server, world)
 
     checksInFlight.current.add(folderName)
     void check(folderName)
@@ -213,16 +217,17 @@ export function useLaunchController({
             instanceId: target.id,
             name: target.name,
             server,
+            world,
             checkedMods: report.checkedMods ?? 0,
             issues: report.issues,
           })
           return
         }
-        startTarget(target, server)
+        startTarget(target, server, world)
       })
       .catch(() => {
         checksInFlight.current.delete(folderName)
-        startTarget(target, server)
+        startTarget(target, server, world)
       })
     return true
   }
@@ -241,7 +246,7 @@ export function useLaunchController({
       })
       return
     }
-    startTarget(target, prompt.server)
+    startTarget(target, prompt.server, prompt.world)
   }
 
   const cancelPreflight = () => {
@@ -292,7 +297,7 @@ export function useLaunchController({
             instances.find((entry) => entry.id === prompt.instanceId) ||
             instances.find((entry) => instanceFolderKeyOf(entry) === prompt.folderName)
           setPreflight(null)
-          if (target) startTarget(target, prompt.server)
+          if (target) startTarget(target, prompt.server, prompt.world)
         }
 
         if (report) {

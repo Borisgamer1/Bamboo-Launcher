@@ -3,6 +3,7 @@ import { TabType } from "./Sidebar";
 import { Instance } from "./InstancesView";
 import { translations, formatMessage, LanguageType } from "../lib/translations";
 import type { CurseForgeFailure } from "../lib/curseforge";
+import { requestSettingsTarget } from "../lib/settingsNavigation";
 import { mainErrorText } from "../lib/mainErrors";
 import { fetchVersionMap } from "../lib/versionApi";
 import {
@@ -917,6 +918,10 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
           onSortChange={(sort) => { setSortIndex(sort); handleFilterChange(); }}
           onPageChange={handlePageChange}
           onRetry={() => fetchMods()}
+          onOpenSettings={() => {
+            requestSettingsTarget("advanced");
+            setActiveTab("settings");
+          }}
           isInstalledInContext={isInstalledInContext}
           onOpenDetail={openModDetail}
           onInstall={(mod) => {

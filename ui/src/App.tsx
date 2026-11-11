@@ -34,7 +34,6 @@ import { ChangelogDialog } from "./components/settings/ChangelogDialog";
 import { LaunchPreflightDialog } from "./components/LaunchPreflightDialog";
 import { shouldShowChangelog, shouldShowTour } from "./lib/onboarding";
 import { requestSettingsTarget } from "./lib/settingsNavigation";
-import { PRESET_BLUR, PRESET_BRIGHTNESS } from "./data/themes";
 
 const Dashboard = React.lazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
 const InstancesView = React.lazy(() => import("./components/InstancesView").then(m => ({ default: m.InstancesView })));
@@ -235,10 +234,6 @@ function App() {
     saveOnboarding({ lastSeenVersion: LAUNCHER_VERSION });
   }, [saveOnboarding]);
 
-  // Presets keep one uniform, readable background look; the sliders belong
-  // to the custom theme only.
-  const presetLook = themeState.mode === 'preset';
-
   // The first paint must not fade in: a cold start already takes a moment, and
   // an opacity animation on top of it made the window look half-transparent
   // while the first data arrived. Tab switches afterwards keep the motion.
@@ -260,13 +255,13 @@ function App() {
         bgImage={themeState.currentTheme.bgImage}
         particleShapes={themeState.currentTheme.particleShapes}
         particleImage={themeState.currentTheme.particleImage}
-        showGlow={presetLook ? true : appearance.showGlow}
+        showGlow={appearance.showGlow}
         glowOverlayColor={appearance.mainColor || "#080415"}
         glowColor={appearance.mainColor || "#080415"}
-        showBgImage={presetLook ? true : appearance.showBgImage}
-        showParticles={presetLook ? true : appearance.showParticles}
-        bgBrightness={presetLook ? PRESET_BRIGHTNESS : appearance.bgBrightness}
-        bgBlur={presetLook ? PRESET_BLUR : appearance.bgBlur}
+        showBgImage={appearance.showBgImage}
+        showParticles={appearance.showParticles}
+        bgBrightness={appearance.bgBrightness}
+        bgBlur={appearance.bgBlur}
         particleSize={themeState.currentTheme.particleSize ?? 8}
         particleFrequency={themeState.currentTheme.particleFrequency ?? 40}
         particleDirection={themeState.currentTheme.particleDirection || "bottom"}
@@ -296,18 +291,25 @@ function App() {
             >
               {navigation.activeTab === "home" && (
                 <Dashboard
-                  setActiveTab={navigation.setActiveTab}
-                  theme={themeState.theme}
+                  setActiveTab={navigation.handleSetActiveTab}
                   activeAccount={activeAccount}
                   lang={settingsState.lang}
-                  updateStatus={updater.status}
-                  onCheckForUpdates={updater.check}
-                  onInstallUpdate={updater.install}
-                  keybinds={settingsState.preferences.keybinds}
+                  instances={instancesState.instances}
+                  servers={serversState.servers}
+                  runningInstances={launch.runningInstances}
+                  launchingFolder={launch.launchingFolder}
+                  onLaunch={launch.launchGame}
+                  onStopGame={launch.stopGame}
+                  onOpenInstance={(name) => {
+                    instancesState.setActiveInstance(name);
+                    navigation.handleSetActiveTab("singleplayer");
+                  }}
+                  onServerJoined={serversState.markJoined}
+                  onToggleServerPin={serversState.togglePinned}
                 />
               )}
               {navigation.activeTab === "singleplayer" && <InstancesView setActiveTab={navigation.setActiveTab} searchQuery={navigation.searchQuery} setActiveInstance={instancesState.setActiveInstance} lang={settingsState.lang} instances={instancesState.instances} setInstances={instancesState.setInstances} openModBrowserForInstance={navigation.openModBrowserForInstance} onLaunch={launch.launchGame} runningInstances={launch.runningInstances} onStopGame={launch.stopGame} launchProgress={launch.launchProgress} selectedInstanceOverride={navigation.selectedInstanceOverride} onClearSelectedInstanceOverride={navigation.clearSelectedInstanceOverride} instancesListToken={navigation.instancesListToken} launching={launch.isLaunching} launchingFolder={launch.launchingFolder} hasAccount={!!activeAccount.id} preferences={settingsState.preferences} setPreferences={settingsState.setPreferences} analyses={logAnalyses.analyses} onReanalyze={logAnalyses.reanalyze} />}
-              {navigation.activeTab === "multiplayer" && <MultiplayerView setActiveTab={navigation.setActiveTab} searchQuery={navigation.searchQuery} lang={settingsState.lang} instances={instancesState.instances} servers={serversState.servers} setServers={serversState.setServers} onLaunchServer={launch.launchGame} preflightOpen={!!launch.preflight} activeAccount={activeAccount} />}
+              {navigation.activeTab === "multiplayer" && <MultiplayerView setActiveTab={navigation.setActiveTab} searchQuery={navigation.searchQuery} lang={settingsState.lang} instances={instancesState.instances} servers={serversState.servers} setServers={serversState.setServers} onLaunchServer={launch.launchGame} onServerJoined={serversState.markJoined} preflightOpen={!!launch.preflight} activeAccount={activeAccount} />}
               {navigation.activeTab === "mods" && <ModsView key={`${navigation.modBrowserInstanceId ?? "global"}:${navigation.modBrowserEntryToken}`} setActiveTab={navigation.handleSetActiveTab} searchQuery={navigation.searchQuery} instances={instancesState.instances} setInstances={instancesState.setInstances} fromInstanceId={navigation.modBrowserInstanceId} onClearInstance={navigation.clearModBrowser} lang={settingsState.lang} />}
               {navigation.activeTab === "customize" && (
                 <CustomizeView

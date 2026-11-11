@@ -1035,13 +1035,15 @@ fn parse_loader(value: &str) -> anyhow::Result<Loader> {
     })
 }
 
-/// Reihenfolge: Umgebungsvariable, generische Variable, Einstellungsdatei.
+/// Reihenfolge: Umgebungsvariable, generische Variable, Einstellungsdatei,
+/// zuletzt die Einstellungsdatei der alten Electron-Fassung.
 fn curseforge_key(settings: &LauncherSettings) -> Option<String> {
     ["BAMBOO_CURSEFORGE_API_KEY", "CURSEFORGE_API_KEY"]
         .iter()
         .find_map(|name| std::env::var(name).ok())
         .filter(|value| !value.trim().is_empty())
         .or_else(|| settings.curseforge_api_key.clone())
+        .or_else(config::legacy_curseforge_api_key)
 }
 
 /// Alle Argumente ab `skip`, ohne Flags und deren Werte.

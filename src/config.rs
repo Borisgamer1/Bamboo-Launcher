@@ -156,6 +156,49 @@ pub fn default_settings_path() -> PathBuf {
     default_config_dir().join("settings.json")
 }
 
+/// Einstellungsordner der alten Electron-Fassung.
+///
+/// Electron legte seinen `userData`-Ordner unter dem Paketnamen
+/// `bamboo-launcher` an, der Rust-Kern nutzt `BambooLauncher`. Unter Windows
+/// sind das wegen des Bindestrichs zwei verschiedene Ordner; ohne diesen Pfad
+/// gingen Einstellungen wie der CurseForge-Key beim Wechsel verloren.
+pub fn legacy_electron_config_dir() -> Option<PathBuf> {
+    if cfg!(windows) {
+        let appdata = std::env::var_os("APPDATA")?;
+        return Some(PathBuf::from(appdata).join("bamboo-launcher"));
+    }
+    if cfg!(target_os = "macos") {
+        return Some(
+            home_dir()
+                .join("Library")
+                .join("Application Support")
+                .join("bamboo-launcher"),
+        );
+    }
+    Some(home_dir().join(".config").join("bamboo-launcher"))
+}
+
+/// CurseForge-Key aus `settings.json` der alten Electron-Fassung.
+///
+/// Die Datei gehört nicht dem Kern; deshalb wird nur der Key gelesen und
+/// nicht die ganze Datei als [`LauncherSettings`] übernommen (die übrigen
+/// Felder haben dort ein anderes Format).
+pub fn legacy_curseforge_api_key() -> Option<String> {
+    let path = legacy_electron_config_dir()?.join("settings.json");
+    legacy_curseforge_api_key_at(&path)
+}
+
+fn legacy_curseforge_api_key_at(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let settings: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let key = settings.get("curseForgeApiKey")?.as_str()?.trim();
+    if key.is_empty() {
+        None
+    } else {
+        Some(key.to_string())
+    }
+}
+
 /// Eigene Einstellungen des Rust-Kerns.
 ///
 /// Bewusst eine eigene Datei: `settings.json` gehört der React-Oberfläche. Ein
@@ -203,6 +246,34 @@ mod tests {
         let parsed: LauncherSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.memory, settings.memory);
         assert_eq!(parsed.game_root, settings.game_root);
+    }
+
+    /// Ein Upgrade von der Electron-Fassung darf den Key nicht verlieren:
+    /// er liegt unter `<appdata>/bamboo-launcher/settings.json`.
+    #[test]
+    fn reads_the_curseforge_key_of_the_electron_shell() {
+        let dir = std::env::temp_dir().join(format!(
+            "bamboo-legacy-settings-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{ "currentTheme": "bamboo", "curseForgeApiKey": "  key-123  " }"#,
+        )
+        .unwrap();
+        assert_eq!(legacy_curseforge_api_key_at(&path).as_deref(), Some("key-123"));
+
+        std::fs::write(&path, r#"{ "curseForgeApiKey": "   " }"#).unwrap();
+        assert_eq!(legacy_curseforge_api_key_at(&path), None);
+        assert_eq!(legacy_curseforge_api_key_at(&dir.join("fehlt.json")), None);
+
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     /// `%APPDATA%/bamboo-launcher/settings.json` schreibt die Electron-Shell:

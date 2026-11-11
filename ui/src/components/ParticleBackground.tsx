@@ -370,7 +370,7 @@ export const ParticleBackground = React.memo(function ParticleBackground({
           className="absolute inset-[-40px] bg-cover bg-center transition-[color,background-color,border-color,box-shadow,opacity,transform,translate,filter] duration-[var(--t-out)] ease-[var(--ease-out)] scale-105"
           style={{
             backgroundImage: bgImage ? `url('${bgImage}')` : undefined,
-            backgroundColor: bgImage ? undefined : "var(--bg-base)",
+            backgroundColor: bgImage ? undefined : "var(--bg-root)",
             transform: "translate(0px, 0px) scale(1.03)",
             filter: bgImage ? `brightness(${bgBrightness}%) blur(${bgBlur}px) contrast(1.08)` : undefined,
           }}

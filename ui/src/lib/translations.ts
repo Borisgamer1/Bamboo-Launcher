@@ -487,6 +487,7 @@ export const translations = {
     close: "Close",
 
     cfRetry: "Retry",
+    cfAddKey: "Add key",
     cfMissingTitle: "CurseForge key missing",
     cfMissingBody: "Add your CurseForge API key under Settings → Advanced, then retry.",
     cfInvalidTitle: "CurseForge rejected the key",
@@ -944,6 +945,7 @@ export const translations = {
     savingProfiles: "Verbindungen werden sicher geschlossen & Profile gespeichert...",
 
     cfRetry: "Erneut versuchen",
+    cfAddKey: "Key hinterlegen",
     cfMissingTitle: "CurseForge-Key fehlt",
     cfMissingBody: "Trage deinen CurseForge-API-Key unter Einstellungen → Erweitert ein und versuche es erneut.",
     cfInvalidTitle: "CurseForge hat den Key abgelehnt",

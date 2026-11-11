@@ -1,186 +1,223 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  Compass,
-  Server,
-  Puzzle,
-  Camera,
-  Sliders,
-  ChevronRight,
+  ArrowRight,
+  Boxes,
+  Loader2,
+  Play,
   Plus,
-  RefreshCw,
+  Server as ServerIcon,
+  Square,
+  Star,
 } from "lucide-react";
 import { TabType } from "./Sidebar";
-import { ThemeType } from "./ParticleBackground";
 import { Account } from "./TopBar";
-import { translations, LanguageType } from "../lib/translations";
+import type { LanguageType } from "../lib/translations";
 import { requestSettingsTarget } from "../lib/settingsNavigation";
-import type { UpdateStatus } from "../electron";
-
-/**
- * Bundled sheet, so the figure is dressed before any skin is fetched. It is a
- * local file, which is what makes the first paint independent of the network.
- */
-const DEFAULT_SKIN_URL = "./images/default-skin.png";
-
-type SkinViewerInstance = import("skinview3d").SkinViewer;
-import { LAUNCHER_VERSION } from "../lib/version";
-import { DEFAULT_KEYBINDS, formatKeyToken } from "../lib/keybinds";
+import { instanceFolderKeyOf } from "../lib/instanceFolders";
+import { formatPlaytime } from "../lib/launcherPreferences";
+import { parseServerAddress, supportsQuickPlay } from "../lib/quickPlay";
+import { usePinnedWorlds } from "../hooks/usePinnedWorlds";
+import { useRecentWorlds, type RecentWorld } from "../hooks/useRecentWorlds";
+import type { RunningInstance } from "../hooks/useLaunchController";
+import type { Instance } from "./InstancesView";
+import type { ServerItem } from "./multiplayer/types";
+import type { ServerPingResult } from "../electron";
 
 interface DashboardProps {
   setActiveTab: (tab: TabType) => void;
-  theme: ThemeType;
   activeAccount: Account;
   lang: LanguageType;
-  updateStatus?: UpdateStatus | null;
-  onCheckForUpdates?: () => void;
-  onInstallUpdate?: () => void;
-  keybinds?: Record<string, string>;
+  instances: Instance[];
+  servers: ServerItem[];
+  runningInstances: RunningInstance[];
+  launchingFolder?: string;
+  onLaunch: (instanceId?: string, server?: { host: string; port: number }, world?: string) => boolean;
+  onStopGame: (name: string, folderName?: string) => void;
+  onOpenInstance: (name: string) => void;
+  onServerJoined: (id: string) => void;
+  onToggleServerPin: (id: string) => void;
 }
 
-const DESTINATIONS = [
-  {
-    id: "singleplayer" as TabType,
-    key: "instances",
-    icon: Compass,
-    de: "Profile und Modpacks",
-    en: "Profiles and modpacks",
-    shortcutAction: null,
-  },
-  {
-    id: "multiplayer" as TabType,
-    key: "multiplayer",
-    icon: Server,
-    de: "Server und Live-Pings",
-    en: "Servers and live pings",
-    shortcutAction: null,
-  },
-  {
-    id: "mods" as TabType,
-    key: "modBrowser",
-    icon: Puzzle,
-    de: "CurseForge und Modrinth",
-    en: "CurseForge and Modrinth",
-    shortcutAction: null,
-  },
-  {
-    id: "screenshots" as TabType,
-    key: "screenshots",
-    icon: Camera,
-    de: "Aufgenommene Bilder",
-    en: "Captured images",
-    shortcutAction: "key.screenshot",
-  },
-  {
-    id: "settings" as TabType,
-    key: "settings",
-    icon: Sliders,
-    de: "Launcher und Spiel",
-    en: "Launcher and game",
-    shortcutAction: null,
-  },
-] as const;
+type HeroTarget =
+  | { kind: "world"; at: number; world: RecentWorld }
+  | { kind: "server"; at: number; server: ServerItem }
+  | { kind: "instance"; at: number; instance: Instance };
 
-/** Studio backdrop for the player: a bamboo clearing at dusk, drawn flat. */
-function StageScene() {
+/** Quiet grove used where a save or profile has no picture yet. */
+function GroveBackdrop({ className = "" }: { className?: string }) {
+  const stalks = [
+    { x: 430, width: 26 },
+    { x: 492, width: 14 },
+    { x: 548, width: 34 },
+    { x: 616, width: 16 },
+    { x: 676, width: 24 },
+    { x: 736, width: 12 },
+  ];
   return (
     <svg
       aria-hidden="true"
-      className="absolute inset-0 h-full w-full"
-      viewBox="0 0 720 640"
+      className={`absolute inset-0 h-full w-full ${className}`}
+      viewBox="0 0 800 400"
       preserveAspectRatio="xMidYMid slice"
     >
-      <defs>
-        <linearGradient id="bamboo-stage-sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#0c1611" />
-          <stop offset="0.55" stopColor="#142219" />
-          <stop offset="1" stopColor="#1b2e20" />
-        </linearGradient>
-        <linearGradient id="bamboo-stage-floor" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#1a2b1e" />
-          <stop offset="0.45" stopColor="#131f17" />
-          <stop offset="1" stopColor="#0c130e" />
-        </linearGradient>
-      </defs>
-
-      <rect width="720" height="640" fill="url(#bamboo-stage-sky)" />
-
-      <g fill="#1b2b20">
-        <rect x="18" y="-40" width="26" height="520" />
-        <rect x="70" y="-40" width="12" height="520" />
-        <rect x="116" y="-40" width="18" height="520" />
-        <rect x="376" y="-40" width="14" height="520" />
-        <rect x="418" y="-40" width="7" height="520" />
-        <rect x="612" y="-40" width="20" height="520" />
-        <rect x="664" y="-40" width="32" height="520" />
+      <rect width="800" height="400" fill="#0b110d" />
+      <g fill="#17251b">
+        {stalks.map((stalk) => (
+          <rect key={stalk.x} x={stalk.x} y="-20" width={stalk.width} height="380" />
+        ))}
       </g>
-      <g fill="#2b4232" opacity="0.75">
-        <rect x="18" y="-40" width="5" height="520" />
-        <rect x="116" y="-40" width="4" height="520" />
-        <rect x="376" y="-40" width="3" height="520" />
-        <rect x="664" y="-40" width="6" height="520" />
+      <g fill="#203327">
+        {stalks.map((stalk) => (
+          <rect key={stalk.x} x={stalk.x} y="-20" width="4" height="380" />
+        ))}
       </g>
-      <g fill="#0c1510">
-        <rect x="18" y="110" width="26" height="4" />
-        <rect x="18" y="238" width="26" height="4" />
-        <rect x="18" y="366" width="26" height="4" />
-        <rect x="70" y="166" width="12" height="3" />
-        <rect x="70" y="294" width="12" height="3" />
-        <rect x="116" y="64" width="18" height="3" />
-        <rect x="116" y="192" width="18" height="3" />
-        <rect x="116" y="320" width="18" height="3" />
-        <rect x="376" y="146" width="14" height="3" />
-        <rect x="376" y="274" width="14" height="3" />
-        <rect x="376" y="402" width="14" height="3" />
-        <rect x="418" y="202" width="7" height="3" />
-        <rect x="418" y="330" width="7" height="3" />
-        <rect x="612" y="88" width="20" height="4" />
-        <rect x="612" y="216" width="20" height="4" />
-        <rect x="612" y="344" width="20" height="4" />
-        <rect x="664" y="140" width="32" height="4" />
-        <rect x="664" y="268" width="32" height="4" />
-        <rect x="664" y="396" width="32" height="4" />
+      <g fill="#09100b">
+        {stalks.flatMap((stalk) =>
+          [54, 142, 230, 318].map((y) => (
+            <rect key={`${stalk.x}-${y}`} x={stalk.x} y={y} width={stalk.width} height="3" />
+          )),
+        )}
       </g>
-      <g fill="#24402d">
-        <path d="M34 108 l52 -30 12 20 -48 34 z" />
-        <path d="M44 236 l40 -12 6 20 -38 14 z" />
-        <path d="M386 144 l32 -20 10 16 -30 20 z" />
-        <path d="M622 86 l44 -26 12 18 -42 26 z" />
-        <path d="M664 138 l56 -22 8 20 -54 22 z" />
-        <path d="M596 214 l34 -12 6 18 -32 12 z" />
+      <g fill="#1e3225">
+        <path d="M456 84 l70 -36 16 22 -64 36 z" />
+        <path d="M548 176 l62 -24 10 20 -58 26 z" />
+        <path d="M650 104 l60 -30 14 20 -56 30 z" />
+        <path d="M604 260 l66 -20 8 20 -62 22 z" />
       </g>
-
-      <path
-        d="M0 438 H96 V418 H170 V402 H238 V422 H310 V438 H720 V640 H0 Z"
-        fill="#13231a"
-      />
-      <rect y="438" width="720" height="202" fill="url(#bamboo-stage-floor)" />
-      <rect y="438" width="720" height="1" fill="#2e4332" opacity="0.6" />
-
-      <g stroke="#ffffff" strokeOpacity="0.055">
-        <path d="M0 486 H720" />
-        <path d="M0 548 H720" />
-        <path d="M0 618 H720" />
-        <path d="M232 438 L96 640" />
-        <path d="M488 438 L664 640" />
-      </g>
-
-      <g stroke="#35503d" strokeWidth="1">
-        <path d="M511 522 L641 548 L511 574 L381 548 Z" fill="#24372a" />
-        <path d="M381 548 L511 574 L511 598 L381 572 Z" fill="#1a2a1f" />
-        <path d="M511 574 L641 548 L641 572 L511 598 Z" fill="#142219" />
-      </g>
-
-      <g fill="#22362a" stroke="#314b39" strokeWidth="1">
-        <path d="M96 520 h72 l24 16 h-72 z" />
-        <path d="M70 560 h50 l18 14 h-50 z" />
-        <path d="M642 604 h50 l16 13 h-50 z" />
-      </g>
-      <g fill="#253c2c">
-        <path d="M64 502 l4 -22 4 22 z" />
-        <path d="M76 504 l5 -16 3 16 z" />
-        <path d="M610 566 l4 -18 4 18 z" />
-      </g>
+      <rect y="332" width="800" height="68" fill="#080d09" />
+      <rect y="332" width="800" height="1" fill="#2a3c2e" opacity="0.5" />
     </svg>
+  );
+}
+
+function relativePlayed(ms: number | null | undefined, lang: LanguageType): string {
+  if (!ms) return lang === "de" ? "Noch nicht gespielt" : "Not played yet";
+  const diff = Math.max(0, Date.now() - ms);
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < minute) return lang === "de" ? "gerade eben" : "just now";
+  if (diff < hour) {
+    const value = Math.floor(diff / minute);
+    return lang === "de" ? `vor ${value} Min.` : `${value} min ago`;
+  }
+  if (diff < day) {
+    const value = Math.floor(diff / hour);
+    return lang === "de" ? `vor ${value} Std.` : `${value} h ago`;
+  }
+  if (diff < 7 * day) {
+    const value = Math.floor(diff / day);
+    return lang === "de" ? `vor ${value} ${value === 1 ? "Tag" : "Tagen"}` : `${value} d ago`;
+  }
+  return new Intl.DateTimeFormat(lang === "de" ? "de-DE" : "en-US", {
+    day: "2-digit",
+    month: "short",
+  }).format(new Date(ms));
+}
+
+function versionOf(value?: string | null): string | null {
+  return /(\d+\.\d+(?:\.\d+)?)/.exec(value ?? "")?.[1] ?? null;
+}
+
+function bestInstanceForServer(server: ServerItem, instances: Instance[]): Instance | null {
+  const version = versionOf(server.version);
+  if (version) {
+    const match = instances.find((instance) => versionOf(instance.minecraftVersion) === version);
+    if (match) return match;
+  }
+  return [...instances].sort((left, right) => (right.lastPlayedAt ?? 0) - (left.lastPlayedAt ?? 0))[0] ?? null;
+}
+
+/** One request per visible server; no polling, no writes to the saved list. */
+function useServerPings(servers: ServerItem[]): Record<string, ServerPingResult> {
+  const [pings, setPings] = useState<Record<string, ServerPingResult>>({});
+  const key = servers.slice(0, 4).map((server) => `${server.id}:${server.ip}`).join("|");
+
+  useEffect(() => {
+    let cancelled = false;
+    const targets = servers.slice(0, 4);
+    if (targets.length === 0) {
+      setPings({});
+      return;
+    }
+    void Promise.all(targets.map(async (server) => {
+      try {
+        const result = await window.electronAPI?.servers.ping?.(server.ip);
+        return result ? ([server.id, result] as const) : null;
+      } catch {
+        return null;
+      }
+    })).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, ServerPingResult> = {};
+      for (const entry of entries) {
+        if (entry) next[entry[0]] = entry[1];
+      }
+      setPings(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [key]); // servers via key; pinning must not trigger another ping
+
+  return pings;
+}
+
+function SectionHeading({
+  title,
+  count,
+  action,
+}: {
+  title: string;
+  count?: number;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-1 flex h-8 items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <h2 className="text-field font-medium text-ink">{title}</h2>
+        {typeof count === "number" && count > 0 ? (
+          <span className="font-mono text-micro tabular-nums text-ink-quaternary">{count}</span>
+        ) : null}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function PinButton({
+  pinned,
+  onClick,
+  label,
+  overlay = false,
+  className = "",
+}: {
+  pinned: boolean;
+  onClick: () => void;
+  label: string;
+  overlay?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      aria-pressed={pinned}
+      aria-label={label}
+      title={label}
+      className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--r-sm)] border transition-colors duration-[var(--t-quick)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+        pinned
+          ? "border-accent/30 bg-accent-soft text-accent"
+          : overlay
+            ? "border-white/10 bg-black/30 text-ink-secondary backdrop-blur-sm hover:bg-black/50 hover:text-ink"
+            : "border-transparent bg-transparent text-ink-quaternary hover:bg-hover hover:text-ink"
+      } ${className}`}
+    >
+      <Star className={`h-3.5 w-3.5 ${pinned ? "fill-current" : ""}`} aria-hidden="true" />
+    </button>
   );
 }
 
@@ -188,378 +225,700 @@ export const Dashboard: React.FC<DashboardProps> = ({
   setActiveTab,
   activeAccount,
   lang,
-  updateStatus,
-  onCheckForUpdates,
-  onInstallUpdate,
-  keybinds,
+  instances,
+  servers,
+  runningInstances,
+  launchingFolder,
+  onLaunch,
+  onStopGame,
+  onOpenInstance,
+  onServerJoined,
+  onToggleServerPin,
 }) => {
-  const t = translations[lang];
   const de = lang === "de";
+  const { pinned, togglePinned } = usePinnedWorlds();
+  const { worlds } = useRecentWorlds(instances, pinned);
+  const pings = useServerPings(servers);
 
-  const updateBusy = updateStatus?.state === "checking" || updateStatus?.state === "downloading" || updateStatus?.state === "available";
-  const updateReady = updateStatus?.state === "downloaded";
-  const updateDisabled = updateStatus?.state === "disabled";
-  const updateActionLabel = updateBusy
-    ? updateStatus?.state === "checking"
-      ? de ? "Wird geprüft" : "Checking"
-      : de ? "Wird geladen" : "Downloading"
-    : updateReady
-      ? de ? "Neu starten" : "Restart"
-      : de ? "Nach Updates suchen" : "Check for updates";
+  const orderedWorlds = useMemo(() => [...worlds].sort((left, right) => {
+    const leftPinned = pinned.includes(left.key) ? 1 : 0;
+    const rightPinned = pinned.includes(right.key) ? 1 : 0;
+    return rightPinned - leftPinned || (right.world.lastPlayed ?? 0) - (left.world.lastPlayed ?? 0);
+  }), [worlds, pinned]);
 
-  const updateLine = updateReady
-    ? de
-      ? `Version ${updateStatus?.version ?? ""} ist bereit`
-      : `Version ${updateStatus?.version ?? ""} is ready`
-    : updateStatus?.state === "checking"
-      ? de ? "Suche nach Updates" : "Checking for updates"
-      : updateStatus?.state === "available"
-        ? de
-          ? `Version ${updateStatus.version ?? ""} wird geladen`
-          : `Downloading version ${updateStatus.version ?? ""}`
-        : updateStatus?.state === "downloading"
-          ? de
-            ? `Version ${updateStatus.version ?? ""} wird geladen · ${updateStatus.percent ?? 0}%`
-            : `Downloading version ${updateStatus.version ?? ""} · ${updateStatus.percent ?? 0}%`
-          : updateStatus?.state === "not-available"
-            ? t.upToDate
-            : updateStatus?.state === "error"
-              ? de ? "Prüfung fehlgeschlagen" : "Check failed"
-              : updateStatus?.state === "disabled"
-                ? de ? "Updates in der installierten App" : "Updates in the installed app"
-                : de ? "Automatische Prüfung alle 6 Stunden" : "Automatic check every 6 hours";
+  const orderedServers = useMemo(() => [...servers].sort((left, right) => {
+    const leftPinned = left.pinned ? 1 : 0;
+    const rightPinned = right.pinned ? 1 : 0;
+    return rightPinned - leftPinned || (right.lastJoinedAt ?? 0) - (left.lastJoinedAt ?? 0);
+  }), [servers]);
 
-  const skinCanvasRef = useRef<HTMLCanvasElement>(null);
-  const viewerHostRef = useRef<HTMLDivElement>(null);
-  const [playerIdentity, setPlayerIdentity] = useState<{ uuid: string | null; username: string | null; type: string } | null>(null);
-  const [skinLoaded, setSkinLoaded] = useState(false);
+  const orderedInstances = useMemo(() => [...instances].sort(
+    (left, right) => (right.lastPlayedAt ?? 0) - (left.lastPlayedAt ?? 0),
+  ), [instances]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadIdentity = async () => {
-      try {
-        const result = await window.electronAPI?.auth.identity?.();
-        if (!cancelled && result) setPlayerIdentity(result);
-      } catch {
-        console.warn("[Dashboard] Failed to load player identity");
-      }
-    };
-    loadIdentity();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const totalPlaytime = useMemo(
+    () => instances.reduce((sum, instance) => sum + (instance.playTimeMs ?? 0), 0),
+    [instances],
+  );
 
-  useEffect(() => {
-    const host = viewerHostRef.current;
-    const canvas = skinCanvasRef.current;
-    if (!host || !canvas || !activeAccount.id) return;
+  const heroTargets = useMemo<HeroTarget[]>(() => {
+    const targets: HeroTarget[] = [
+      ...orderedWorlds.map((world) => ({ kind: "world" as const, at: world.world.lastPlayed ?? 0, world })),
+      ...orderedServers.map((server) => ({ kind: "server" as const, at: server.lastJoinedAt ?? 0, server })),
+      ...orderedInstances.map((instance) => ({ kind: "instance" as const, at: instance.lastPlayedAt ?? 0, instance })),
+    ];
+    return targets.sort((left, right) => {
+      const leftPinned = left.kind === "world"
+        ? pinned.includes(left.world.key)
+        : left.kind === "server" ? !!left.server.pinned : false;
+      const rightPinned = right.kind === "world"
+        ? pinned.includes(right.world.key)
+        : right.kind === "server" ? !!right.server.pinned : false;
+      return Number(rightPinned) - Number(leftPinned) || right.at - left.at;
+    });
+  }, [orderedInstances, orderedServers, orderedWorlds, pinned]);
 
-    const identityName = playerIdentity?.username;
-    const identityType = playerIdentity?.type;
-    const identityUuid = playerIdentity?.uuid;
-    const identityMatches = identityName === activeAccount.username;
-    const isMicrosoft = activeAccount.type === "Microsoft" || (identityMatches && identityType === "microsoft");
-    const mcUuid = activeAccount.uuid || (identityMatches ? identityUuid : undefined);
-    const mcName = activeAccount.username || (identityMatches ? identityName : undefined);
-    const identity = { uuid: mcUuid ?? null, name: mcName ?? null };
-    const hasIdentity = isMicrosoft ? Boolean(mcUuid || mcName) : Boolean(mcName);
+  const hero = heroTargets[0] ?? null;
+  const heroServerStatus = hero?.kind === "server" ? pings[hero.server.id] : null;
+  const heroServerInstance = hero?.kind === "server" ? bestInstanceForServer(hero.server, instances) : null;
+  const heroFolder = hero
+    ? hero.kind === "world"
+      ? instanceFolderKeyOf(hero.world.instance)
+      : hero.kind === "instance"
+        ? instanceFolderKeyOf(hero.instance)
+        : heroServerInstance ? instanceFolderKeyOf(heroServerInstance) : ""
+    : "";
+  const heroRunning = heroFolder
+    ? runningInstances.find((entry) => entry.folderName === heroFolder) ?? null
+    : null;
+  const heroLaunching = !!heroFolder && launchingFolder === heroFolder;
 
-    setSkinLoaded(false);
-
-    let cancelled = false;
-    let viewer: SkinViewerInstance | null = null;
-    let frame = 0;
-    let observer: ResizeObserver | null = null;
-    let idleHandle: number | null = null;
-    let timeoutHandle: number | null = null;
-    let removeListeners: (() => void) | null = null;
-
-    /** Applies one texture; a failure keeps whatever is already on the model. */
-    const apply = async (url: string) => {
-      if (cancelled || !viewer) return;
-      try {
-        await viewer.loadSkin(url);
-        if (!cancelled) setSkinLoaded(true);
-      } catch {
-        /* the previous texture stays */
-      }
-    };
-
-    const boot = async () => {
-      idleHandle = null;
-      let SkinViewer: typeof import("skinview3d").SkinViewer;
-      try {
-        ({ SkinViewer } = await import("skinview3d"));
-      } catch (error) {
-        console.warn("[Dashboard] 3D-Vorschau konnte nicht geladen werden", error);
-        return;
-      }
-      if (cancelled) return;
-
-      const width = Math.max(host.clientWidth, 1);
-      const height = Math.max(host.clientHeight, 1);
-      const instance = new SkinViewer({
-        canvas,
-        width,
-        height,
-        zoom: Math.min(0.72, (width / height) * 1.5),
-        enableControls: false,
-      });
-      viewer = instance;
-      instance.autoRotate = false;
-      instance.animation = null;
-      instance.resetCameraPose();
-      instance.playerObject.rotation.y = -0.34;
-      instance.playerObject.rotation.x = 0;
-
-      let targetRotationY = -0.34;
-      let targetRotationX = 0;
-      let currentRotationY = -0.34;
-      let currentRotationX = 0;
-
-      const handleMouseMove = (event: MouseEvent) => {
-        const centerX = window.innerWidth / 2;
-        const centerY = window.innerHeight / 2;
-        const deltaX = (event.clientX - centerX) / centerX;
-        const deltaY = (event.clientY - centerY) / centerY;
-        targetRotationY = -0.34 + deltaX * 0.9;
-        targetRotationX = deltaY * 0.3;
-        targetRotationX = Math.max(-0.3, Math.min(0.2, targetRotationX));
-      };
-
-      const handleMouseLeave = () => {
-        targetRotationY = -0.34;
-        targetRotationX = 0;
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseleave", handleMouseLeave);
-      removeListeners = () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseleave", handleMouseLeave);
-      };
-
-      const animate = () => {
-        currentRotationY += (targetRotationY - currentRotationY) * 0.15;
-        currentRotationX += (targetRotationX - currentRotationX) * 0.15;
-        instance.playerObject.rotation.y = currentRotationY;
-        instance.playerObject.rotation.x = currentRotationX;
-        frame = requestAnimationFrame(animate);
-      };
-      animate();
-
-      observer = new ResizeObserver(() => {
-        const nextWidth = host.clientWidth;
-        const nextHeight = host.clientHeight;
-        if (!nextWidth || !nextHeight) return;
-        instance.setSize(nextWidth, nextHeight);
-        instance.zoom = Math.min(0.72, (nextWidth / nextHeight) * 1.5);
-      });
-      observer.observe(host);
-
-      // 1) Disk cache first: a data URL decodes instantly and also works when
-      //    the machine is offline or Minotar is slow.
-      const cached = hasIdentity ? await window.electronAPI?.skins.avatar?.(identity) : undefined;
-      if (cancelled) return;
-      await apply(cached?.url || DEFAULT_SKIN_URL);
-
-      // 2) Then the current skin, quietly in the background.
-      if (!hasIdentity || cancelled) return;
-      const fresh = await window.electronAPI?.skins.refreshAvatar?.(identity);
-      if (!cancelled && fresh?.url && fresh.url !== cached?.url) await apply(fresh.url);
-    };
-
-    // Building the viewer compiles shaders and claims a WebGL context. Waiting
-    // for the first idle moment keeps the window responsive while it starts.
-    if (typeof window.requestIdleCallback === "function") {
-      idleHandle = window.requestIdleCallback(() => void boot(), { timeout: 600 });
-    } else {
-      timeoutHandle = window.setTimeout(() => void boot(), 120);
+  const openInstances = (intent?: "create") => {
+    if (intent) {
+      sessionStorage.setItem("bamboo-instances-intent", intent);
+      window.dispatchEvent(new CustomEvent("bamboo-instances-intent", { detail: intent }));
     }
-
-    return () => {
-      cancelled = true;
-      if (idleHandle !== null) window.cancelIdleCallback?.(idleHandle);
-      if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
-      removeListeners?.();
-      observer?.disconnect();
-      if (frame) cancelAnimationFrame(frame);
-      viewer?.dispose();
-      viewer = null;
-    };
-  }, [activeAccount.id, activeAccount.uuid, activeAccount.username, activeAccount.type, playerIdentity?.uuid, playerIdentity?.username, playerIdentity?.type]);
+    setActiveTab("singleplayer");
+  };
 
   const openAccounts = () => {
     requestSettingsTarget("accounts");
     setActiveTab("settings");
   };
 
-  const displayName = activeAccount.id
-    ? activeAccount.username
-    : de ? "Kein Konto" : "No account";
-  const accountKind = activeAccount.id
-    ? playerIdentity?.type === "microsoft" || activeAccount.type === "Microsoft"
-      ? de ? "Microsoft-Konto" : "Microsoft account"
-      : de ? "Offline-Profil" : "Offline profile"
-    : de ? "Nicht verbunden" : "Not connected";
+  const openServers = (intent?: "add") => {
+    if (intent) sessionStorage.setItem("bamboo-multiplayer-intent", intent);
+    setActiveTab("multiplayer");
+  };
+
+  const launchWorld = (world: RecentWorld) => {
+    if (!supportsQuickPlay(world.instance.minecraftVersion)) {
+      onLaunch(world.instance.id);
+      return;
+    }
+    onLaunch(world.instance.id, undefined, world.world.folderName);
+  };
+
+  const launchServer = (server: ServerItem) => {
+    const target = bestInstanceForServer(server, instances);
+    if (!target) return;
+    const { host, port } = parseServerAddress(server.ip);
+    if (onLaunch(target.id, { host, port })) onServerJoined(server.id);
+  };
+
+  const heroPlay = () => {
+    if (!hero) return;
+    if (heroRunning) {
+      const name = hero.kind === "world"
+        ? hero.world.instance.name
+        : hero.kind === "instance" ? hero.instance.name : heroServerInstance?.name ?? "";
+      if (name) onStopGame(name, heroRunning.folderName);
+      return;
+    }
+    if (!activeAccount.id) {
+      openAccounts();
+      return;
+    }
+    if (hero.kind === "world") launchWorld(hero.world);
+    else if (hero.kind === "server") launchServer(hero.server);
+    else onLaunch(hero.instance.id);
+  };
+
+  const heroTitle = hero
+    ? hero.kind === "world" ? hero.world.world.name : hero.kind === "server" ? hero.server.name : hero.instance.name
+    : "";
+  const heroEyebrow = hero
+    ? hero.kind === "world"
+      ? de ? "Letzte Welt" : "Last world"
+      : hero.kind === "server"
+        ? de ? "Letzter Server" : "Last server"
+        : de ? "Letztes Profil" : "Last profile"
+    : "";
+  const heroMeta = hero
+    ? hero.kind === "world"
+      ? [
+          hero.world.instance.name !== hero.world.world.name ? hero.world.instance.name : null,
+          hero.world.instance.minecraftVersion,
+          relativePlayed(hero.world.world.lastPlayed, lang),
+        ].filter(Boolean).join(" · ")
+      : hero.kind === "server"
+        ? [
+            heroServerInstance?.name,
+            heroServerStatus
+              ? heroServerStatus.online
+                ? `${heroServerStatus.playersOnline}/${heroServerStatus.playersMax} · ${heroServerStatus.ping} ms`
+                : de ? "Offline" : "Offline"
+              : hero.server.ip,
+            relativePlayed(hero.server.lastJoinedAt, lang),
+          ].filter(Boolean).join(" · ")
+        : [
+            hero.instance.minecraftVersion,
+            [hero.instance.modloader, hero.instance.modloaderVersion].filter(Boolean).join(" "),
+            relativePlayed(hero.instance.lastPlayedAt, lang),
+          ].filter(Boolean).join(" · ")
+    : "";
+  const heroImage = hero
+    ? hero.kind === "world"
+      ? hero.world.world.iconDataUrl || hero.world.instance.thumbnail || null
+      : hero.kind === "server"
+        ? heroServerStatus?.icon
+          || (hero.server.icon && !hero.server.icon.includes("mineatar.io/face") ? hero.server.icon : null)
+        : hero.instance.thumbnail || null
+    : null;
+  const heroPinned = hero
+    ? hero.kind === "world"
+      ? pinned.includes(hero.world.key)
+      : hero.kind === "server" ? !!hero.server.pinned : false
+    : false;
+  const heroPlayLabel = heroLaunching
+    ? de ? "Startet" : "Starting"
+    : heroRunning
+      ? de ? "Beenden" : "Stop"
+      : !activeAccount.id
+        ? de ? "Konto verbinden" : "Connect account"
+        : hero?.kind === "world"
+          ? supportsQuickPlay(hero.world.instance.minecraftVersion)
+            ? de ? "Weiter spielen" : "Continue"
+            : de ? "Profil starten" : "Start profile"
+          : hero?.kind === "server" ? de ? "Beitreten" : "Join" : de ? "Starten" : "Play";
+  const heroPlayDisabled = heroLaunching || (hero?.kind === "server" && !heroServerInstance);
+  const heroSecondaryLabel = hero?.kind === "world"
+    ? de ? "Profil" : "Profile"
+    : hero?.kind === "server" ? de ? "Server" : "Servers" : de ? "Profile" : "Profiles";
+
+  const headerStats = [
+    totalPlaytime > 0 ? formatPlaytime(totalPlaytime, lang) : null,
+    `${instances.length} ${de ? (instances.length === 1 ? "Profil" : "Profile") : instances.length === 1 ? "profile" : "profiles"}`,
+    `${servers.length} ${de ? "Server" : servers.length === 1 ? "server" : "servers"}`,
+  ].filter(Boolean).join(" · ");
 
   return (
-    <div className="flex h-full flex-1 flex-col overflow-hidden">
-      <div className="custom-scrollbar h-full w-full overflow-y-auto">
-        <div className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col p-6 md:p-8">
-          <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_336px]">
+    <div className="relative flex h-full flex-1 flex-col overflow-hidden">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          background:
+            "linear-gradient(180deg, color-mix(in srgb, var(--bg-root) 68%, transparent) 0%, color-mix(in srgb, var(--bg-root) 34%, transparent) 24%, color-mix(in srgb, var(--bg-root) 44%, transparent) 72%, color-mix(in srgb, var(--bg-root) 66%, transparent) 100%)",
+        }}
+      />
+      <div className="custom-scrollbar relative z-10 h-full w-full overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[1320px] flex-col px-6 py-5 md:px-8">
 
-            <section
-              aria-label={de ? "Aktives Profil" : "Active profile"}
-              className="relative flex min-h-[420px] flex-col overflow-hidden rounded-[var(--r-2xl)] border border-hairline bg-[#0a100c] md:min-h-[520px]"
-            >
-              <StageScene />
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{
-                  background: "linear-gradient(90deg, rgba(6,10,7,0.9) 0%, rgba(6,10,7,0.66) 42%, rgba(6,10,7,0.16) 68%, rgba(6,10,7,0) 100%)",
-                  maskImage: "linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%)",
-                  WebkitMaskImage: "linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%)",
-                }}
-              />
+          <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="m-0 text-[1.75rem] font-medium leading-9 tracking-[-0.02em] text-ink md:text-[2rem]">
+                {de ? "Weiterspielen" : "Continue playing"}
+              </h1>
+              <p className="mt-1 truncate font-mono text-micro tabular-nums text-ink-tertiary" title={headerStats}>
+                {headerStats}
+              </p>
+            </div>
 
-              <div className="relative z-10 flex w-full max-w-[340px] flex-1 flex-col justify-center px-6 py-8 md:w-[52%] md:px-7 md:py-10">
-                <p className="m-0 mb-2 text-mini font-medium text-ink-tertiary">
-                  {activeAccount.id ? t.activeProfile : de ? "Profil" : "Profile"}
-                </p>
-                <h1 className="m-0 truncate text-title3 font-medium tracking-[-0.01em] text-ink" title={displayName}>
-                  {displayName}
-                </h1>
+            {!activeAccount.id ? (
+              <button
+                type="button"
+                onClick={openAccounts}
+                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-[var(--r-md)] bg-accent px-3.5 text-small font-medium text-accent-contrast transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                {de ? "Konto verbinden" : "Connect account"}
+              </button>
+            ) : null}
+          </header>
 
-                <div className="mt-2 flex min-w-0 items-center gap-2 text-mini text-ink-secondary">
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${activeAccount.id ? "bg-accent" : "bg-stroke-strong"}`} />
-                  <span className="truncate">{accountKind}</span>
-                  {activeAccount.id && (
+          <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)]">
+            <div className="min-w-0">
+              <section aria-label={de ? "Weiterspielen" : "Continue playing"} className="relative">
+                <div className="relative h-[220px] overflow-hidden rounded-[var(--r-2xl)] border border-hairline bg-[#0b110d] md:h-[240px]">
+                  {heroImage ? (
+                    <img
+                      src={heroImage}
+                      alt=""
+                      className="h-full w-full object-cover object-[center_55%]"
+                      onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    />
+                  ) : (
+                    <GroveBackdrop />
+                  )}
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0"
+                    style={{ background: "linear-gradient(180deg, rgba(7,10,8,0.24) 0%, rgba(7,10,8,0) 30%, rgba(7,10,8,0.4) 100%)" }}
+                  />
+
+                  {hero && (hero.kind === "world" || hero.kind === "server") ? (
+                    <PinButton
+                      pinned={heroPinned}
+                      onClick={() => {
+                        if (hero.kind === "world") togglePinned(hero.world.key);
+                        else if (hero.kind === "server") onToggleServerPin(hero.server.id);
+                      }}
+                      label={de ? "Anpinnen" : "Pin"}
+                      overlay
+                      className="absolute right-4 top-4 z-10"
+                    />
+                  ) : null}
+                </div>
+
+                <div className="relative z-10 -mt-10 ml-4 mr-4 rounded-[var(--r-xl)] border border-stroke bg-canvas p-4 shadow-[0_24px_60px_-28px_rgba(0,0,0,0.9)] md:ml-6 md:mr-auto md:w-[min(440px,calc(100%-48px))]">
+                  {hero ? (
                     <>
-                      <span className="text-ink-quaternary">·</span>
-                      <span>{de ? "Bereit" : "Ready"}</span>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-micro font-medium text-ink-secondary">{heroEyebrow}</span>
+                        </div>
+                        {heroRunning && !heroLaunching ? (
+                          <span className="inline-flex shrink-0 items-center gap-1.5 text-micro font-medium text-success">
+                            <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                            {de ? "Läuft" : "Running"}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <h2 className="mt-2 line-clamp-2 text-[1.55rem] font-medium leading-8 tracking-[-0.02em] text-ink md:text-[1.7rem] md:leading-9">
+                        {heroTitle}
+                      </h2>
+                      <p className="mt-1 truncate text-mini text-ink-secondary" title={heroMeta}>{heroMeta}</p>
+
+                      <div className="mt-3.5 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={heroPlay}
+                          disabled={heroPlayDisabled}
+                          className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-[var(--r-md)] px-3.5 text-small font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-55 ${
+                            heroRunning && !heroLaunching
+                              ? "border border-rim bg-white/5 text-ink hover:bg-white/10"
+                              : "bg-accent text-accent-contrast hover:bg-accent-hover"
+                          }`}
+                        >
+                          {heroLaunching ? (
+                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          ) : heroRunning ? (
+                            <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                          ) : (
+                            <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+                          )}
+                          {heroPlayLabel}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (hero.kind === "world") setActiveTab("singleplayer");
+                            else if (hero.kind === "server") setActiveTab("multiplayer");
+                            else openInstances();
+                          }}
+                          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-[var(--r-md)] border border-hairline px-3 text-small font-medium text-ink-secondary transition-colors hover:border-rim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                        >
+                          {heroSecondaryLabel}
+                          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="text-micro font-medium text-ink-secondary">{de ? "Start" : "Start"}</span>
+                      </div>
+                      <h2 className="mt-2 text-title2 font-medium text-ink">
+                        {de ? "Noch kein Profil" : "No profile yet"}
+                      </h2>
+                      <p className="mt-1 max-w-[360px] text-mini leading-5 text-ink-secondary">
+                        {de
+                          ? "Lege dein erstes Profil an, dann landet hier deine letzte Welt."
+                          : "Create your first profile and your last world will wait here."}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => openInstances("create")}
+                        className="mt-4 inline-flex h-9 cursor-pointer items-center gap-2 rounded-[var(--r-md)] bg-accent px-3.5 text-small font-medium text-accent-contrast transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                      >
+                        <Plus className="h-4 w-4" aria-hidden="true" />
+                        {de ? "Profil anlegen" : "Create profile"}
+                      </button>
                     </>
                   )}
                 </div>
+              </section>
 
-                {!activeAccount.id && (
-                  <p className="mt-4 text-small leading-5 text-ink-secondary">
-                    {de
-                      ? "Füge ein Microsoft- oder Offline-Konto hinzu, um zu spielen."
-                      : "Add a Microsoft or offline account to start playing."}
-                  </p>
-                )}
+              {orderedWorlds.length > 0 ? (
+                <section aria-label={de ? "Welten" : "Worlds"} className="mt-5">
+                  <SectionHeading
+                    title={de ? "Welten" : "Worlds"}
+                    count={orderedWorlds.length}
+                    action={
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("singleplayer")}
+                        className="inline-flex cursor-pointer items-center gap-1 text-mini font-medium text-ink-tertiary transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                      >
+                        {de ? "Alle Welten" : "All worlds"}
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    }
+                  />
 
-                <div className="mt-6">
-                  {activeAccount.id ? (
+                  <div className="divide-y divide-hairline">
+                    {orderedWorlds.slice(0, 3).map((world) => {
+                      const folder = instanceFolderKeyOf(world.instance);
+                      const running = runningInstances.find((entry) => entry.folderName === folder);
+                      const launching = launchingFolder === folder;
+                      const isPinned = pinned.includes(world.key);
+                      const image = world.world.iconDataUrl || world.instance.thumbnail || null;
+                      const canQuickPlay = supportsQuickPlay(world.instance.minecraftVersion);
+                      return (
+                        <div
+                          key={world.key}
+                          className="group -mx-2 flex items-center gap-3 rounded-[var(--r-lg)] px-2 py-1.5 transition-colors hover:bg-hover"
+                        >
+                          <div className="relative h-12 w-20 shrink-0 overflow-hidden rounded-[var(--r-sm)] border border-hairline bg-[#0b110d]">
+                            {image ? (
+                              <img
+                                src={image}
+                                alt=""
+                                loading="lazy"
+                                className="h-full w-full object-cover"
+                                onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = "none"; }}
+                              />
+                            ) : (
+                              <GroveBackdrop />
+                            )}
+                            {running && !launching ? (
+                              <span className="absolute bottom-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-success ring-2 ring-[#0b110d]" />
+                            ) : null}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (launching) return;
+                              if (running) onStopGame(world.instance.name, folder);
+                              else launchWorld(world);
+                            }}
+                            className="min-w-0 flex-1 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                          >
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate text-small font-medium text-ink">{world.world.name}</span>
+                              {isPinned ? <Star className="h-3 w-3 shrink-0 fill-current text-accent" aria-hidden="true" /> : null}
+                            </span>
+                            <span className="mt-0.5 block truncate text-micro text-ink-tertiary">
+                              {[
+                                world.instance.name !== world.world.name ? world.instance.name : null,
+                                world.instance.minecraftVersion,
+                                launching
+                                  ? de ? "Startet" : "Starting"
+                                  : running ? (de ? "Läuft" : "Running") : relativePlayed(world.world.lastPlayed, lang),
+                              ].filter(Boolean).join(" · ")}
+                            </span>
+                          </button>
+
+                          <PinButton
+                            pinned={isPinned}
+                            onClick={() => togglePinned(world.key)}
+                            label={de ? "Welt anpinnen" : "Pin world"}
+                            className={isPinned ? "" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"}
+                          />
+
+                          <button
+                            type="button"
+                            disabled={launching}
+                            onClick={() => {
+                              if (running) onStopGame(world.instance.name, folder);
+                              else launchWorld(world);
+                            }}
+                            aria-label={
+                              launching
+                                ? de ? "Startet" : "Starting"
+                                : running
+                                  ? de ? "Spiel beenden" : "Stop game"
+                                  : canQuickPlay
+                                    ? de ? "Welt starten" : "Start world"
+                                    : de ? "Profil starten" : "Start profile"
+                            }
+                            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                              running && !launching
+                                ? "border-rim bg-white/5 text-ink hover:bg-white/10"
+                                : "border-hairline text-ink-secondary hover:border-accent hover:bg-accent hover:text-accent-contrast"
+                            }`}
+                          >
+                            {launching ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                            ) : running ? (
+                              <Square className="h-3 w-3 fill-current" aria-hidden="true" />
+                            ) : (
+                              <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ) : null}
+            </div>
+
+            <aside className="min-w-0">
+              <section aria-label={de ? "Server" : "Servers"}>
+                <SectionHeading
+                  title={de ? "Server" : "Servers"}
+                  count={orderedServers.length}
+                  action={
                     <button
                       type="button"
-                      onClick={openAccounts}
-                      className="inline-flex h-8 items-center rounded-[var(--r-md)] border border-hairline bg-white/[0.04] px-3 text-mini font-medium text-ink-secondary transition-colors hover:bg-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-inset cursor-pointer"
-                    >
-                      {de ? "Konten verwalten" : "Manage accounts"}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={openAccounts}
-                      className="inline-flex h-9 items-center gap-2 rounded-[var(--r-md)] bg-accent px-4 text-small font-medium text-accent-contrast transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a100c] cursor-pointer"
+                      onClick={() => openServers("add")}
+                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-[var(--r-sm)] text-ink-tertiary transition-colors hover:bg-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                      aria-label={de ? "Server hinzufügen" : "Add server"}
+                      title={de ? "Server hinzufügen" : "Add server"}
                     >
                       <Plus className="h-4 w-4" aria-hidden="true" />
-                      {de ? "Konto hinzufügen" : "Add account"}
                     </button>
-                  )}
-                </div>
-              </div>
-
-              {activeAccount.id && (
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute bottom-[12%] right-[16%] z-[4] h-4 w-44 rounded-[50%] bg-black/40 blur-[6px]"
+                  }
                 />
-              )}
 
-              {activeAccount.id && (
-                <div ref={viewerHostRef} className="absolute inset-y-0 right-0 z-[5] w-[58%] md:w-[54%]">
-                  <canvas
-                    ref={skinCanvasRef}
-                    aria-label={de ? `Spielfigur von ${displayName}` : `${displayName}'s character`}
-                    className={`h-full w-full cursor-grab touch-none active:cursor-grabbing transition-opacity duration-[var(--t-slow)] ease-[var(--ease-out)] ${skinLoaded ? "opacity-100" : "opacity-0"}`}
-                  />
-                </div>
-              )}
-            </section>
+                {orderedServers.length === 0 ? (
+                  <div className="rounded-[var(--r-lg)] border border-dashed border-stroke px-4 py-5">
+                    <p className="text-small font-medium text-ink">{de ? "Noch kein Server" : "No server yet"}</p>
+                    <p className="mt-1 text-mini leading-5 text-ink-secondary">
+                      {de ? "Trag einen Server ein, um direkt von hier zu joinen." : "Add a server to join it right from here."}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => openServers("add")}
+                      className="mt-3 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[var(--r-sm)] border border-hairline px-2.5 text-mini font-medium text-ink-secondary transition-colors hover:border-rim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                    >
+                      <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                      {de ? "Server eintragen" : "Add server"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-hairline">
+                    {orderedServers.slice(0, 4).map((server) => {
+                      const target = bestInstanceForServer(server, instances);
+                      const folder = target ? instanceFolderKeyOf(target) : "";
+                      const running = folder
+                        ? runningInstances.find((entry) => entry.folderName === folder) ?? null
+                        : null;
+                      const launching = !!folder && launchingFolder === folder;
+                      const status = pings[server.id];
+                      const icon = status?.icon
+                        || (server.icon && !server.icon.includes("mineatar.io/face") ? server.icon : null);
+                      const online = status ? status.online : server.online;
+                      const statusText = status
+                        ? status.online
+                          ? `${status.playersOnline}/${status.playersMax} · ${status.ping} ms`
+                          : de ? "Offline" : "Offline"
+                        : server.ip;
+                      const meta = launching
+                        ? de ? "Startet" : "Starting"
+                        : running
+                          ? `${de ? "Läuft" : "Running"}${status?.online ? ` · ${status.playersOnline}/${status.playersMax}` : ""}`
+                          : statusText;
+                      return (
+                        <div
+                          key={server.id}
+                          className="group -mx-2 flex h-[52px] items-center gap-2.5 rounded-[var(--r-lg)] px-2 transition-colors hover:bg-hover"
+                        >
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[5px] border border-hairline bg-surface">
+                            {icon ? (
+                              <img src={icon} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <ServerIcon className="h-3.5 w-3.5 text-ink-tertiary" strokeWidth={1.5} aria-hidden="true" />
+                            )}
+                          </span>
 
-            <aside className="flex min-h-0 flex-col gap-4">
-              <nav
-                aria-label={t.quickAccess}
-                className="overflow-hidden rounded-[var(--r-xl)] border border-hairline bg-canvas"
-              >
-                  {DESTINATIONS.map((destination, index) => {
-                    const Icon = destination.icon;
-                    const label = t[destination.key];
-                    const action = destination.shortcutAction;
-                    const shortcut = action
-                      ? formatKeyToken(keybinds?.[action] ?? DEFAULT_KEYBINDS[action], lang)
-                      : null;
-                    return (
-                      <button
-                        key={destination.id}
-                        type="button"
-                        onClick={() => setActiveTab(destination.id)}
-                        className={`group flex h-[72px] w-full items-center gap-3 px-4 text-left transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-inset cursor-pointer ${index === 0 ? "" : "border-t border-hairline"}`}
-                      >
-                        <Icon className="h-[18px] w-[18px] shrink-0 text-ink-tertiary transition-colors group-hover:text-ink-secondary" aria-hidden="true" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-small font-medium text-ink">{label}</span>
-                          <span className="mt-0.5 block truncate text-micro text-ink-tertiary">{de ? destination.de : destination.en}</span>
-                        </span>
-                        {shortcut && (
-                          <kbd
-                            title={shortcut}
-                            className="max-w-[8rem] shrink-0 truncate rounded-[4px] border border-hairline bg-root px-1.5 py-0.5 font-mono text-micro leading-4 text-ink-tertiary"
+                          <div className="min-w-0 flex-1">
+                            <p className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate text-small font-medium text-ink">{server.name}</span>
+                              <span
+                                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                                  online === true ? "bg-success" : online === false ? "bg-danger/70" : "bg-ink-quaternary/50"
+                                }`}
+                                aria-hidden="true"
+                              />
+                            </p>
+                            <p className="truncate text-micro text-ink-tertiary" title={server.motd || server.ip}>{meta}</p>
+                          </div>
+
+                          <PinButton
+                            pinned={!!server.pinned}
+                            onClick={() => onToggleServerPin(server.id)}
+                            label={de ? "Server anpinnen" : "Pin server"}
+                            className={server.pinned ? "" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"}
+                          />
+
+                          <button
+                            type="button"
+                            disabled={!target || launching}
+                            onClick={() => {
+                              if (!target || launching) return;
+                              if (running) onStopGame(target.name, folder);
+                              else launchServer(server);
+                            }}
+                            aria-label={
+                              launching
+                                ? de ? "Startet" : "Starting"
+                                : running
+                                  ? de ? "Spiel beenden" : "Stop game"
+                                  : de ? `${server.name} beitreten` : `Join ${server.name}`
+                            }
+                            title={
+                              launching
+                                ? de ? "Startet" : "Starting"
+                                : running
+                                  ? de ? "Spiel beenden" : "Stop game"
+                                  : target ? (de ? `Auf ${target.name} starten` : `Start on ${target.name}`) : undefined
+                            }
+                            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-40 ${
+                              running && !launching
+                                ? "border-rim bg-white/5 text-ink hover:bg-white/10"
+                                : "border-hairline text-ink-secondary hover:border-accent hover:bg-accent hover:text-accent-contrast"
+                            }`}
                           >
-                            {shortcut}
-                          </kbd>
-                        )}
-                        <ChevronRight className="h-4 w-4 shrink-0 text-ink-quaternary transition-colors group-hover:text-ink-tertiary" aria-hidden="true" />
-                      </button>
-                    );
-                  })}
-              </nav>
+                            {launching ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                            ) : running ? (
+                              <Square className="h-3 w-3 fill-current" aria-hidden="true" />
+                            ) : (
+                              <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
-              <section
-                aria-label={de ? "Launcher-Update" : "Launcher update"}
-                className="mt-auto rounded-[var(--r-xl)] border border-hairline bg-canvas px-4 py-4"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-small font-medium text-ink">Bamboo Launcher</span>
-                  <span className="font-mono text-micro tabular-nums text-ink-quaternary">v{LAUNCHER_VERSION}</span>
-                </div>
-                <p className="mt-1 text-mini leading-5 text-ink-secondary">{updateLine}</p>
-
-                <div className="mt-3">
+                {orderedServers.length > 0 ? (
                   <button
                     type="button"
-                    onClick={() => (updateReady ? onInstallUpdate?.() : onCheckForUpdates?.())}
-                    disabled={updateBusy || updateDisabled || (updateReady ? !onInstallUpdate : !onCheckForUpdates)}
-                    title={updateDisabled
-                      ? de ? "Updates werden nur in der installierten App geprüft" : "Updates are checked in the installed app only"
-                      : undefined}
-                    className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-[var(--r-sm)] border px-3 text-mini font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-inset disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer ${
-                      updateReady
-                        ? "border-transparent bg-accent text-accent-contrast hover:bg-accent-hover"
-                        : "border-stroke text-ink-secondary hover:border-rim hover:text-ink"
-                    }`}
+                    onClick={() => openServers()}
+                    className="mt-1 inline-flex cursor-pointer items-center gap-1 text-mini font-medium text-ink-tertiary transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 ${updateBusy ? "animate-spin" : ""}`} aria-hidden="true" />
-                    {updateActionLabel}
+                    {de ? "Alle Server" : "All servers"}
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                ) : null}
+              </section>
+
+              <section aria-label={de ? "Profile" : "Profiles"} className="mt-7">
+                <SectionHeading
+                  title={de ? "Profile" : "Profiles"}
+                  count={instances.length}
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => openInstances()}
+                      className="inline-flex cursor-pointer items-center gap-1 text-mini font-medium text-ink-tertiary transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                    >
+                      {de ? "Alle Profile" : "All profiles"}
+                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  }
+                />
+
+                <div className="divide-y divide-hairline">
+                  {orderedInstances.slice(0, 4).map((instance) => {
+                    const folder = instanceFolderKeyOf(instance);
+                    const running = runningInstances.find((entry) => entry.folderName === folder);
+                    const launching = launchingFolder === folder;
+                    return (
+                      <div
+                        key={instance.id}
+                        className="group -mx-2 flex h-[54px] items-center gap-2.5 rounded-[var(--r-lg)] px-2 transition-colors hover:bg-hover"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[var(--r-sm)] border border-hairline bg-[#0d130f]">
+                          {instance.thumbnail ? (
+                            <img
+                              src={instance.thumbnail}
+                              alt=""
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                              onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            <Boxes className="h-3.5 w-3.5 text-ink-tertiary" strokeWidth={1.5} aria-hidden="true" />
+                          )}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => onOpenInstance(instance.name)}
+                          className="min-w-0 flex-1 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                        >
+                          <span className="block truncate text-small font-medium text-ink">{instance.name}</span>
+                          <span className="mt-0.5 block truncate text-micro text-ink-tertiary">
+                            {instance.minecraftVersion} · {instance.modloader} · {launching
+                              ? de ? "Startet" : "Starting"
+                              : running ? (de ? "Läuft" : "Running") : relativePlayed(instance.lastPlayedAt, lang)}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={launching}
+                          onClick={() => {
+                            if (running) onStopGame(instance.name, folder);
+                            else onLaunch(instance.id);
+                          }}
+                          aria-label={
+                            launching
+                              ? de ? "Startet" : "Starting"
+                              : running
+                                ? de ? "Spiel beenden" : "Stop game"
+                                : de ? `${instance.name} starten` : `Start ${instance.name}`
+                          }
+                          className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                            running && !launching
+                              ? "border-rim bg-white/5 text-ink hover:bg-white/10"
+                              : "border-hairline text-ink-secondary hover:border-accent hover:bg-accent hover:text-accent-contrast"
+                          }`}
+                        >
+                          {launching ? (
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                          ) : running ? (
+                            <Square className="h-2.5 w-2.5 fill-current" aria-hidden="true" />
+                          ) : (
+                            <Play className="h-3 w-3 fill-current" aria-hidden="true" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={() => openInstances("create")}
+                    className="flex h-9 w-full cursor-pointer items-center gap-2 rounded-[var(--r-lg)] px-2 text-mini font-medium text-ink-tertiary transition-colors hover:bg-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    {de ? "Neues Profil" : "New profile"}
                   </button>
                 </div>
               </section>
             </aside>
           </div>
+
         </div>
       </div>
     </div>

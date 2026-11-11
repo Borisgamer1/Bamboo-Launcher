@@ -34,6 +34,7 @@ interface MultiplayerViewProps {
   servers: ServerItem[];
   setServers: React.Dispatch<React.SetStateAction<ServerItem[]>>;
   onLaunchServer?: (instanceId: string, server: { host: string; port: number }) => boolean;
+  onServerJoined?: (id: string) => void;
   /** True while the pre-launch check holds the start for a decision. */
   preflightOpen?: boolean;
   activeAccount?: Account;
@@ -66,6 +67,7 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
   servers,
   setServers,
   onLaunchServer,
+  onServerJoined,
   preflightOpen,
   activeAccount,
 }) => {
@@ -77,7 +79,15 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
     [instances],
   );
   const [search, setSearch] = useState(initialSearch);
-  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addModalOpen, setAddModalOpen] = useState(() => {
+    try {
+      if (sessionStorage.getItem("bamboo-multiplayer-intent") !== "add") return false;
+      sessionStorage.removeItem("bamboo-multiplayer-intent");
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
   const [editingServer, setEditingServer] = useState<ServerItem | null>(null);
   const [editName, setEditName] = useState("");
@@ -268,6 +278,8 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({
     // in useLaunchController, not in this view.
     if (!onLaunchServer?.(selectedInstanceId, { host, port })) {
       setLaunchStep("idle");
+    } else {
+      onServerJoined?.(joiningServer.id);
     }
   };
 

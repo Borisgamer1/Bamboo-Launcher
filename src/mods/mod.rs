@@ -78,7 +78,7 @@ pub enum ModError {
     },
 
     #[error(
-        "CurseForge braucht einen API-Key. Setze BAMBOO_CURSEFORGE_API_KEY oder curseforge_api_key in den Einstellungen. Ein Key lässt sich unter https://console.curseforge.com erstellen."
+        "CurseForge braucht einen API-Key. Trage ihn im Launcher unter Einstellungen → Erweitert ein oder setze BAMBOO_CURSEFORGE_API_KEY. Ein Key lässt sich unter https://console.curseforge.com erstellen."
     )]
     MissingApiKey,
 

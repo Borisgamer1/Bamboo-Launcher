@@ -317,18 +317,21 @@ export function AppearanceTab({
                 }
               />
             </SettingsCard>
+          </div>
+        )}
 
-            <SettingsCard
+        <div className="mt-4 flex flex-col gap-4">
+          <SettingsCard
               title={t(L, 'Hintergrund', 'Background')}
               description={t(
                 L,
-                'Dein Hintergrundbild liegt hinter allen Ansichten.',
-                'Your background image sits behind every view.',
+                'Das Hintergrundbild liegt hinter allen Ansichten.',
+                'The background image sits behind every view.',
               )}
             >
               <SettingsRow
                 title={t(L, 'Hintergrundbild anzeigen', 'Show background image')}
-                description={t(L, 'Blendet dein eigenes Hintergrundbild ein.', 'Shows your own background image.')}
+                description={t(L, 'Blendet das Hintergrundbild hinter dem Launcher ein.', 'Shows the background image behind the launcher.')}
                 control={<Toggle checked={showBgImage} onChange={setShowBgImage} label={t(L, 'Hintergrund', 'Background')} />}
               />
               <SettingsRow
@@ -397,8 +400,7 @@ export function AppearanceTab({
                 {t(L, 'Darstellung zurücksetzen', 'Reset appearance')}
               </Button>
             </div>
-          </div>
-        )}
+        </div>
       </section>
     </div>
   )
