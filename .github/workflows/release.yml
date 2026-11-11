@@ -71,14 +71,18 @@ jobs:
 
       - name: Linux-Abhängigkeiten
         if: matrix.platform == 'ubuntu-24.04'
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
+          # Der Runner spiegelt apt auf azure.archive.ubuntu.com, dessen DNS auf
+          # den Runnern nicht aufloest; apt haengt dann pro Paket in Timeouts.
+          # Direkt auf archive.ubuntu.com zeigen.
+          for f in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
+            [ -f "$f" ] && sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$f" || true
+          done
           # Der Runner bringt fertige Paketlisten mit; ein hängendes update darf
           # den Build nicht blockieren.
-          # IPv4 und harte Zeitlimits: der IPv6-Weg zu archive.ubuntu.com
-          # blockiert auf den Runnern, und ohne timeout haengt der Schritt.
-          timeout 150 sudo -E apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=20             -o Acquire::Retries=0 update || true
-          timeout 420 sudo -E apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=20             -o Acquire::Retries=1 install -y --no-install-recommends             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          timeout 180 sudo -E apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=20 -o Acquire::Retries=1 update || true
+          timeout 600 sudo -E apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=20 -o Acquire::Retries=2 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - run: npm --prefix ui ci
 
