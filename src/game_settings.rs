@@ -22,6 +22,8 @@ enum Kind {
     Integer(f64, f64),
     /// Prozent in der Oberfläche, im Spiel 0..1.
     Fraction,
+    /// Mausempfindlichkeit: Minecraft zeigt 0–200 %, speichert aber 0..1.
+    Sensitivity,
     /// Wie [`Kind::Fraction`], aber mit eigenen Grenzen (Entity-Sichtweite
     /// reicht von 0,5 bis 5,0 statt von 0 bis 1).
     Percent(f64, f64),
@@ -220,7 +222,7 @@ const MAPPINGS: &[Mapping] = &[
     Mapping {
         ui: "mouseSensitivity",
         text: "mouseSensitivity",
-        kind: Kind::Fraction,
+        kind: Kind::Sensitivity,
     },
     Mapping {
         ui: "invertYMouse",
@@ -371,6 +373,12 @@ fn format_value(kind: &Kind, value: &Value) -> Option<String> {
         }
         Kind::Percent(min, max) => {
             let number = (number_of(value)? / 100.0).clamp(*min, *max);
+            Some(decimal(number))
+        }
+        // 100 % im Launcher entsprechen dem Spielstandard (0,5). Ohne die
+        // 200er-Skala kam 60 als 0,6 an und das Spiel zeigte 120 %.
+        Kind::Sensitivity => {
+            let number = (number_of(value)? / 200.0).clamp(0.0, 1.0);
             Some(decimal(number))
         }
         Kind::Fov => {
@@ -566,6 +574,16 @@ mod tests {
 
         let broken = options_from_ui(&map(json!({ "mainHand": "right\nfov:1" })));
         assert!(broken.is_empty());
+    }
+
+    #[test]
+    fn sensitivity_uses_the_games_two_hundred_percent_scale() {
+        let pairs = options_from_ui(&map(json!({ "mouseSensitivity": 60 })));
+        assert_eq!(find(&pairs, "mouseSensitivity").as_deref(), Some("0.3"));
+        let pairs = options_from_ui(&map(json!({ "mouseSensitivity": 100 })));
+        assert_eq!(find(&pairs, "mouseSensitivity").as_deref(), Some("0.5"));
+        let pairs = options_from_ui(&map(json!({ "mouseSensitivity": 200 })));
+        assert_eq!(find(&pairs, "mouseSensitivity").as_deref(), Some("1"));
     }
 
     #[test]

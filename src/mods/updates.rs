@@ -44,7 +44,7 @@ struct RawFile {
     primary: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct RawVersion {
     #[serde(default)]
     id: String,
@@ -113,13 +113,20 @@ pub async fn check_at(
         .unwrap_or_default();
 
     for (file, hash) in files {
-        if !known.contains_key(hash) {
+        let Some(installed) = known.get(hash) else {
             continue;
-        }
+        };
         let Some(version) = newer.get(hash) else {
             report.resolved.push(file.clone());
             continue;
         };
+        // `/version_files/update` liefert auch dann die neueste passende
+        // Version, wenn das die installierte ist. Ohne diesen Vergleich meldet
+        // der Launcher jedes Mal ein Update, obwohl nichts zu tun ist.
+        if same_version(installed, version) {
+            report.resolved.push(file.clone());
+            continue;
+        }
         let Some(entry) = entry_for(file, version) else {
             // Gemeldet, aber ohne nutzbaren Download: offen lassen, damit die
             // Einzelprüfung den Fall übernehmen kann.
@@ -133,6 +140,18 @@ pub async fn check_at(
         .updates
         .sort_by(|left, right| left.file.cmp(&right.file));
     Ok(report)
+}
+
+/// Ist die vorgeschlagene Version die bereits installierte?
+///
+/// Die ID ist die verlässliche Kennung; fehlt sie in einer Antwort, bleibt der
+/// Versionsname als Notnagel.
+fn same_version(installed: &RawVersion, candidate: &RawVersion) -> bool {
+    if !installed.id.is_empty() && !candidate.id.is_empty() {
+        return installed.id == candidate.id;
+    }
+    !installed.version_number.is_empty()
+        && installed.version_number.trim() == candidate.version_number.trim()
 }
 
 fn entry_for(file: &str, version: &RawVersion) -> Option<UpdateEntry> {
@@ -162,6 +181,30 @@ fn entry_for(file: &str, version: &RawVersion) -> Option<UpdateEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_installed_version_is_not_an_update() {
+        let installed = RawVersion {
+            id: "abc".to_string(),
+            version_number: "1.0".to_string(),
+            ..RawVersion::default()
+        };
+        assert!(same_version(&installed, &installed));
+
+        let newer = RawVersion {
+            id: "def".to_string(),
+            version_number: "1.1".to_string(),
+            ..RawVersion::default()
+        };
+        assert!(!same_version(&installed, &newer));
+
+        // Antworten ohne ID fallen auf den Versionsnamen zurück.
+        let without_ids = RawVersion {
+            version_number: "1.0".to_string(),
+            ..RawVersion::default()
+        };
+        assert!(same_version(&without_ids, &without_ids));
+    }
 
     #[test]
     fn prefers_the_primary_file_of_a_version() {

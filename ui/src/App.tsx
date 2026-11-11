@@ -106,6 +106,12 @@ function App() {
     clearAnalyses: logAnalyses.clear,
     analyzeAfterCrash: logAnalyses.reanalyze,
   });
+  // Ein Startwunsch aus einem Shortcut wartet auf dieses Signal: erst wenn die
+  // Oberfläche steht, darf das Spiel starten.
+  useEffect(() => {
+    window.electronAPI?.system?.ready?.();
+  }, []);
+
   // One app-wide listener keeps the footer honest even after the view that
   // started an install has been unmounted.
   useEffect(() => {

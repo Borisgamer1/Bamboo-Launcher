@@ -15,6 +15,34 @@ pub mod skins;
 pub mod updater;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
+
+use tauri::Emitter;
+
+/// Ein Startwunsch aus `--launch` wartet, bis die Oberfläche bereit ist.
+///
+/// Vorher lief ein fester Timer: auf langsamen Rechnern startete das Spiel,
+/// während die Oberfläche noch gar nicht stand.
+static PENDING_LAUNCH: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn queue_launch(folder: String) {
+    if let Ok(mut pending) = PENDING_LAUNCH.lock() {
+        *pending = Some(folder);
+    }
+}
+
+/// Meldet die fertig gerenderte Oberfläche; erst jetzt darf ein Shortcut
+/// die Instanz starten.
+#[tauri::command]
+pub fn ui_ready(app: tauri::AppHandle) {
+    let folder = PENDING_LAUNCH
+        .lock()
+        .ok()
+        .and_then(|mut pending| pending.take());
+    if let Some(folder) = folder {
+        let _ = app.emit("bamboo:launch-instance-request", folder);
+    }
+}
 
 /// Unique id for undo tokens; the value itself carries no meaning.
 static TOKEN: AtomicU64 = AtomicU64::new(1);

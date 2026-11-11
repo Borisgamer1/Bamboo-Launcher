@@ -597,14 +597,17 @@ impl LoaderInstaller {
 
         let log_dir = self.cache_dir.join("loaders");
         std::fs::create_dir_all(&log_dir)?;
-        let command = tokio::process::Command::new(&runtime.path)
+        let mut installer_command = tokio::process::Command::new(&runtime.path);
+        installer_command
             .arg("-jar")
             .arg(installer)
             .arg("--installClient")
             .arg(game_root)
             .current_dir(&log_dir)
-            .kill_on_drop(true)
-            .output();
+            .kill_on_drop(true);
+        #[cfg(windows)]
+        installer_command.creation_flags(0x0800_0000);
+        let command = installer_command.output();
 
         let output = tokio::time::timeout(INSTALLER_TIMEOUT, command)
             .await

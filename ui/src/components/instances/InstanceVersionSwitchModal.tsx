@@ -601,7 +601,7 @@ export const InstanceVersionSwitchModal: React.FC<InstanceVersionSwitchModalProp
       closeLabel={t.close}
       icon={<ArrowRightLeft className="h-4 w-4" />}
       tone="accent"
-      widthClassName="w-[560px]"
+      widthClassName="w-[min(92vw,760px)]"
       footer={footer}
     >
       {!instance ? null : stage === 'select' && (

@@ -93,9 +93,12 @@ pub fn parse_java_properties(output: &str) -> JavaProbe {
 
 /// Startet `java -XshowSettings:properties -version` und liest die Ausgabe.
 pub async fn probe_java(path: &Path) -> Result<JavaRuntime> {
-    let output = tokio::process::Command::new(path)
-        .arg("-XshowSettings:properties")
-        .arg("-version")
+    let mut command = tokio::process::Command::new(path);
+    command.arg("-XshowSettings:properties").arg("-version");
+    // Sonst blitzt bei jeder Java-Erkennung ein Konsolenfenster auf.
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+    let output = command
         .output()
         .await
         .map_err(|error| LauncherError::Spawn(format!("{}: {error}", path.display())))?;
@@ -333,8 +336,10 @@ pub fn os_version() -> String {
 
 #[cfg(windows)]
 fn registry_value(key: &str, value: &str) -> Option<String> {
+    use std::os::windows::process::CommandExt;
     let output = std::process::Command::new("reg")
         .args(["query", key, "/v", value])
+        .creation_flags(0x0800_0000)
         .output()
         .ok()?;
     let text = String::from_utf8_lossy(&output.stdout);

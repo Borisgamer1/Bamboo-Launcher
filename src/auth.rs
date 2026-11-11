@@ -1084,6 +1084,7 @@ pub fn open_browser(url: &str) -> Result<()> {
         // escapt die Anführungszeichen zu `\"`, cmd hielte `\"` für das
         // Programm und Windows meldete „Die Datei "\" wurde nicht gefunden“.
         command.raw_arg(windows_start_line(url));
+        command.creation_flags(0x0800_0000);
         command
     };
     #[cfg(target_os = "macos")]

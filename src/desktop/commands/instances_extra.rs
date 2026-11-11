@@ -223,8 +223,10 @@ pub fn create_desktop_shortcut(data: Value) -> Value {
             quote(folder),
             quote(&exe.parent().map(|dir| dir.to_string_lossy().to_string()).unwrap_or_default()),
         );
+        use std::os::windows::process::CommandExt;
         let result = std::process::Command::new("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .creation_flags(0x0800_0000)
             .status();
         return match result {
             Ok(status) if status.success() && link.is_file() => {

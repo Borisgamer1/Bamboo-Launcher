@@ -152,12 +152,18 @@ export function useLaunchController({
     }
 
     launchStartRef.current.set(folderName, Date.now())
-    setLaunchProgress((prev) => {
-      if (!(folderName in prev)) return prev
-      const next = { ...prev }
-      delete next[folderName]
-      return next
-    })
+    // Der Balken muss ab dem ersten Moment sichtbar sein; ohne Startwert
+    // blieb er bei schnellen Starts komplett unsichtbar.
+    setLaunchProgress((prev) => ({
+      ...prev,
+      [folderName]: {
+        folderName,
+        profileName: target.name,
+        percent: 4,
+        label: lang === 'de' ? 'Start wird vorbereitet' : 'Preparing launch',
+        startedAt: Date.now(),
+      },
+    }))
 
     try {
       window.electronAPI?.launch.start?.(payload)

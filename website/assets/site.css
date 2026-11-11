@@ -935,3 +935,59 @@ ul, ol { margin: 0; padding: 0; }
   .legal-layout { display: block; }
   .legal-article p, .legal-article ul { color: #222; }
 }
+
+
+/* ── Umstieg von Electron ───────────────────────────────── */
+
+.migrate {
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--panel-2);
+}
+.migrate-inner {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: clamp(20px, 4vw, 48px);
+  padding: clamp(24px, 3.4vw, 34px) 0;
+}
+.migrate-tag {
+  padding-top: 5px;
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.migrate h2 {
+  font-size: clamp(20px, 2.4vw, 27px);
+  font-weight: 600;
+  letter-spacing: -.015em;
+  line-height: 1.25;
+}
+.migrate p {
+  max-width: 78ch;
+  margin-top: 10px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.migrate .migrate-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 14px;
+}
+.migrate-links a {
+  color: var(--accent-2);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-strong);
+  padding-bottom: 2px;
+}
+.migrate-links a:hover { border-bottom-color: var(--accent-2); }
+
+.dl-row a { color: var(--accent-2); }
+
+@media (max-width: 760px) {
+  .migrate-inner { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+}

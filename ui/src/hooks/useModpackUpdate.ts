@@ -166,9 +166,13 @@ export function useModpackUpdate({
       else completeBackgroundTask(task.id)
       setModpackUpdateInstalling(false)
       setModpackUpdateProgress('')
-      setShowModpackUpdateModal(false)
-      setShowModpackUpdateOptions(false)
-      setModpackUpdateAvailable(false)
+      // Ein fehlgeschlagenes Update darf nicht wie ein abgeschlossenes
+      // aussehen: Fenster offen lassen, damit der zweite Versuch direkt da ist.
+      if (!failure) {
+        setShowModpackUpdateModal(false)
+        setShowModpackUpdateOptions(false)
+        setModpackUpdateAvailable(false)
+      }
     }
   }
 

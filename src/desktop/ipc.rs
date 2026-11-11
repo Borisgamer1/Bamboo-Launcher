@@ -306,8 +306,10 @@ pub(crate) fn open_path(path: &Path) -> Result<(), String> {
 fn kill_pid(pid: u32) {
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
         let _ = std::process::Command::new("taskkill")
             .args(["/pid", &pid.to_string(), "/f", "/t"])
+            .creation_flags(0x0800_0000)
             .spawn();
     }
     #[cfg(not(windows))]
@@ -1167,6 +1169,28 @@ pub fn remove_account(app: AppHandle, id: String) -> Value {
 // Launch
 // ---------------------------------------------------------------------------
 
+/// Erneuert die Sitzung, wenn das Minecraft-Token kurz vor dem Ablauf steht.
+///
+/// Ohne das startete das Spiel mit einem abgelaufenen Token und die Anmeldung
+/// scheiterte erst mitten im Start.
+async fn refresh_session_if_stale() {
+    let manager = session_manager();
+    let Ok(Some(session)) = manager.load() else {
+        return;
+    };
+    let expires = session.minecraft_expires_at;
+    // Zehn Minuten Vorlauf: ein laufender Start darf nicht dazwischen geraten.
+    if expires > 0 && expires.saturating_sub(token_store::now_ms()) > 10 * 60 * 1000 {
+        return;
+    }
+    let Some(refresh_token) = session.refresh_token().map(str::to_string) else {
+        return;
+    };
+    if let Ok(outcome) = MicrosoftAuth::new().refresh(&refresh_token).await {
+        let _ = manager.replace_account(&outcome);
+    }
+}
+
 #[tauri::command]
 pub async fn launch_game(
     app: AppHandle,
@@ -1204,6 +1228,15 @@ pub async fn launch_game(
             return Ok(());
         }
     }
+
+    // Ein abgelaufenes Minecraft-Token würde den Start mit einer Anmeldung
+    // quittieren; vorher still erneuern, mit Obergrenze, damit ein hängender
+    // Microsoft-Server den Start nicht blockiert.
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
+        refresh_session_if_stale(),
+    )
+    .await;
 
     emit_progress(
         &app,
@@ -1514,8 +1547,32 @@ pub fn delete_content_file(data: Value) -> bool {
     else {
         return false;
     };
-    let target = content_dir(&instance_dir_or(&root, folder), item_type).join(name);
-    std::fs::remove_file(target).is_ok()
+    let dir = content_dir(&instance_dir_or(&root, folder), item_type);
+    // Die Oberfläche kennt Dateien mit und ohne `.disabled`, und Windows hält
+    // frisch geladene Dateien kurz gesperrt (Virenscanner, Suchindex). Deshalb
+    // mehrere Namensvarianten und ein paar Wiederholungen statt eines
+    // einzelnen Versuchs.
+    let bare = name.trim_end_matches(".disabled").to_string();
+    for candidate in [name.to_string(), format!("{name}.disabled"), bare.clone(), format!("{bare}.disabled")] {
+        let target = dir.join(&candidate);
+        if !target.is_file() {
+            continue;
+        }
+        if let Ok(meta) = std::fs::metadata(&target) {
+            if meta.permissions().readonly() {
+                let mut permissions = meta.permissions();
+                permissions.set_readonly(false);
+                let _ = std::fs::set_permissions(&target, permissions);
+            }
+        }
+        for attempt in 0..3 {
+            if std::fs::remove_file(&target).is_ok() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(120 * (attempt + 1)));
+        }
+    }
+    false
 }
 
 /// Mehr Hashes pro Anfrage bringt nichts: die Liste ist eine Momentaufnahme

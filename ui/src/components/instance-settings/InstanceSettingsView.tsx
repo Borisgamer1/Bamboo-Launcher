@@ -49,10 +49,9 @@ import {
 import { cx, t } from '../settings/settingsUtils'
 import { useToast } from '../Toast'
 
-type InstanceSection = 'overview' | 'game' | 'java' | 'backups' | 'danger' | 'stats'
+type InstanceSection = 'game' | 'java' | 'backups' | 'danger' | 'stats'
 
 const SECTIONS: { id: InstanceSection; label: { de: string; en: string }; icon: React.ElementType }[] = [
-  { id: 'overview', label: { de: 'Übersicht', en: 'Overview' }, icon: Info },
   { id: 'game', label: { de: 'Spiel', en: 'Game' }, icon: Gamepad2 },
   { id: 'java', label: { de: 'Java & Speicher', en: 'Java & memory' }, icon: Coffee },
   { id: 'backups', label: { de: 'Sicherungen', en: 'Backups' }, icon: Archive },
@@ -88,7 +87,7 @@ export function InstanceSettingsView({
 }: InstanceSettingsViewProps) {
   const L = lang as Lang
   const { addToast } = useToast()
-  const [section, setSection] = useState<InstanceSection>('overview')
+  const [section, setSection] = useState<InstanceSection>('game')
   const [javaVersions, setJavaVersions] = useState<{ path: string; version: number; verStr: string }[]>([])
   const [scanningJava, setScanningJava] = useState(false)
   const [updatingPack, setUpdatingPack] = useState(false)
@@ -261,16 +260,6 @@ export function InstanceSettingsView({
           )
         })}
       </div>
-
-      {section === 'overview' && (
-        <p className="m-0 px-1 text-mini leading-5 text-ink-tertiary">
-          {t(
-            L,
-            'Name, Bild und Ordner stehen oben. Version und Loader findest du unter Spiel, Spielzeit und Größe unter Statistiken.',
-            'Name, image and folder are above. Version and loader live under Game, playtime and size under Statistics.',
-          )}
-        </p>
-      )}
 
       {section === 'game' && (
         <div className="flex flex-col gap-4">

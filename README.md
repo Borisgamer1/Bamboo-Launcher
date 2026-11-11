@@ -87,14 +87,16 @@ TAURI_SIGNING_PRIVATE_KEY=release/updater.key npm --prefix ui run tauri -- build
 ```
 
 `bundle.createUpdaterArtifacts` legt neben jedem Paket eine `.sig`-Datei ab.
-Die ersten Versionen mit diesem Updater sind die 0.2.5; ältere Electron-Builds
-kennen ihn nicht und brauchen einmalig ein Paket von Hand.
+Die ersten Versionen mit diesem Updater sind die 0.2.5. Ältere Electron-Builds
+lesen stattdessen `latest.yml` (Windows) und `latest-linux.yml` (Linux), die
+`scripts/make-legacy-update-yml.mjs` aus denselben Paketen schreibt; damit
+bekommen sie den Umstieg auf Rust über ihren gewohnten Update-Dialog.
 Danach die Pakete samt `.sig` nach `release/v<version>/` kopieren und den Feed
 bauen:
 
 ```bash
 node scripts/make-latest-json.mjs \
-  --base-url https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.5
+  --base-url https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.6
 ```
 
 Das Skript schreibt `release/v<version>/latest.json`. Diese Datei und alle
@@ -107,7 +109,7 @@ passen.
 Der normale Weg ist ein Tag: [`.github/workflows/release.yml`](.github/workflows/release.yml)
 baut auf GitHub Windows, macOS (universal) und Linux, hängt alle Pakete samt
 `.sig` an das Release des Tags und schreibt am Ende `latest.json` aus den
-hochgeladenen Dateien. Ein Push von `v0.2.5` veröffentlicht also alles, was der
+hochgeladenen Dateien. Ein Push von `v0.2.6` veröffentlicht also alles, was der
 Updater braucht.
 
 Dafür muss im Repository unter *Settings → Secrets and variables → Actions* der

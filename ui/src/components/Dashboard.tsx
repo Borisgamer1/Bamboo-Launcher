@@ -14,8 +14,15 @@ import { ThemeType } from "./ParticleBackground";
 import { Account } from "./TopBar";
 import { translations, LanguageType } from "../lib/translations";
 import { requestSettingsTarget } from "../lib/settingsNavigation";
-import { SkinViewer } from "skinview3d";
 import type { UpdateStatus } from "../electron";
+
+/**
+ * Bundled sheet, so the figure is dressed before any skin is fetched. It is a
+ * local file, which is what makes the first paint independent of the network.
+ */
+const DEFAULT_SKIN_URL = "./images/default-skin.png";
+
+type SkinViewerInstance = import("skinview3d").SkinViewer;
 import { LAUNCHER_VERSION } from "../lib/version";
 import { DEFAULT_KEYBINDS, formatKeyToken } from "../lib/keybinds";
 
@@ -225,6 +232,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const skinCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewerHostRef = useRef<HTMLDivElement>(null);
   const [playerIdentity, setPlayerIdentity] = useState<{ uuid: string | null; username: string | null; type: string } | null>(null);
+  const [skinLoaded, setSkinLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,78 +262,131 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const isMicrosoft = activeAccount.type === "Microsoft" || (identityMatches && identityType === "microsoft");
     const mcUuid = activeAccount.uuid || (identityMatches ? identityUuid : undefined);
     const mcName = activeAccount.username || (identityMatches ? identityName : undefined);
-    const skinUrl =
-      isMicrosoft && mcUuid
-        ? `https://minotar.net/skin/${mcUuid}`
-        : isMicrosoft && mcName
-          ? `https://minotar.net/skin/${mcName}`
-          : "https://minotar.net/skin/MHF_Steve";
+    const identity = { uuid: mcUuid ?? null, name: mcName ?? null };
+    const hasIdentity = isMicrosoft ? Boolean(mcUuid || mcName) : Boolean(mcName);
 
-    const width = Math.max(host.clientWidth, 1);
-    const height = Math.max(host.clientHeight, 1);
-    const viewer = new SkinViewer({
-      canvas,
-      width,
-      height,
-      zoom: Math.min(0.72, (width / height) * 1.5),
-      enableControls: false,
-    });
-    viewer.autoRotate = false;
-    viewer.animation = null;
-    viewer.resetCameraPose();
-    viewer.playerObject.rotation.y = -0.34;
-    viewer.playerObject.rotation.x = 0;
+    setSkinLoaded(false);
 
-    let targetRotationY = -0.34;
-    let targetRotationX = 0;
-    let currentRotationY = -0.34;
-    let currentRotationX = 0;
+    let cancelled = false;
+    let viewer: SkinViewerInstance | null = null;
+    let frame = 0;
+    let observer: ResizeObserver | null = null;
+    let idleHandle: number | null = null;
+    let timeoutHandle: number | null = null;
+    let removeListeners: (() => void) | null = null;
 
-    const handleMouseMove = (event: MouseEvent) => {
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      const deltaX = (event.clientX - centerX) / centerX;
-      const deltaY = (event.clientY - centerY) / centerY;
-      targetRotationY = -0.34 + deltaX * 0.9;
-      targetRotationX = deltaY * 0.3;
-      targetRotationX = Math.max(-0.3, Math.min(0.2, targetRotationX));
+    /** Applies one texture; a failure keeps whatever is already on the model. */
+    const apply = async (url: string) => {
+      if (cancelled || !viewer) return;
+      try {
+        await viewer.loadSkin(url);
+        if (!cancelled) setSkinLoaded(true);
+      } catch {
+        /* the previous texture stays */
+      }
     };
 
-    const handleMouseLeave = () => {
-      targetRotationY = -0.34;
-      targetRotationX = 0;
+    const boot = async () => {
+      idleHandle = null;
+      let SkinViewer: typeof import("skinview3d").SkinViewer;
+      try {
+        ({ SkinViewer } = await import("skinview3d"));
+      } catch (error) {
+        console.warn("[Dashboard] 3D-Vorschau konnte nicht geladen werden", error);
+        return;
+      }
+      if (cancelled) return;
+
+      const width = Math.max(host.clientWidth, 1);
+      const height = Math.max(host.clientHeight, 1);
+      const instance = new SkinViewer({
+        canvas,
+        width,
+        height,
+        zoom: Math.min(0.72, (width / height) * 1.5),
+        enableControls: false,
+      });
+      viewer = instance;
+      instance.autoRotate = false;
+      instance.animation = null;
+      instance.resetCameraPose();
+      instance.playerObject.rotation.y = -0.34;
+      instance.playerObject.rotation.x = 0;
+
+      let targetRotationY = -0.34;
+      let targetRotationX = 0;
+      let currentRotationY = -0.34;
+      let currentRotationX = 0;
+
+      const handleMouseMove = (event: MouseEvent) => {
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        const deltaX = (event.clientX - centerX) / centerX;
+        const deltaY = (event.clientY - centerY) / centerY;
+        targetRotationY = -0.34 + deltaX * 0.9;
+        targetRotationX = deltaY * 0.3;
+        targetRotationX = Math.max(-0.3, Math.min(0.2, targetRotationX));
+      };
+
+      const handleMouseLeave = () => {
+        targetRotationY = -0.34;
+        targetRotationX = 0;
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseleave", handleMouseLeave);
+      removeListeners = () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseleave", handleMouseLeave);
+      };
+
+      const animate = () => {
+        currentRotationY += (targetRotationY - currentRotationY) * 0.15;
+        currentRotationX += (targetRotationX - currentRotationX) * 0.15;
+        instance.playerObject.rotation.y = currentRotationY;
+        instance.playerObject.rotation.x = currentRotationX;
+        frame = requestAnimationFrame(animate);
+      };
+      animate();
+
+      observer = new ResizeObserver(() => {
+        const nextWidth = host.clientWidth;
+        const nextHeight = host.clientHeight;
+        if (!nextWidth || !nextHeight) return;
+        instance.setSize(nextWidth, nextHeight);
+        instance.zoom = Math.min(0.72, (nextWidth / nextHeight) * 1.5);
+      });
+      observer.observe(host);
+
+      // 1) Disk cache first: a data URL decodes instantly and also works when
+      //    the machine is offline or Minotar is slow.
+      const cached = hasIdentity ? await window.electronAPI?.skins.avatar?.(identity) : undefined;
+      if (cancelled) return;
+      await apply(cached?.url || DEFAULT_SKIN_URL);
+
+      // 2) Then the current skin, quietly in the background.
+      if (!hasIdentity || cancelled) return;
+      const fresh = await window.electronAPI?.skins.refreshAvatar?.(identity);
+      if (!cancelled && fresh?.url && fresh.url !== cached?.url) await apply(fresh.url);
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseleave", handleMouseLeave);
-
-    let animationId: number;
-    const animate = () => {
-      currentRotationY += (targetRotationY - currentRotationY) * 0.15;
-      currentRotationX += (targetRotationX - currentRotationX) * 0.15;
-      viewer.playerObject.rotation.y = currentRotationY;
-      viewer.playerObject.rotation.x = currentRotationX;
-      animationId = requestAnimationFrame(animate);
-    };
-    animate();
-
-    void viewer.loadSkin(skinUrl).catch(() => {});
-
-    const observer = new ResizeObserver(() => {
-      const nextWidth = host.clientWidth;
-      const nextHeight = host.clientHeight;
-      if (!nextWidth || !nextHeight) return;
-      viewer.setSize(nextWidth, nextHeight);
-      viewer.zoom = Math.min(0.72, (nextWidth / nextHeight) * 1.5);
-    });
-    observer.observe(host);
+    // Building the viewer compiles shaders and claims a WebGL context. Waiting
+    // for the first idle moment keeps the window responsive while it starts.
+    if (typeof window.requestIdleCallback === "function") {
+      idleHandle = window.requestIdleCallback(() => void boot(), { timeout: 600 });
+    } else {
+      timeoutHandle = window.setTimeout(() => void boot(), 120);
+    }
 
     return () => {
-      observer.disconnect();
-      window.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseleave", handleMouseLeave);
-      cancelAnimationFrame(animationId);
-      viewer.dispose();
+      cancelled = true;
+      if (idleHandle !== null) window.cancelIdleCallback?.(idleHandle);
+      if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
+      removeListeners?.();
+      observer?.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+      viewer?.dispose();
+      viewer = null;
     };
   }, [activeAccount.id, activeAccount.uuid, activeAccount.username, activeAccount.type, playerIdentity?.uuid, playerIdentity?.username, playerIdentity?.type]);
 
@@ -424,7 +485,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <canvas
                     ref={skinCanvasRef}
                     aria-label={de ? `Spielfigur von ${displayName}` : `${displayName}'s character`}
-                    className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
+                    className={`h-full w-full cursor-grab touch-none active:cursor-grabbing transition-opacity duration-[var(--t-slow)] ease-[var(--ease-out)] ${skinLoaded ? "opacity-100" : "opacity-0"}`}
                   />
                 </div>
               )}

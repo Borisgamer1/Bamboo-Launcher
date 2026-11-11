@@ -10,6 +10,9 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 type Unsubscribe = () => void
 
+/** Account the start page wants the cached 3D avatar for. */
+type SkinAvatarRequest = { uuid?: string | null; name?: string | null }
+
 const hasTauri =
   typeof window !== 'undefined' &&
   typeof (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ === 'object'
@@ -219,6 +222,8 @@ const bridge = {
     applySkin: () => call('skins_apply'),
     selectCape: (capeId: string | null) => call('skins_cape', { payload: { capeId } }),
     refresh: () => call('skins_refresh'),
+    avatar: (data: SkinAvatarRequest) => call('skins_avatar', { payload: data }),
+    refreshAvatar: (data: SkinAvatarRequest) => call('skins_avatar_refresh', { payload: data }),
   },
 
   cosmetics: {
@@ -274,6 +279,8 @@ const bridge = {
   system: {
     copy: (text: string) => copyText(text),
     openExternal: (url: string) => send('open_external', { url }),
+    /** Says the first frame is up; a pending `--launch` may start now. */
+    ready: () => send('ui_ready'),
   },
 }
 

@@ -7,6 +7,57 @@ version, so every release needs a block here in **both** languages.
 Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 `New` / `Better` / `Fixed` / `Removed` for English.
 
+## 0.2.6 - 2026-11-11
+
+### Neu
+
+- **Umstieg von Electron:** Wer noch eine 0.2.4 oder älter installiert hat, bekommt beim nächsten Update-Check die 0.2.6 angeboten. Der Electron-Build kann sich nicht selbst ersetzen: Er lädt das Rust-Paket herunter und startet den Installer beim Neustart. Wer lieber von Hand installiert, findet die Pakete für Windows, macOS (Apple Silicon und Intel) und Linux auf der Website und am Release.
+- Die Kopfzeile zeigt Konto und Skin sofort aus dem lokalen Zwischenspeicher und tauscht die Daten im Hintergrund gegen den echten Stand; der leere „Kein Konto“-Zustand beim Start ist weg.
+
+### Besser
+
+- Vor jedem Start wird die Microsoft-Anmeldung still aufgefrischt, wenn ihr Token in den nächsten zehn Minuten abläuft. Der Start wartet höchstens acht Sekunden darauf, danach läuft er mit dem alten Token weiter.
+- Der Start der Instanz beginnt erst, wenn die Oberfläche fertig gerendert hat; der Launcher schiebt sich nicht mehr vor das Spiel und der Fortschritt ist von der ersten Sekunde an sichtbar.
+- Der Screenshot-Tab zeigt beim Laden sechs Platzhalter-Kacheln statt eines leeren Rasters.
+- Das Fenster für den Versionswechsel ist breiter, und Fabric-, Forge- und NeoForge-Versionen stehen nummerisch sortiert mit der neuesten oben.
+- Ein fehlgeschlagenes Modpack-Update lässt das Fenster offen und zeigt den Fehler, statt „fertig“ zu melden und den Rest zu verschlucken.
+
+### Behoben
+
+- Beim Instanzstart blitzten zahlreiche Konsolenfenster auf. Java, `reg`, `taskkill` und PowerShell laufen jetzt ohne eigenes Fenster.
+- Die Update-Prüfung meldete Updates, die es nicht gab. Sie vergleicht jetzt die Versions-ID der Datei statt nur ihren Namen.
+- Mods ließen sich oft nicht löschen, weil Windows die Datei noch gesperrt hielt oder der Name mit `.disabled` nicht passte. Der Launcher probiert beide Namen, entfernt Schreibschutz und wiederholt den Versuch.
+- Die Mausempfindlichkeit wurde verdoppelt: Der Launcher rechnete mit 100 %, Minecraft nutzt 200 %. 60 % im Launcher sind jetzt 60 % im Spiel.
+- Der Tab „Übersicht“ in den Instanz-Einstellungen war leer und ist entfernt; die Einstellungen starten auf „Spiel“.
+
+### Entfernt
+
+- Der leere Tab „Übersicht“ in den Instanz-Einstellungen.
+
+### New
+
+- **Coming from Electron:** anyone still on 0.2.4 or older is offered 0.2.6 on the next update check. The Electron build cannot replace itself: it downloads the Rust package and runs the installer on restart. If you would rather install by hand, the packages for Windows, macOS (Apple Silicon and Intel) and Linux are on the website and on the release page.
+- The header shows account and skin immediately from the local cache and swaps in the real state in the background, so the empty "no account" flash at startup is gone.
+
+### Better
+
+- Before every launch the Microsoft session is refreshed silently when its token expires within ten minutes. The launch waits at most eight seconds for it, then continues with the old token.
+- An instance launch starts only after the interface has rendered; the launcher no longer pushes itself in front of the game, and the progress bar is visible from the first second.
+- The screenshots tab shows six placeholder tiles while loading instead of an empty grid.
+- The version switch window is wider, and Fabric, Forge and NeoForge versions are sorted numerically with the newest on top.
+- A failed modpack update keeps the window open and shows the error instead of reporting "done" and swallowing the rest.
+
+### Fixed
+
+- Console windows flashed up during instance launches. Java, `reg`, `taskkill` and PowerShell now run without a window of their own.
+- The update check reported updates that did not exist. It now compares the file's version ID instead of only its name.
+- Mods often could not be deleted because Windows still held the file or the name did not match with `.disabled`. The launcher tries both names, clears the read-only flag and retries.
+- Mouse sensitivity was doubled: the launcher assumed 100 %, Minecraft uses 200 %. 60 % in the launcher is now 60 % in the game.
+
+### Removed
+
+- The empty "Overview" tab in the instance settings.
+
 ## 0.2.5 - 2026-11-10
 
 ### Neu

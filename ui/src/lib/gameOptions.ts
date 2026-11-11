@@ -355,11 +355,12 @@ export const GAME_OPTIONS: GameOptionDef[] = [
     key: 'mouseSensitivity',
     category: 'controls',
     kind: 'slider',
+    // Minecrafts Regler reicht bis 200 %; 100 % ist der Standardwert (0,5).
     min: 0,
-    max: 100,
+    max: 200,
     step: 1,
     unit: '%',
-    defaultValue: 50,
+    defaultValue: 100,
     label: { de: 'Mausempfindlichkeit', en: 'Mouse sensitivity' },
   },
   {

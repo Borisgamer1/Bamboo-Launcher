@@ -954,6 +954,8 @@ export interface ScreenshotsApi {
 export interface SystemApi {
   copy(text: string): void
   openExternal(url: string): void
+  /** Tells the core the UI is rendered; only then a shortcut launch starts. */
+  ready(): void
 }
 
 export interface TasksApi {
@@ -1010,6 +1012,17 @@ export interface SkinSnapshot {
   canApplySkin: boolean
 }
 
+/** Locally cached skin PNG for the start page, as a data URL. */
+export interface SkinAvatar {
+  url: string | null
+  updatedAt: number
+}
+
+export interface SkinAvatarRequest {
+  uuid?: string | null
+  name?: string | null
+}
+
 export interface SkinsApi {
   snapshot(): Promise<SkinSnapshot | undefined>
   saveSkin(payload: { bytes: Uint8Array; variant: SkinVariant }): Promise<SkinSnapshot | undefined>
@@ -1019,6 +1032,10 @@ export interface SkinsApi {
   /** Sets the active Mojang cape, or hides it with null. */
   selectCape(capeId: string | null): Promise<SkinSnapshot | undefined>
   refresh(): Promise<SkinSnapshot | undefined>
+  /** Cached avatar from disk only; no network, resolves in milliseconds. */
+  avatar(data: SkinAvatarRequest): Promise<SkinAvatar | undefined>
+  /** Reloads the avatar in the background and updates the cache. */
+  refreshAvatar(data: SkinAvatarRequest): Promise<SkinAvatar | undefined>
 }
 
 export type CosmeticSlot = "head" | "back" | "cape"

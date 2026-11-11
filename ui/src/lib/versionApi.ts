@@ -101,7 +101,8 @@ function extractForgeBuilds(
       builds.push(parsed.build);
     }
   }
-  return [...new Set(builds)].sort().reverse();
+  // Alphabetisch sortiert stand "9" über "47"; die Zahlenfolge entscheidet.
+  return [...new Set(builds)].sort(compareLoaderVersions);
 }
 
 export async function fetchVersionMap(): Promise<VersionMap> {
@@ -121,7 +122,7 @@ export async function fetchVersionMap(): Promise<VersionMap> {
       fetchJson<FabricLoaderVersion[]>("https://meta.fabricmc.net/v2/versions/loader"),
     ]);
     const supported = new Set(fabricGameJson.map((v) => v.version));
-    const allLoaderVers = fabricLoaderJson.map((l) => l.version);
+    const allLoaderVers = fabricLoaderJson.map((l) => l.version).sort(compareLoaderVersions);
     for (const mcVer of releases) {
       if (supported.has(mcVer)) {
         fabric[mcVer] = allLoaderVers;
@@ -157,6 +158,7 @@ export async function fetchVersionMap(): Promise<VersionMap> {
         neoforge[mcVer].push(full);
       }
     }
+    for (const versions of Object.values(neoforge)) versions.sort(compareLoaderVersions);
   } catch { console.warn('[VersionAPI] Failed to fetch NeoForge versions'); }
 
   const forge: Record<string, string[]> = {};

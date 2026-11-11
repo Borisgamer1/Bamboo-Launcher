@@ -298,16 +298,25 @@ export const ScreenshotsView: React.FC<ScreenshotsViewProps> = ({ lang }) => {
           ))}
         </AnimatePresence>
 
-        {isLoading && screenshots.length === 0 && (
-          <div className="col-span-full py-16 text-center flex flex-col items-center justify-center gap-3">
-            <div className="w-16 h-16 rounded-2xl bg-surface border border-stroke flex items-center justify-center text-ink-secondary">
-              <RefreshCw className="w-8 h-8 animate-spin" />
+        {isLoading && screenshots.length === 0 &&
+          Array.from({ length: 6 }).map((_, index) => (
+            // Skeleton statt Spinner: die Kachelform steht sofort, das Bild
+            // füllt sie danach ohne Layoutsprung.
+            <div
+              key={`screenshot-skeleton-${index}`}
+              aria-hidden="true"
+              className="overflow-hidden rounded-3xl border border-hairline bg-surface"
+            >
+              <div
+                className="aspect-video animate-pulse bg-root/60"
+                style={{ animationDelay: `${index * 90}ms` }}
+              />
+              <div className="flex items-center gap-2 p-4">
+                <div className="h-3 w-3 animate-pulse rounded-full bg-root/60" />
+                <div className="h-3 w-24 animate-pulse rounded bg-root/60" />
+              </div>
             </div>
-            <p className="text-regular font-medium text-ink">
-              {lang === "de" ? "Screenshots werden gesammelt..." : "Collecting screenshots..."}
-            </p>
-          </div>
-        )}
+          ))}
 
         {!isLoading && screenshots.length === 0 && !loadError && (
           <div className="col-span-full py-16 text-center flex flex-col items-center justify-center gap-3">

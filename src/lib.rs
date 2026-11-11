@@ -23,6 +23,7 @@ pub mod preflight;
 pub mod server_ping;
 pub mod servers_dat;
 pub mod sessions;
+pub mod skin_cache;
 pub mod token_store;
 pub mod version;
 

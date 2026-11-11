@@ -148,6 +148,7 @@ impl GameProcess {
         {
             let _ = Command::new("taskkill")
                 .args(["/PID", &pid.to_string(), "/F", "/T"])
+                .creation_flags(0x0800_0000)
                 .output()
                 .await;
         }
@@ -733,6 +734,10 @@ pub async fn spawn_process(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Der Launcher ist eine GUI-App ohne eigenes Konsolenfenster; ohne dieses
+    // Flag bekommt jeder Java-Start ein sichtbares Fenster, das kurz aufblitzt.
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
 
     let mut child = command.spawn().map_err(|error| {
         LauncherError::Spawn(format!("{program} konnte nicht gestartet werden: {error}"))

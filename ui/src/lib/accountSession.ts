@@ -61,8 +61,37 @@ export interface AccountSession {
   reload: () => Promise<void>
 }
 
+/**
+ * Last known auth status.
+ *
+ * The real status costs a keyring read plus a token check; until it arrives the
+ * start page showed "no account" and no 3D figure. The cached copy renders that
+ * part immediately, the fresh answer replaces it a moment later.
+ */
+const STATUS_CACHE_KEY = 'bamboo-auth-status'
+
+function readCachedStatus(): MicrosoftAuthStatus | null {
+  try {
+    const raw = localStorage.getItem(STATUS_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as MicrosoftAuthStatus
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function writeCachedStatus(status: MicrosoftAuthStatus | null): void {
+  try {
+    if (status) localStorage.setItem(STATUS_CACHE_KEY, JSON.stringify(status))
+    else localStorage.removeItem(STATUS_CACHE_KEY)
+  } catch {
+    /* cache is best effort */
+  }
+}
+
 export function useAccountSession(): AccountSession {
-  const [status, setStatus] = useState<MicrosoftAuthStatus | null>(null)
+  const [status, setStatus] = useState<MicrosoftAuthStatus | null>(() => readCachedStatus())
   const [unavailable, setUnavailable] = useState(false)
 
   const reload = useCallback(async () => {
@@ -102,8 +131,13 @@ export function useAccountSession(): AccountSession {
 
   const apply = useCallback((next: MicrosoftAuthStatus) => {
     setStatus(next)
+    writeCachedStatus(next)
     setUnavailable(false)
   }, [])
+
+  useEffect(() => {
+    writeCachedStatus(status)
+  }, [status])
   const account = useMemo(() => accountFromStatus(status), [status])
 
   return { status, account, unavailable, apply, reload }

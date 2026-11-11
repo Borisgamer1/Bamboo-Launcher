@@ -10,6 +10,8 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use serde_json::{json, Value};
 
+use bamboo_launcher::skin_cache::{self, png_ok, CachedSkin};
+
 use crate::ipc;
 
 const PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
@@ -91,31 +93,35 @@ async fn profile(session: &Session) -> Option<Value> {
     response.json::<Value>().await.ok()
 }
 
+/// The entry of the skin Mojang currently has active.
+fn active_skin(profile: &Value) -> Option<&Value> {
+    profile
+        .get("skins")?
+        .as_array()?
+        .iter()
+        .find(|skin| skin.get("state").and_then(Value::as_str) == Some("ACTIVE"))
+}
+
+/// Mojang still hands out `http://textures.minecraft.net/...`. The WebView
+/// refuses to mix that into its own secure origin, so it has to be https.
+fn skin_texture_url(skin: &Value) -> Option<String> {
+    Some(
+        skin.get("url")?
+            .as_str()?
+            .replacen("http://", "https://", 1),
+    )
+}
+
 fn snapshot_with(profile: Option<&Value>) -> Value {
     let session = session();
     let variant = variant();
     let local = local_skin_url();
-    let profile_skin = profile
-        .and_then(|value| value.get("skins"))
-        .and_then(|skins| {
-            skins
-                .as_array()?
-                .iter()
-                .find(|skin| skin.get("state").and_then(Value::as_str) == Some("ACTIVE"))
-                .cloned()
-        });
+    let profile_skin = profile.and_then(active_skin);
 
     let online = profile.is_some();
-    let skin_url = local.clone().or_else(|| {
-        profile_skin
-            .as_ref()?
-            .get("url")?
-            .as_str()
-            // Mojang still hands out `http://textures.minecraft.net/...`.
-            // The WebView refuses to mix that into its own secure origin, so
-            // the texture has to be fetched over https.
-            .map(|url| url.replacen("http://", "https://", 1))
-    });
+    let skin_url = local
+        .clone()
+        .or_else(|| profile_skin.and_then(skin_texture_url));
     let source = if local.is_some() {
         "local"
     } else if skin_url.is_some() {
@@ -184,9 +190,93 @@ pub async fn skins_refresh() -> Value {
     current().await
 }
 
-/// PNG header check before anything is written or uploaded.
-fn png_ok(bytes: &[u8]) -> bool {
-    bytes.len() > 24 && &bytes[1..4] == b"PNG" && bytes.len() <= 2 * 1024 * 1024
+/// Account identity as the start page passes it in.
+fn avatar_identity(payload: Option<&Value>) -> (Option<String>, Option<String>) {
+    let field = |name: &str| {
+        payload
+            .and_then(|value| value.get(name))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    (field("uuid"), field("name"))
+}
+
+fn avatar_value(cached: Option<&CachedSkin>) -> Value {
+    match cached {
+        Some(cached) => json!({
+            "url": cached.url,
+            "updatedAt": cached.updated_at,
+        }),
+        None => json!({ "url": Value::Null, "updatedAt": 0 }),
+    }
+}
+
+/// The cached start-page avatar, straight from disk.
+///
+/// No network and no keyring: the 3D figure gets a texture immediately and
+/// reloads in the background afterwards (`skins_avatar_refresh`).
+#[tauri::command]
+pub fn skins_avatar(payload: Option<Value>) -> Value {
+    let (uuid, name) = avatar_identity(payload.as_ref());
+    let Some(key) = skin_cache::key_for(uuid.as_deref(), name.as_deref()) else {
+        return avatar_value(None);
+    };
+    avatar_value(skin_cache::read(&skin_cache::avatar_dir(), &key).as_ref())
+}
+
+/// Reloads the avatar and stores it in the cache.
+///
+/// A still-fresh cache entry short-circuits: otherwise every return to the
+/// start page would trigger a network request. When loading fails, the existing
+/// cache stays valid.
+#[tauri::command]
+pub async fn skins_avatar_refresh(payload: Option<Value>) -> Value {
+    let (uuid, name) = avatar_identity(payload.as_ref());
+    let Some(key) = skin_cache::key_for(uuid.as_deref(), name.as_deref()) else {
+        return avatar_value(None);
+    };
+    let dir = skin_cache::avatar_dir();
+    let cached = skin_cache::read(&dir, &key);
+    if let Some(hit) = cached.as_ref() {
+        if skin_cache::is_fresh(hit.updated_at, skin_cache::now_ms()) {
+            return avatar_value(cached.as_ref());
+        }
+    }
+
+    if let Some(bytes) = download_avatar(uuid.as_deref(), name.as_deref()).await {
+        if let Some(fresh) = skin_cache::write(&dir, &key, &bytes) {
+            return avatar_value(Some(&fresh));
+        }
+    }
+    avatar_value(cached.as_ref())
+}
+
+/// The official texture when a session can name it, Minotar otherwise – the
+/// same source the start page used to load directly.
+async fn download_avatar(uuid: Option<&str>, name: Option<&str>) -> Option<Vec<u8>> {
+    let client = client().ok()?;
+    if let Some(session) = session() {
+        if let Some(profile) = profile(&session).await {
+            if let Some(url) = active_skin(&profile).and_then(skin_texture_url) {
+                if let Some(bytes) = fetch_png(&client, &url).await {
+                    return Some(bytes);
+                }
+            }
+        }
+    }
+    let id = skin_cache::key_for(uuid, name)?;
+    fetch_png(&client, &format!("https://minotar.net/skin/{id}")).await
+}
+
+async fn fetch_png(client: &reqwest::Client, url: &str) -> Option<Vec<u8>> {
+    let response = client.get(url).send().await.ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let bytes = response.bytes().await.ok()?;
+    png_ok(&bytes).then(|| bytes.to_vec())
 }
 
 fn bytes_from(value: &Value) -> Option<Vec<u8>> {

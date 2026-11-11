@@ -90,8 +90,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          gh release view "$TAG" >/dev/null 2>&1 ||
+          version=$(node -p "require('./tauri.conf.json').version")
+          notes="docs/release-notes/v$version.md"
+          gh release view "$TAG" >/dev/null 2>&1 && exit 0
+          if [ -f "$notes" ]; then
+            gh release create "$TAG" --title "Bamboo Launcher $TAG" --notes-file "$notes"
+          else
             gh release create "$TAG" --title "Bamboo Launcher $TAG" --generate-notes
+          fi
 
       - name: Pakete hochladen
         shell: bash
@@ -159,6 +165,24 @@ jobs:
             }
           "
           gh release upload "$TAG" "$folder/latest.json" --clobber
+
+      # Der Legacy-Feed gibt alten Electron-Builds (0.2.4 und älter) den
+      # nativen Update-Dialog, den sie schon kennen: sie laden das Rust-Paket
+      # und starten den Installer beim Neustart.
+      - name: Electron-Feed bauen
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          version=$(node -p "require('./tauri.conf.json').version")
+          folder="release/v$version"
+          node scripts/make-legacy-update-yml.mjs --dir "$folder"
+          for feed in latest.yml latest-linux.yml; do
+            if [ -f "$folder/$feed" ]; then
+              gh release upload "$TAG" "$folder/$feed" --clobber
+            fi
+          done
 
       - name: Prüfsummen schreiben
         shell: bash

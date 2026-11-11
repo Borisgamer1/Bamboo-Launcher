@@ -200,6 +200,7 @@ fn main() {
             ipc::is_maximized_window,
             ipc::focus_window,
             ipc::close_window,
+            commands::ui_ready,
             commands::updater::updates_state,
             commands::flush_before_close_complete,
             commands::show_item_in_folder,
@@ -245,6 +246,8 @@ fn main() {
             commands::skins::skins_apply,
             commands::skins::skins_cape,
             commands::skins::skins_refresh,
+            commands::skins::skins_avatar,
+            commands::skins::skins_avatar_refresh,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -252,13 +255,11 @@ fn main() {
                 // springt das Fenster beim Start sichtbar von 1280×800 um.
                 restore_window_state(&window);
                 let _ = window.show();
-                // A shortcut made by the launcher asks for one instance.
+                // A shortcut made by the launcher asks for one instance. The
+                // request waits for the UI (`ui_ready`) instead of a fixed
+                // delay, so the game never starts before the window is usable.
                 if let Some(folder) = launch_argument(std::env::args().skip(1)) {
-                    let handle = window.clone();
-                    tauri::async_runtime::spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
-                        let _ = handle.emit("bamboo:launch-instance-request", folder);
-                    });
+                    commands::queue_launch(folder);
                 }
                 let handle = window.clone();
                 window.on_window_event(move |event| match event {
