@@ -71,9 +71,12 @@ jobs:
 
       - name: Linux-Abhängigkeiten
         if: matrix.platform == 'ubuntu-22.04'
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          # Der Runner bringt fertige Paketlisten mit; ein hängendes update darf
+          # den Build nicht blockieren.
+          sudo apt-get update -o Acquire::Retries=2 -o Acquire::http::Timeout=25 || true
+          sudo apt-get install -y --no-install-recommends             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - run: npm --prefix ui ci
 
