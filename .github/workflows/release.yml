@@ -15,8 +15,10 @@ on:
 permissions:
   contents: write
 
+# Der Run-ID in der Gruppe verhindert, dass ein haengender Lauf einen
+# Retry fuer denselben Tag dauerhaft blockiert.
 concurrency:
-  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  group: release-${{ github.event.inputs.tag || github.ref_name }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
