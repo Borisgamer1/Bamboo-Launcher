@@ -23,6 +23,7 @@ import {
 import { Dialog } from '../Dialog'
 import { dialogButton } from '../dialogSupport'
 import { InstanceBackupsPanel } from './InstanceBackupsPanel'
+import { InstanceDoctorPanel } from './InstanceDoctorPanel'
 import { InstanceCoverPicker } from '../instances/InstanceCoverPicker'
 import type { Instance } from '../InstancesView'
 import {
@@ -491,6 +492,8 @@ export function InstanceSettingsView({
       {section === 'backups' && (
         <InstanceBackupsPanel instance={instance} lang={lang} />
       )}
+
+      <InstanceDoctorPanel folderName={folderName} lang={lang} />
 
       {section === 'danger' && (
         <div className="flex flex-col gap-4">

@@ -24,7 +24,6 @@ import { useInstances } from "./hooks/useInstances";
 import { useAppNavigation } from "./hooks/useAppNavigation";
 import { useLaunchController } from "./hooks/useLaunchController";
 import { useLogAnalyses } from "./hooks/useLogAnalyses";
-import { useClientMode } from "./hooks/useClientMode";
 import { useAppOverlays } from "./hooks/useAppOverlays";
 import { useServers } from "./hooks/useServers";
 import { usePersistence } from "./hooks/usePersistence";
@@ -95,7 +94,6 @@ function App() {
   const serversState = useServers();
   const updater = useUpdater();
   const overlays = useAppOverlays();
-  const clientModeState = useClientMode();
   const launch = useLaunchController({
     instances: instancesState.instances,
     setInstances: instancesState.setInstances,
@@ -281,7 +279,7 @@ function App() {
       />
 
       <div className="flex-1 min-h-0 w-full flex overflow-hidden">
-        <Sidebar activeTab={navigation.activeTab} setActiveTab={navigation.handleSetActiveTab} theme={themeState.theme} lang={settingsState.lang} clientMode={clientModeState.clientMode} onClientModeChange={clientModeState.setClientEnabled} />
+        <Sidebar activeTab={navigation.activeTab} setActiveTab={navigation.handleSetActiveTab} theme={themeState.theme} lang={settingsState.lang} />
 
         <div className="flex-1 min-w-0 h-full flex flex-col justify-between overflow-hidden z-10 relative">
 

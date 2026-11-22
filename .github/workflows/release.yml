@@ -220,3 +220,14 @@ jobs:
           # gegen den Hash der leeren Datei und meldet einen Fehler.
           ( cd "$folder" && find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -printf '%f\n' | sort | xargs -r sha256sum > SHA256SUMS.txt )
           gh release upload "$TAG" "$folder/SHA256SUMS.txt" --clobber
+
+      # Prüft, was tatsächlich am Release hängt: Feed, Download-URLs und
+      # Updater-Signaturen. Die Prüfsummen entstehen in diesem Job direkt aus
+      # den Dateien; die großen Pakete werden hier nicht erneut geladen.
+      - name: Release prüfen
+        shell: bash
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          sleep 10
+          node scripts/verify-release.mjs "$TAG" --skip-checksums

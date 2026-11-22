@@ -275,6 +275,99 @@ pub fn forget_cosmetic_package(instances: &[Instance], file_name: &str, content:
     removed
 }
 
+/// Die mitgelieferte Cosmetics-Mod (Fabric, Minecraft 26.3).
+///
+/// Die Mod liest `<instanz>/bamboo/cosmetics` und zeigt die Pakete im Spiel an.
+/// Ohne sie liegen die Pakete nur im Ordner, ohne dass sie jemand lädt.
+const COSMETICS_MOD_FILE: &str = "bamboo-cosmetics-26.3-fabric.jar";
+const COSMETICS_MOD_BYTES: &[u8] = include_bytes!("../resources/bamboo-cosmetics-26.3-fabric.jar");
+
+fn is_cosmetics_mod_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".jar")
+        && (lower.starts_with("bamboo-cosmetics") || lower.starts_with("cosmiq"))
+}
+
+/// Liegt im `mods`-Ordner eine Fabric-API-Jar?
+///
+/// Ohne sie lehnt Fabric Mods mit `depends` auf `fabric-api` ab – die
+/// Cosmetics-Mod gehört dazu. Deshalb wird sie nur in Instanzen gelegt, die die
+/// Abhängigkeit schon haben.
+pub fn has_fabric_api(instance_dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(instance_dir.join("mods")) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if !name.ends_with(".jar") {
+            return false;
+        }
+        name.starts_with("fabric-api")
+            || read_mod_metadata(&entry.path()).and_then(|meta| meta.id).as_deref()
+                == Some("fabric-api")
+    })
+}
+
+/// Liegt irgendeine Cosmiq-/Bamboo-Cosmetics-Jar im Ordner?
+pub fn cosmetics_mod_present(instance_dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(instance_dir.join("mods")) else {
+        return false;
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .any(|name| is_cosmetics_mod_name(&name))
+}
+
+/// Ist die Launcher-Kopie unverändert vorhanden?
+pub fn cosmetics_mod_is_bundled(instance_dir: &Path) -> bool {
+    std::fs::read(instance_dir.join("mods").join(COSMETICS_MOD_FILE)).ok().as_deref()
+        == Some(COSMETICS_MOD_BYTES)
+}
+
+/// Eine Cosmiq-/Bamboo-Cosmetics-Jar, die nicht unsere Datei ist.
+pub fn cosmetics_mod_is_foreign(instance_dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(instance_dir.join("mods")) else {
+        return false;
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .filter(|name| name != COSMETICS_MOD_FILE)
+        .any(|name| is_cosmetics_mod_name(&name))
+}
+
+/// Legt die Cosmetics-Mod in die Instanz oder nimmt die Launcher-Kopie zurück.
+///
+/// Eine eigene Version des Nutzers gewinnt: liegt schon eine andere `cosmiq`-/
+/// `bamboo-cosmetics`-Jar im Ordner, wird nichts kopiert und nichts doppelt
+/// geladen. Zurückgenommen wird ausschließlich die Datei, die exakt dem
+/// mitgelieferten Stand entspricht – eine selbst getauschte Mod bleibt liegen.
+///
+/// Der Rückgabewert sagt, ob die Instanz verändert wurde.
+pub fn sync_cosmetics_mod(instance_dir: &Path, wanted: bool) -> bool {
+    let mods = instance_dir.join("mods");
+    let target = mods.join(COSMETICS_MOD_FILE);
+
+    if !wanted {
+        let ours = std::fs::read(&target).ok().as_deref() == Some(COSMETICS_MOD_BYTES);
+        return ours && std::fs::remove_file(&target).is_ok();
+    }
+
+    // Eine vorhandene Fremdfassung der Mod bleibt unangetastet.
+    if cosmetics_mod_is_foreign(instance_dir) {
+        return false;
+    }
+
+    if std::fs::read(&target).ok().as_deref() == Some(COSMETICS_MOD_BYTES) {
+        return false;
+    }
+    if std::fs::create_dir_all(&mods).is_err() {
+        return false;
+    }
+    std::fs::write(&target, COSMETICS_MOD_BYTES).is_ok()
+}
+
 /// Ordner, in denen die Electron-Shell ihre Instanzen abgelegt hat.
 ///
 /// Sie schrieb den gewählten Spielordner nach `<config>/bamboo-launcher/root`

@@ -7,7 +7,6 @@ import {
   Camera,
   Sliders,
   UserRound,
-  Sparkles,
 } from "lucide-react";
 import { ThemeType } from "./ParticleBackground";
 import { translations, LanguageType } from "../lib/translations";
@@ -19,8 +18,6 @@ interface SidebarProps {
   setActiveTab: (tab: TabType) => void;
   theme: ThemeType;
   lang: LanguageType;
-  clientMode: boolean;
-  onClientModeChange: (enabled: boolean) => void;
 }
 
 const rowBase = "relative flex h-8 w-full items-center gap-2 rounded-lg border px-2 text-[1.125rem] leading-6 font-medium transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] cursor-pointer";
@@ -45,7 +42,7 @@ const tourTarget = (item: unknown) => {
 
 const navRowClass = (isActive: boolean) => `${rowBase} ${isActive ? rowActive : rowIdle}`;
 
-export const Sidebar = React.memo(function Sidebar({ activeTab, setActiveTab, lang, clientMode, onClientModeChange }: SidebarProps) {
+export const Sidebar = React.memo(function Sidebar({ activeTab, setActiveTab, lang }: SidebarProps) {
   const t = translations[lang];
   const menuItems = buildMenu(t);
 
@@ -81,34 +78,6 @@ export const Sidebar = React.memo(function Sidebar({ activeTab, setActiveTab, la
       </nav>
 
       <div className="w-full px-2 pb-3">
-        <div className="mb-1 flex h-8 items-center justify-between gap-2 px-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <Sparkles
-              className={`h-5 w-5 shrink-0 ${clientMode ? "text-accent" : "text-ink-tertiary"}`}
-              aria-hidden="true"
-            />
-            <span className="sidebar-label truncate text-[1.125rem] leading-6 font-medium text-ink-secondary">
-              Client
-            </span>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={clientMode}
-            aria-label="Bamboo Client"
-            title={clientMode ? "Bamboo Client aktiv" : "Bamboo Client aktivieren"}
-            onClick={() => onClientModeChange(!clientMode)}
-            className={`relative h-[18px] w-8 shrink-0 cursor-pointer rounded-full border transition-colors duration-[var(--t-quick)] ease-[var(--ease-out)] ${
-              clientMode ? "border-accent bg-accent" : "border-hairline bg-hover"
-            }`}
-          >
-            <span
-              className={`absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow-sm transition-[left] duration-[var(--t-quick)] ease-[var(--ease-out)] ${
-                clientMode ? "left-[15px]" : "left-[3px]"
-              }`}
-            />
-          </button>
-        </div>
         <button
           data-tour="nav-settings"
           type="button"

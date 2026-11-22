@@ -920,6 +920,7 @@ h2 .accent { color: var(--green); }
   background: var(--line-2);
 }
 .changelog-list li.new::before { background: var(--green); }
+.changelog-list li.fixed::before { background: var(--amber); }
 .changelog-list strong { color: var(--ink); font-weight: 550; }
 .changelog-list code,
 .old-body code {

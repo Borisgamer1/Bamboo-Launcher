@@ -50,7 +50,9 @@ interface PartSpec {
 
 function partSpecs(slim: boolean): PartSpec[] {
   const armWidth = slim ? 3 : 4
-  const sleeveWidth = slim ? 3.5 : 4
+  // Der Ärmel liegt 0,25 px über der Haut auf jeder Seite; bleibt er bei der
+  // Armbreite, sitzt er nur einseitig versetzt und die Hand wirkt schief.
+  const sleeveWidth = armWidth + 0.5
   return [
     {
       name: 'head',

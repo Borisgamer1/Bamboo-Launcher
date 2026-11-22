@@ -15,6 +15,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import type {
+  CosmeticInstanceStatus,
   CosmeticPreview,
   CosmeticSlot,
   InstalledCosmetic,
@@ -158,6 +159,7 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({
   const [deleteTarget, setDeleteTarget] = useState<InstalledCosmetic | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showInstances, setShowInstances] = useState(false)
+  const [instanceStatus, setInstanceStatus] = useState<CosmeticInstanceStatus[]>([])
 
   const selectionKey = selection
     ? selection.kind === 'installed'
@@ -211,6 +213,22 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({
       cancelled = true
     }
   }, [api])
+
+  // Ohne diese Sicht ist nicht zu erkennen, ob die Pakete im Spiel ankommen:
+  // Bibliothek und Instanzordner sagen nichts über die Mod.
+  useEffect(() => {
+    if (!api || instances.length === 0) return
+    let cancelled = false
+    api
+      .instances()
+      .then((rows) => {
+        if (!cancelled) setInstanceStatus(rows ?? [])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [api, instances.length, showInstances])
 
   useEffect(() => {
     if (!api || !selection) return
@@ -285,6 +303,28 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({
       : de
         ? `${excludedCount} von ${instances.length} ausgeschlossen`
         : `${excludedCount} of ${instances.length} excluded`
+
+  const statusFor = (key: string) => {
+    const wanted = key.toLowerCase()
+    return (
+      instanceStatus.find((status) =>
+        [status.folderName, status.name]
+          .filter((value): value is string => typeof value === 'string' && value.length > 0)
+          .some((value) => value.toLowerCase() === wanted),
+      ) ?? null
+    )
+  }
+
+  const statusText = (key: string): string | null => {
+    const status = statusFor(key)
+    if (!status) return null
+    if (status.excluded) return de ? 'Ausgeschlossen: bekommt keine Pakete' : 'Excluded: receives no packages'
+    if (!status.supported) return de ? 'Cosmetics laufen nur auf 26.3 · Fabric' : 'Cosmetics run on 26.3 · Fabric only'
+    if (status.modForeign) return de ? 'Eigene Cosmiq-Version aktiv' : 'Your own Cosmiq build is active'
+    if (status.modBundled) return de ? 'Mod aktiv, Pakete kommen im Spiel an' : 'Mod active, packages reach the game'
+    if (!status.fabricApi) return de ? 'Fabric API fehlt: Mod wird nicht eingesetzt' : 'Fabric API missing: mod not installed'
+    return de ? 'Mod wird beim nächsten Start eingesetzt' : 'Mod is installed on the next start'
+  }
 
   const setInstanceIncluded = (key: string, included: boolean) => {
     setPreferences((prev) => {
@@ -505,6 +545,11 @@ export const CosmeticsTab: React.FC<CosmeticsTabProps> = ({
                           </span>
                           {key !== instance.name ? (
                             <span className="mt-0.5 block truncate text-micro text-ink-quaternary">{key}</span>
+                          ) : null}
+                          {statusText(key) ? (
+                            <span className="mt-0.5 block truncate text-micro text-ink-tertiary">
+                              {statusText(key)}
+                            </span>
                           ) : null}
                         </span>
                         <Toggle

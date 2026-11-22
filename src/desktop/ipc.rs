@@ -5,9 +5,9 @@
 
 use bamboo_launcher::auth::{self, MicrosoftAuth};
 use bamboo_launcher::backup::{BackupManager, DEFAULT_KEEP};
-use bamboo_launcher::client_mode;
 use bamboo_launcher::config::{self, LauncherSettings, MemorySettings, Resolution};
 use bamboo_launcher::cosmetics;
+use bamboo_launcher::doctor;
 use bamboo_launcher::download::{Downloader as FileDownloader, FileSpec};
 use bamboo_launcher::error::LauncherError;
 use bamboo_launcher::game_settings;
@@ -1674,6 +1674,12 @@ async fn prepare_and_spawn(
         None => (root.clone(), None),
     };
 
+    // Ein Resourcepack im Ordner ist im Spiel nur sichtbar, wenn die
+    // options.txt es auswählt. Der Start ist der Moment, in dem die Datei dem
+    // Spiel gehört – vorher nachtragen, was noch fehlt. Ein Fehler darf den
+    // Start nicht verhindern.
+    let _ = launcher::apply_resource_packs(&working_dir);
+
     // Sprache und Panel-Optionen gelten nur beim allerersten Start der
     // Instanz. Danach gehören die Werte dem Spiel: Was im Spiel geändert wird,
     // bleibt stehen, statt bei jedem Start von den Launcher-Standardwerten
@@ -1772,7 +1778,7 @@ async fn prepare_and_spawn(
         })
         .or(settings.resolution);
 
-    let mut extra_jvm_args: Vec<String> = payload
+    let extra_jvm_args: Vec<String> = payload
         .get("extraJvmArgs")
         .and_then(Value::as_array)
         .map(|args| {
@@ -1782,18 +1788,6 @@ async fn prepare_and_spawn(
                 .collect()
         })
         .unwrap_or_default();
-
-    // Client-Modus gilt nur für Fabric 26.3 und nur für diesen Start. Die Jars
-    // bleiben im Launcher-Ordner; das Spiel liest sie über die Property.
-    // Andere Fabric-Versionen würden den 26.3-Mod sonst als inkompatibel
-    // ablehnen und gar nicht erst starten.
-    if resolved.minecraft_version == "26.3"
-        && version_id.to_ascii_lowercase().contains("fabric")
-    {
-        if let Some(argument) = client_mode::fabric_add_mods_arg(&working_dir.join("mods")) {
-            extra_jvm_args.push(argument);
-        }
-    }
 
     let server = payload
         .get("gameOptions")
@@ -1950,6 +1944,98 @@ pub fn delete_content_file(data: Value) -> bool {
         }
     }
     false
+}
+
+/// Diagnose einer Instanz. Der Bericht ist bewusst Klartext: Die Oberfläche
+/// zeigt ihn unverändert an und bietet nur Aktionen an, die sie wirklich kann.
+#[tauri::command]
+pub fn instance_doctor(data: Value) -> Value {
+    let root = load_rust_settings().game_root;
+    let folder = data.get("folderName").and_then(Value::as_str).unwrap_or("");
+    let Ok(instance) = manager(&root).load(folder) else {
+        return json!({"error": "Instanz nicht gefunden."});
+    };
+    json!(doctor::examine(&root, &instance))
+}
+
+/// Behebt, was der Launcher selbst beheben kann, und liefert den neuen Bericht.
+#[tauri::command]
+pub fn doctor_fix(data: Value) -> Value {
+    let root = load_rust_settings().game_root;
+    let folder = data.get("folderName").and_then(Value::as_str).unwrap_or("");
+    let action = data.get("action").and_then(Value::as_str).unwrap_or("");
+    let Ok(instance) = manager(&root).load(folder) else {
+        return json!({"error": "Instanz nicht gefunden."});
+    };
+    match action {
+        "resource-packs" => {
+            let _ = launcher::apply_resource_packs(&instance.dir);
+        }
+        other => {
+            return json!({"error": format!("Unbekannte Aktion: {other}")});
+        }
+    }
+    json!(doctor::examine(&root, &instance))
+}
+
+/// Schaltet ein Resourcepack in der `options.txt` an oder aus.
+#[tauri::command]
+pub fn set_resource_pack_enabled(data: Value) -> Value {
+    let root = load_rust_settings().game_root;
+    let folder = data.get("folderName").and_then(Value::as_str).unwrap_or("");
+    let Ok(instance_dir) = instance_dir_or(&root, folder) else {
+        return json!({"success": false, "error": "Ungültiger Instanzname."});
+    };
+    let Some(name) = data.get("fileName").and_then(Value::as_str) else {
+        return json!({"success": false, "error": "fileName fehlt"});
+    };
+    let enabled = data.get("enabled").and_then(Value::as_bool).unwrap_or(false);
+    match launcher::set_resource_pack_enabled(&instance_dir, name, enabled) {
+        Ok(changed) => json!({
+            "success": true,
+            "changed": changed,
+            "selected": launcher::selected_resource_packs(&instance_dir),
+        }),
+        Err(error) => json!({"success": false, "error": error.to_string()}),
+    }
+}
+
+/// Wo die Cosmetics-Pakete im Spiel ankommen – pro Instanz.
+///
+/// Ohne diese Sicht ist nicht erkennbar, warum ein Paket in der Bibliothek liegt
+/// und im Spiel trotzdem nichts passiert.
+#[tauri::command]
+pub fn cosmetics_instances() -> Value {
+    let root = load_rust_settings().game_root;
+    let Ok(list) = manager(&root).list() else {
+        return json!([]);
+    };
+    let excluded = cosmetics_excluded_instances();
+    let mut rows = Vec::new();
+    for instance in &list {
+        let version_id = instance_version_id(instance).unwrap_or_default();
+        let content_root = instance_content_root(&root, &instance.dir, &version_id);
+        let minecraft = version::resolve_version(&content_root, &version_id)
+            .ok()
+            .map(|resolved| resolved.minecraft_version);
+        let fabric = version_id.to_ascii_lowercase().contains("fabric");
+        let excluded_here = excluded
+            .iter()
+            .any(|name| name.trim().eq_ignore_ascii_case(instance.name.trim()));
+        rows.push(json!({
+            "folderName": instance.dir.file_name().map(|name| name.to_string_lossy().to_string()),
+            "name": instance.name,
+            "versionId": version_id,
+            "minecraftVersion": minecraft,
+            "fabric": fabric,
+            "excluded": excluded_here,
+            "supported": fabric && minecraft.as_deref() == Some("26.3"),
+            "modBundled": instances::cosmetics_mod_is_bundled(&instance.dir),
+            "modForeign": instances::cosmetics_mod_is_foreign(&instance.dir),
+            "fabricApi": instances::has_fabric_api(&instance.dir),
+        }));
+    }
+    json!(rows)
 }
 
 /// Mehr Hashes pro Anfrage bringt nichts: die Liste ist eine Momentaufnahme
@@ -2573,6 +2659,14 @@ pub async fn install_mod(app: AppHandle, data: Value) -> Value {
     }
     match FileDownloader::new().download_all(vec![spec], |_| {}).await {
         Ok(_) => {
+            // Ressourcenpakete landen im Ordner, aber Minecraft lädt nur, was
+            // in der options.txt steht. Sofort auswählen und für den nächsten
+            // Start vormerken, falls das Spiel gerade läuft und die Datei beim
+            // Beenden überschreibt.
+            if item_type == "resourcepacks" || item_type == "resourcepack" {
+                let _ = launcher::remember_resource_pack(&instance_dir, &filename);
+                let _ = launcher::enable_resource_pack(&instance_dir, &filename);
+            }
             // A download from the browser must update the same ledger the
             // modpack/CLI installer uses. Without this record the file loses
             // its project id on the next app start, which made it show up as
@@ -2667,7 +2761,13 @@ pub async fn upload_local_mod(data: Value) -> Value {
         return json!({"success": false, "error": error.to_string(), "code": "io"});
     }
     match std::fs::copy(&source, dir.join(&name)) {
-        Ok(_) => json!({"success": true, "fileName": name, "itemType": item_type}),
+        Ok(_) => {
+            if item_type == "resourcepacks" || item_type == "resourcepack" {
+                let _ = launcher::remember_resource_pack(&instance_dir, &name);
+                let _ = launcher::enable_resource_pack(&instance_dir, &name);
+            }
+            json!({"success": true, "fileName": name, "itemType": item_type})
+        }
         Err(error) => json!({"success": false, "error": error.to_string(), "code": "io"}),
     }
 }
@@ -2865,7 +2965,31 @@ fn sync_cosmetics_into_instances(root: &Path) -> instances::CosmeticMirrorReport
     let Ok(list) = manager(root).list() else {
         return instances::CosmeticMirrorReport::default();
     };
-    instances::mirror_cosmetic_packages(&list, &cosmetics_dir(), &cosmetics_excluded_instances())
+    let excluded = cosmetics_excluded_instances();
+    let report = instances::mirror_cosmetic_packages(&list, &cosmetics_dir(), &excluded);
+    // Die Pakete allein zeigen im Spiel nichts: erst die Cosmetics-Mod liest
+    // `bamboo/cosmetics`. Sie gehört deshalb in jede 26.3-Fabric-Instanz, die
+    // nicht ausgeschlossen ist – und aus keiner anderen.
+    for instance in &list {
+        let version_id = instance_version_id(instance).unwrap_or_default();
+        let content_root = instance_content_root(root, &instance.dir, &version_id);
+        let minecraft = version::resolve_version(&content_root, &version_id)
+            .ok()
+            .map(|resolved| resolved.minecraft_version);
+        let fabric = version_id.to_ascii_lowercase().contains("fabric");
+        let excluded_here = excluded
+            .iter()
+            .any(|name| name.trim().eq_ignore_ascii_case(instance.name.trim()));
+        // Die Mod verlangt Fabric API. Ohne die Abhängigkeit würde Fabric den
+        // Start mit „missing dependency“ abbrechen – dann lieber gar nicht erst
+        // hineinlegen und die Lücke im Doktor melden.
+        let wanted = fabric
+            && minecraft.as_deref() == Some("26.3")
+            && !excluded_here
+            && instances::has_fabric_api(&instance.dir);
+        instances::sync_cosmetics_mod(&instance.dir, wanted);
+    }
+    report
 }
 
 fn shop_absolute(path: &str) -> String {
@@ -2874,6 +2998,21 @@ fn shop_absolute(path: &str) -> String {
         return path.to_string();
     }
     format!("{SHOP_BASE}{}", path.trim_start_matches("./"))
+}
+
+/// Vorschauen, die im Launcher liegen. Der Katalog nennt fuer einige Pakete
+/// keine Grafik; ohne Bild bliebe in der Liste nur ein Slot-Symbol stehen.
+fn bundled_preview(id: &str) -> Option<String> {
+    const PREVIEWS: &[(&str, &str)] = &[
+        ("bamboo-sticks", "./cosmetics/bamboo-sticks.jpg"),
+        ("furry-ears", "./cosmetics/furry-ears.jpg"),
+        ("furry-tail", "./cosmetics/furry-tail.jpg"),
+        ("strohhut", "./cosmetics/strohhut.jpg"),
+    ];
+    PREVIEWS
+        .iter()
+        .find(|(known, _)| *known == id)
+        .map(|(_, path)| (*path).to_string())
 }
 
 fn shop_items(catalog: &Value) -> Vec<Value> {
@@ -2909,7 +3048,11 @@ fn shop_items(catalog: &Value) -> Vec<Value> {
             "rarity": entry.get("rarity").and_then(Value::as_str).unwrap_or("Common"),
             "slots": slots,
             "file": shop_absolute(file),
-            "image": entry.get("image").and_then(Value::as_str).map(shop_absolute),
+            "image": entry
+                .get("image")
+                .and_then(Value::as_str)
+                .map(shop_absolute)
+                .or_else(|| bundled_preview(id)),
             "remote": true,
         }));
     }

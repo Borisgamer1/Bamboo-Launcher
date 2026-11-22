@@ -631,15 +631,6 @@ export interface LogsApi {
   createSupportBundle(destination: string): Promise<SupportBundleResult>
 }
 
-export interface ClientModeState {
-  enabled: boolean
-}
-
-export interface ClientApi {
-  state(): Promise<ClientModeState | null>
-  setEnabled(enabled: boolean): Promise<ClientModeState | null>
-}
-
 export interface SettingsApi {
   get(): Promise<SettingsSnapshot | null>
   save(settings: SettingsSnapshot): Promise<boolean>
@@ -811,6 +802,38 @@ export interface PreflightDisableResult {
   error?: string
 }
 
+export interface DoctorFinding {
+  code: string
+  severity: 'error' | 'warning' | 'info'
+  title: string
+  detail: string
+  /** `resource-packs` can be fixed by the launcher itself. */
+  action?: string
+}
+
+export interface DoctorReport {
+  instance: string
+  versionId: string
+  minecraftVersion: string | null
+  fabric: boolean
+  findings: DoctorFinding[]
+  error?: string
+}
+
+/** Where the cosmetic packages actually reach the game, per instance. */
+export interface CosmeticInstanceStatus {
+  folderName: string | null
+  name: string
+  versionId: string
+  minecraftVersion: string | null
+  fabric: boolean
+  excluded: boolean
+  supported: boolean
+  modBundled: boolean
+  modForeign: boolean
+  fabricApi: boolean
+}
+
 export interface InstancesApi {
   list(): Promise<CoreInstanceRecord[]>
   /** Actual size on disk; computed when an instance is opened. */
@@ -837,6 +860,15 @@ export interface InstancesApi {
   openBackupsFolder(folderName: string): Promise<{ success: boolean; path?: string; error?: string }>
   repair(data: RepairProfilePayload): Promise<{ success: boolean; error?: string; code?: string }>
   changeVersion(data: ChangeInstanceVersionPayload): Promise<ChangeInstanceVersionResult>
+  /** Text report of everything that keeps installed content from loading. */
+  doctor(folderName: string): Promise<DoctorReport | undefined>
+  doctorFix(data: { folderName: string; action: string }): Promise<DoctorReport | undefined>
+  setResourcePack(data: { folderName: string; fileName: string; enabled: boolean }): Promise<{
+    success: boolean
+    changed?: boolean
+    selected?: string[]
+    error?: string
+  } | undefined>
   updateLaunchSettings(
     folderName: string,
     patch: InstanceLaunchSettingsPatch,
@@ -1124,6 +1156,7 @@ export interface CosmeticsApi {
   shop(): Promise<ShopCatalog | undefined>
   shopPreview(id: string): Promise<CosmeticPreview | undefined>
   install(payload: { id: string }): Promise<InstalledCosmetic[] | undefined>
+  instances(): Promise<CosmeticInstanceStatus[] | undefined>
 }
 
 export interface BambooApi {
@@ -1133,7 +1166,6 @@ export interface BambooApi {
   }
   launch: LaunchApi
   logs: LogsApi
-  client: ClientApi
   settings: SettingsApi
   statistics: StatisticsApi
   instances: InstancesApi

@@ -19,6 +19,34 @@ const SKIN_URL: &str = "https://api.minecraftservices.com/minecraft/profile/skin
 const ACTIVE_SKIN_URL: &str = "https://api.minecraftservices.com/minecraft/profile/skins/active";
 const CAPE_URL: &str = "https://api.minecraftservices.com/minecraft/profile/capes/active";
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile(model: &str) -> Value {
+        serde_json::json!({
+            "skins": [{
+                "state": "ACTIVE",
+                "url": "http://textures.minecraft.net/texture/abc",
+                "metadata": { "model": model }
+            }]
+        })
+    }
+
+    #[test]
+    fn a_slim_skin_from_mojang_is_rendered_as_slim() {
+        assert_eq!(profile_variant(Some(&profile("slim"))).as_deref(), Some("slim"));
+        assert_eq!(profile_variant(Some(&profile("classic"))).as_deref(), Some("classic"));
+    }
+
+    #[test]
+    fn a_missing_model_is_not_a_variant() {
+        let bare = serde_json::json!({ "skins": [{ "state": "ACTIVE", "url": "https://x/y" }] });
+        assert_eq!(profile_variant(Some(&bare)), None);
+        assert_eq!(profile_variant(None), None);
+    }
+}
+
 fn skin_dir() -> PathBuf {
     bamboo_launcher::config::default_config_dir().join("skin")
 }
@@ -31,7 +59,8 @@ fn meta_file() -> PathBuf {
     skin_dir().join("meta.json")
 }
 
-fn variant() -> String {
+/// Die Variante, mit der der lokale Skin gespeichert wurde.
+fn local_variant() -> Option<String> {
     ipc::read_json(&meta_file())
         .and_then(|meta| {
             meta.get("variant")
@@ -39,7 +68,24 @@ fn variant() -> String {
                 .map(str::to_string)
         })
         .filter(|value| value == "slim" || value == "classic")
-        .unwrap_or_else(|| "classic".to_string())
+}
+
+/// Die Variante, die Mojang für den aktiven Skin meldet (`metadata.model`).
+///
+/// Ohne diesen Blick war jeder Account ohne lokal gespeicherten Skin "classic".
+/// Ein Slim-Skin wurde dann mit 4 Pixel breiten Armen gerendert – die Hände und
+/// Ärmel sahen dadurch falsch aus.
+fn profile_variant(profile: Option<&Value>) -> Option<String> {
+    let model = profile
+        .and_then(active_skin)
+        .and_then(|skin| skin.get("metadata"))
+        .and_then(|meta| meta.get("model"))
+        .and_then(Value::as_str)?;
+    Some(if model.eq_ignore_ascii_case("slim") {
+        "slim".to_string()
+    } else {
+        "classic".to_string()
+    })
 }
 
 fn local_skin_url() -> Option<String> {
@@ -114,7 +160,13 @@ fn skin_texture_url(skin: &Value) -> Option<String> {
 
 fn snapshot_with(profile: Option<&Value>) -> Value {
     let session = session();
-    let variant = variant();
+    // Ein lokal gespeicherter Skin kennt seine Variante selbst; sonst gilt, was
+    // Mojang zum aktiven Skin sagt.
+    let local_variant = local_variant();
+    let variant = local_variant
+        .clone()
+        .or_else(|| profile_variant(profile))
+        .unwrap_or_else(|| "classic".to_string());
     let local = local_skin_url();
     let profile_skin = profile.and_then(active_skin);
 
@@ -371,7 +423,12 @@ pub async fn skins_apply() -> Value {
     if !png_ok(&bytes) {
         return current().await;
     }
-    let (content_type, body) = multipart_skin(&bytes, &variant());
+    let (content_type, body) = multipart_skin(
+        &bytes,
+        local_variant()
+            .unwrap_or_else(|| "classic".to_string())
+            .as_str(),
+    );
     if let Ok(client) = client() {
         let _ = client
             .post(SKIN_URL)

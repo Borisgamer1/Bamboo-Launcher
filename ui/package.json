@@ -2,7 +2,7 @@
   "name": "bamboo-launcher-ui",
   "private": true,
   "author": "Borisgamer",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "type": "module",
   "scripts": {
     "dev": "vite",

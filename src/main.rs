@@ -1,6 +1,7 @@
 use bamboo_launcher::auth::MicrosoftAuth;
 use bamboo_launcher::config::{self, LauncherSettings};
 use bamboo_launcher::download::Downloader;
+use bamboo_launcher::doctor;
 use bamboo_launcher::install::{
     InstallEvent, InstallOptions, InstallReport, InstallStep, Installer, RepairReport,
 };
@@ -139,6 +140,14 @@ async fn main() -> anyhow::Result<()> {
                 .repair_version(&settings.game_root, version_id, progress_printer())
                 .await?;
             print_repair_report(&report);
+            Ok(())
+        }
+        "doctor" => {
+            run_doctor(
+                &game_root,
+                args.get(1).map(String::as_str),
+                has_flag(&args, "--fix"),
+            );
             Ok(())
         }
         "plan" => {
@@ -740,6 +749,81 @@ fn print_loader_install(installed: &LoaderInstall) {
     }
 }
 
+fn run_doctor(game_root: &Path, only: Option<&str>, fix: bool) {
+    let manager = InstanceManager::new(game_root.join("instances"));
+    let instances = match only {
+        Some(name) => match manager.load(name) {
+            Ok(instance) => vec![instance],
+            Err(error) => {
+                println!("Instanz '{name}' nicht gefunden: {error}");
+                return;
+            }
+        },
+        None => match manager.list() {
+            Ok(instances) => instances,
+            Err(error) => {
+                println!("Fehler: {error}");
+                return;
+            }
+        },
+    };
+    if instances.is_empty() {
+        println!("Keine Instanzen angelegt.");
+        return;
+    }
+
+    for instance in instances {
+        let mut report = doctor::examine(game_root, &instance);
+        if fix
+            && report
+                .findings
+                .iter()
+                .any(|finding| finding.action.as_deref() == Some("resource-packs"))
+        {
+            match launcher::apply_resource_packs(&instance.dir) {
+                Ok(0) => println!("[doctor] {}: keine Resourcepacks zum Auswählen", report.instance),
+                Ok(count) => println!(
+                    "[doctor] {}: {count} Resourcepack(s) ausgewählt",
+                    report.instance
+                ),
+                Err(error) => println!(
+                    "[doctor] {}: Resourcepacks nicht ausgewählt: {error}",
+                    report.instance
+                ),
+            }
+            report = doctor::examine(game_root, &instance);
+        }
+
+        let version = report
+            .minecraft_version
+            .clone()
+            .unwrap_or_else(|| report.version_id.clone());
+        println!(
+            "\n{}  ({}{})",
+            report.instance,
+            if version.is_empty() {
+                "ohne Version"
+            } else {
+                version.as_str()
+            },
+            if report.fabric { " · Fabric" } else { "" }
+        );
+        if report.findings.is_empty() {
+            println!("  Alles in Ordnung.");
+            continue;
+        }
+        for finding in &report.findings {
+            let tag = match finding.severity {
+                doctor::Severity::Error => "Fehler",
+                doctor::Severity::Warning => "Hinweis",
+                doctor::Severity::Info => "Info",
+            };
+            println!("  [{tag}] {}", finding.title);
+            println!("     {}", finding.detail);
+        }
+    }
+}
+
 fn list_instances(game_root: &Path) {
     let manager = InstanceManager::new(game_root.join("instances"));
     match manager.list() {
@@ -1290,6 +1374,7 @@ fn print_help() {
     println!("  versions                      Installierte Minecraft-Versionen auflisten");
     println!("  instances                     Angelegte Instanzen auflisten");
     println!("  instances create <n> <ver>    Neue Instanz anlegen (--loader …)");
+    println!("  doctor [instanz]              Prüfen, was installiert ist, aber nicht lädt (--fix)");
     println!("  loader install <mc>           Loader-Profil installieren (Fabric, Forge, NeoForge, Quilt)");
     println!("  loader update [<mc>]          Loader-Profile aktualisieren (--dry-run)");
     println!("  mods <instanz>                Mods einer Instanz auflisten");

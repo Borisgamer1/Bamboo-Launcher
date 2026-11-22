@@ -6,9 +6,9 @@
 
 pub mod auth;
 pub mod backup;
-pub mod client_mode;
 pub mod config;
 pub mod cosmetics;
+pub mod doctor;
 pub mod download;
 pub mod error;
 pub mod foreign_instance;

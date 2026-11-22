@@ -7,6 +7,44 @@ version, so every release needs a block here in **both** languages.
 Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 `New` / `Better` / `Fixed` / `Removed` for English.
 
+## 0.2.9 - 2026-11-22
+
+### Neu
+
+- **Vorschaubilder für alle Cosmetics:** Bamboo Sticks, Furry Ears, Furry Tail und Strohhut zeigen im Shop und in der Bibliothek ein eigenes Bild statt eines Platzhalters. Die Bilder liegen im Launcher und brauchen keinen Katalog vom Server.
+- **Instanz-Doktor:** In den Instanz-Einstellungen steht jetzt ein Bericht: fehlende Basisversion, Mods ohne Loader, fehlende Fabric API, doppelte Mods, Cosmetics-Mod nicht vorhanden und Resourcepacks, die im Ordner liegen, aber nicht ausgewählt sind. Wo der Launcher helfen kann, steht ein Knopf daneben.
+- **Cosmetics-Status pro Instanz:** Die Cosmetics-Ansicht zeigt für jede Instanz, ob die Mod aktiv ist, noch eingesetzt wird, wegen fehlender Fabric API nicht läuft oder weil die Instanz ausgeschlossen bzw. keine 26.3-Fabric-Instanz ist.
+
+### Behoben
+
+- **Resourcepacks kommen im Spiel an:** Ein heruntergeladenes oder selbst hochgeladenes Paket landet in `resourcepacks/`, wurde aber nie in der `options.txt` ausgewählt – deshalb war es im Spiel nicht zu sehen. Der Launcher trägt es jetzt beim Installieren und beim nächsten Start ein, auch wenn das Paket für eine andere Pack-Version gebaut wurde.
+- **Vorhandene Pakete werden einmalig übernommen:** Instanzen, die schon Pakete im Ordner hatten, bekommen sie beim nächsten Start einmalig ausgewählt. Danach gilt die Auswahl im Spiel: Was dort abgewählt wird, bleibt abgewählt.
+- **Slim-Skins werden richtig gerendert:** Die Skin-Variante kam bisher nur aus einer lokalen Datei; was Mojang zum aktiven Skin meldet, wurde ignoriert. Ein Slim-Skin lief deshalb als Classic-Modell, und Arme und Hände saßen falsch. Jetzt zählt Mojangs Angabe, und der Ärmel-Overlay liegt gleichmäßig auf beiden Seiten auf.
+- **Cosmetics sind sofort da:** Die Cosmetics-Mod wird jetzt mit dem Launcher ausgeliefert und automatisch in jede 26.3-Fabric-Instanz gelegt, die nicht ausgeschlossen ist. Vorher lagen nur die Pakete im Ordner, im Spiel hat sie niemand geladen. Eine selbst installierte Cosmiq-Fassung gewinnt und bleibt unangetastet.
+- **Cosmetics-Mod braucht Fabric API:** Die Mod hängt von Fabric API ab. Der Launcher setzt sie deshalb nur noch in Instanzen ein, in denen Fabric API liegt – sonst hätte Fabric die Mod beim Start mit einem Ladefehler quittiert.
+
+### Entfernt
+
+- **Bamboo Client ist wieder raus:** Der Schalter in der Sidebar, die Client-Module und die mitgelieferten Client-Jars sind entfernt. Der Launcher konzentriert sich wieder auf Instanzen, Mods und Bamboo Cosmetics.
+
+### New
+
+- **Preview pictures for every cosmetic:** Bamboo Sticks, Furry Ears, Furry Tail and Strohhut show their own artwork in the shop and library instead of a placeholder. The images ship with the launcher and do not need a catalog from the server.
+- **Instance doctor:** The instance settings now include a report: missing base version, mods without a loader, missing Fabric API, duplicate mods, cosmetics mod not installed, and resource packs that sit in the folder without being selected. Where the launcher can help, a button sits next to the finding.
+- **Cosmetics status per instance:** The cosmetics view shows for every instance whether the mod is active, will be installed on the next start, is blocked by a missing Fabric API, or the instance is excluded or not a 26.3 Fabric instance.
+
+### Fixed
+
+- **Resource packs reach the game:** a downloaded or uploaded pack lands in `resourcepacks/` but was never selected in `options.txt`, so the game never showed it. The launcher now selects it on install and on the next start, including packs built for another pack format.
+- **Existing packs are adopted once:** instances that already had packs in the folder get them selected once on the next start. After that the in-game choice wins: a pack you switch off there stays off.
+- **Slim skins render correctly:** the skin variant only came from a local file; what Mojang reports for the active skin was ignored. A slim skin therefore ran as a classic model, with arms and hands in the wrong place. Mojang's value wins now, and the sleeve overlay sits evenly on both sides.
+- **Cosmetics are there right away:** the cosmetics mod now ships with the launcher and is placed into every 26.3 Fabric instance that is not excluded. Before, only the packages were in the folder and nothing loaded them in game. A Cosmiq build you installed yourself wins and is never touched.
+- **Cosmetics mod needs Fabric API:** the mod depends on Fabric API, so the launcher only places it into instances that have Fabric API installed – otherwise Fabric would fail to load it at startup.
+
+### Removed
+
+- **The Bamboo Client is gone again:** the sidebar switch, the client modules and the bundled client jars are removed. The launcher is back to instances, mods and Bamboo Cosmetics.
+
 ## 0.2.8 - 2026-11-22
 
 ### Behoben

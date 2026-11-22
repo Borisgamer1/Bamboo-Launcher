@@ -3,7 +3,6 @@
 //! Split by area so `ipc.rs` stays about settings, launch and content.
 
 pub mod backups;
-pub mod client;
 pub mod diagnostics;
 pub mod external_import;
 pub mod instances_extra;

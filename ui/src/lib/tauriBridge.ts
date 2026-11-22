@@ -117,12 +117,6 @@ const bridge = {
       call('logs_support_bundle', { destination }),
   },
 
-  client: {
-    state: () => call<{ enabled: boolean }>('client_state'),
-    setEnabled: (enabled: boolean) =>
-      call<{ enabled: boolean }>('client_set_enabled', { enabled }),
-  },
-
   settings: {
     get: () => call<Record<string, unknown>>('get_settings'),
     save: (settings: unknown) => call<boolean>('save_settings', { settings }),
@@ -160,6 +154,10 @@ const bridge = {
     deleteBackup: (data: unknown) => call('delete_backup', { data }),
     openBackupsFolder: (folderName: string) => call('open_backups_folder', { folderName }),
     repair: (data: unknown) => call('repair_instance', { data }),
+    doctor: (folderName: string) => call('instance_doctor', { data: { folderName } }),
+    doctorFix: (data: { folderName: string; action: string }) => call('doctor_fix', { data }),
+    setResourcePack: (data: { folderName: string; fileName: string; enabled: boolean }) =>
+      call('set_resource_pack_enabled', { data }),
     changeVersion: (data: unknown) => call('change_instance_version', { data }),
     updateLaunchSettings: (folderName: string, patch: unknown) =>
       call('update_launch_settings', { folderName, patch }),
@@ -244,6 +242,7 @@ const bridge = {
     shop: () => call('cosmetics_shop'),
     shopPreview: (id: string) => call('cosmetics_shop_preview', { id }),
     install: (payload?: unknown) => call('cosmetics_install', { data: payload }),
+    instances: () => call('cosmetics_instances'),
   },
 
   window: {

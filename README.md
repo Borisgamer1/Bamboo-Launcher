@@ -29,11 +29,28 @@ wenn die Oberfläche schon läuft.
 cargo test                          # Kern- und Integrationstests
 npm --prefix ui run check:bridge    # Brücke gegen alle Tauri-Commands
 npm --prefix ui run build           # Typecheck + Produktions-Build
+node scripts/verify-release.mjs v0.2.9   # Ein veröffentlichtes Release prüfen
 ```
 
 `check:bridge` vergleicht jeden `invoke`-Aufruf mit der Rust-Signatur. Fehlt ein
 Pflichtargument, schlägt der Lauf fehl – genau dieser Fehler hat schon
 Server-Ping und Crash-Analyse lahmgelegt.
+
+`verify-release.mjs` liest `latest.json`, prüft die Download-URLs, vergleicht
+die Signatur-Key-ID mit `tauri.conf.json` und rechnet auf Wunsch jede Zeile aus
+`SHA256SUMS.txt` nach (`--skip-checksums` überspringt die Downloads). Der
+Release-Workflow ruft es nach dem Hochladen selbst auf.
+
+## Diagnose
+
+Wenn etwas installiert ist und trotzdem nicht im Spiel wirkt, sagt der Doktor,
+warum – dieselbe Prüfung wie im Fenster unter Instanz-Einstellungen:
+
+```bash
+cargo run --bin bamboo-launcher -- doctor            # alle Instanzen
+cargo run --bin bamboo-launcher -- doctor Profil     # eine Instanz
+cargo run --bin bamboo-launcher -- doctor --fix      # Resourcepacks auswählen
+```
 
 ## Aufbau
 
@@ -45,7 +62,7 @@ Server-Ping und Crash-Analyse lahmgelegt.
 | `tests/` | Integrationstests gegen lokale Mock-Server, keine echten Konten nötig |
 | `ui/` | React 19, Vite, Tailwind 4; `ui/src/lib/tauriBridge.ts` bildet die alte Electron-API auf Tauri ab |
 | `BambooCosmetics/` | Katalog und Pakete des Kosmetik-Shops |
-| `docs/` | Migrations- und Cosmiq-Notizen |
+| `docs/` | Migrations- und Cosmiq-Notizen, `THIRD_PARTY_NOTICES.md` |
 
 ## Daten
 
@@ -109,7 +126,7 @@ passen.
 Der normale Weg ist ein Tag: [`.github/workflows/release.yml`](.github/workflows/release.yml)
 baut auf GitHub Windows, macOS (universal) und Linux, hängt alle Pakete samt
 `.sig` an das Release des Tags und schreibt am Ende `latest.json` aus den
-hochgeladenen Dateien. Ein Push von `v0.2.7` veröffentlicht also alles, was der
+hochgeladenen Dateien. Ein Push von `v0.2.9` veröffentlicht also alles, was der
 Updater braucht.
 
 Dafür muss im Repository unter *Settings → Secrets and variables → Actions* der

@@ -440,6 +440,205 @@ pub fn apply_fullscreen(game_dir: &Path, fullscreen: bool) -> Result<()> {
     apply_options(game_dir, &[("fullscreen", value.to_string())])
 }
 
+/// Ordner mit den Resourcepacks der Instanz.
+const RESOURCE_PACKS_DIR: &str = "resourcepacks";
+
+/// Merkzettel für Pakete, die der Launcher abgelegt hat, aber noch nicht in der
+/// `options.txt` ausgewählt sind. Das Spiel schreibt die Datei beim Beenden neu
+/// und würde einen einmalig gesetzten Eintrag wieder verlieren.
+fn pending_resource_packs_path(game_dir: &Path) -> PathBuf {
+    game_dir.join("bamboo").join("resource-packs.json")
+}
+
+/// Liest eine Liste wie `resourcePacks:["vanilla","file/Pack.zip"]`.
+fn option_list(options: &str, key: &str) -> Option<Vec<String>> {
+    let prefix = format!("{key}:");
+    options
+        .lines()
+        .find_map(|line| line.strip_prefix(&prefix))
+        .and_then(|value| serde_json::from_str::<Vec<String>>(value.trim()).ok())
+}
+
+fn pending_resource_packs(game_dir: &Path) -> Vec<String> {
+    std::fs::read_to_string(pending_resource_packs_path(game_dir))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn write_pending_resource_packs(game_dir: &Path, names: &[String]) -> Result<()> {
+    let path = pending_resource_packs_path(game_dir);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let raw = serde_json::to_string(names).unwrap_or_else(|_| "[]".to_string());
+    std::fs::write(path, raw)?;
+    Ok(())
+}
+
+/// Merkt ein frisch installiertes Resourcepack vor.
+///
+/// Ein Paket im Ordner allein genügt nicht: Minecraft lädt nur, was in der
+/// `options.txt` unter `resourcePacks` steht. Ohne diesen Eintrag bleibt ein
+/// heruntergeladenes Paket im Spiel unsichtbar.
+pub fn remember_resource_pack(game_dir: &Path, file_name: &str) -> Result<()> {
+    let name = file_name.trim();
+    if name.is_empty() {
+        return Ok(());
+    }
+    let mut names = pending_resource_packs(game_dir);
+    if names.iter().any(|known| known == name) {
+        return Ok(());
+    }
+    names.push(name.to_string());
+    write_pending_resource_packs(game_dir, &names)
+}
+
+/// Setzt ein Resourcepack in die Auswahl der `options.txt`.
+///
+/// Das Format des Spiels ist `file/<Dateiname>` für Pakete aus dem Ordner. Ein
+/// Formatwechsel (älteres oder neueres Paket) führt bei Minecraft nur zur
+/// Warnung, nicht zum Laden – deshalb steht das Paket zusätzlich in
+/// `incompatibleResourcePacks`. `Ok(false)` heißt: war schon ausgewählt.
+pub fn enable_resource_pack(game_dir: &Path, file_name: &str) -> Result<bool> {
+    let name = file_name.trim();
+    if name.is_empty() {
+        return Ok(false);
+    }
+    let id = format!("file/{name}");
+    let options_path = game_dir.join("options.txt");
+    let existing = std::fs::read_to_string(&options_path).unwrap_or_default();
+    let mut packs = option_list(&existing, "resourcePacks")
+        .unwrap_or_else(|| vec!["vanilla".to_string()]);
+    let mut incompatible = option_list(&existing, "incompatibleResourcePacks").unwrap_or_default();
+    let mut changed = false;
+    if !packs.iter().any(|pack| pack == &id) {
+        packs.push(id.clone());
+        changed = true;
+    }
+    if !incompatible.iter().any(|pack| pack == &id) {
+        incompatible.push(id);
+        changed = true;
+    }
+    if !changed {
+        return Ok(false);
+    }
+    let packs = serde_json::to_string(&packs).unwrap_or_else(|_| "[\"vanilla\"]".to_string());
+    let incompatible =
+        serde_json::to_string(&incompatible).unwrap_or_else(|_| "[]".to_string());
+    apply_options(
+        game_dir,
+        &[
+            ("resourcePacks", packs),
+            ("incompatibleResourcePacks", incompatible),
+        ],
+    )?;
+    Ok(true)
+}
+
+/// Die in der `options.txt` gewählten Pakete, roh als `file/…` bzw. `vanilla`.
+pub fn selected_resource_packs(game_dir: &Path) -> Vec<String> {
+    let options = std::fs::read_to_string(game_dir.join("options.txt")).unwrap_or_default();
+    option_list(&options, "resourcePacks").unwrap_or_default()
+}
+
+/// Schaltet ein Resourcepack in der Auswahl an oder aus.
+pub fn set_resource_pack_enabled(
+    game_dir: &Path,
+    file_name: &str,
+    enabled: bool,
+) -> Result<bool> {
+    if enabled {
+        return enable_resource_pack(game_dir, file_name);
+    }
+    let name = file_name.trim();
+    if name.is_empty() {
+        return Ok(false);
+    }
+    let id = format!("file/{name}");
+    let options = std::fs::read_to_string(game_dir.join("options.txt")).unwrap_or_default();
+    let mut packs = option_list(&options, "resourcePacks")
+        .unwrap_or_else(|| vec!["vanilla".to_string()]);
+    let had = packs.iter().any(|pack| pack == &id);
+    packs.retain(|pack| pack != &id);
+    let mut incompatible = option_list(&options, "incompatibleResourcePacks").unwrap_or_default();
+    let had_incompatible = incompatible.iter().any(|pack| pack == &id);
+    incompatible.retain(|pack| pack != &id);
+    if !had && !had_incompatible {
+        return Ok(false);
+    }
+    let packs = serde_json::to_string(&packs).unwrap_or_else(|_| "[\"vanilla\"]".to_string());
+    let incompatible =
+        serde_json::to_string(&incompatible).unwrap_or_else(|_| "[]".to_string());
+    apply_options(
+        game_dir,
+        &[
+            ("resourcePacks", packs),
+            ("incompatibleResourcePacks", incompatible),
+        ],
+    )?;
+    Ok(true)
+}
+
+fn resource_pack_files(dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|entry| entry.path().is_file())
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .filter(|name| name.to_ascii_lowercase().ends_with(".zip"))
+        .collect();
+    names.sort_by_key(|name| name.to_lowercase());
+    names
+}
+
+/// Marker: Die vorhandenen Pakete der Instanz wurden einmal ausgewählt.
+const RESOURCE_PACKS_MARKER: &str = ".bamboo-resourcepacks-migrated";
+
+/// Holt Resourcepacks in die Auswahl, die sonst nie im Spiel ankommen.
+///
+/// Zwei Fälle: vorbereitete Pakete aus dem Merkzettel (Installation während das
+/// Spiel lief) und – einmalig pro Instanz – Pakete, die schon im Ordner lagen,
+/// ohne dass die `options.txt` je eines davon nannte. Danach gilt die Auswahl
+/// des Spielers: was er im Spiel abwählt, bleibt abgewählt.
+pub fn apply_resource_packs(game_dir: &Path) -> Result<usize> {
+    let mut selected = 0;
+    let packs_dir = game_dir.join(RESOURCE_PACKS_DIR);
+
+    let pending = pending_resource_packs(game_dir);
+    if !pending.is_empty() {
+        let mut remaining = Vec::new();
+        for name in pending {
+            if packs_dir.join(&name).is_file() {
+                if enable_resource_pack(game_dir, &name)? {
+                    selected += 1;
+                }
+            } else {
+                remaining.push(name);
+            }
+        }
+        write_pending_resource_packs(game_dir, &remaining)?;
+    }
+
+    if !game_dir.join(RESOURCE_PACKS_MARKER).is_file() {
+        let existing = std::fs::read_to_string(game_dir.join("options.txt")).unwrap_or_default();
+        let already_chosen = option_list(&existing, "resourcePacks")
+            .is_some_and(|packs| packs.iter().any(|pack| pack.starts_with("file/")));
+        if !already_chosen {
+            for name in resource_pack_files(&packs_dir) {
+                if enable_resource_pack(game_dir, &name)? {
+                    selected += 1;
+                }
+            }
+        }
+        let _ = std::fs::write(game_dir.join(RESOURCE_PACKS_MARKER), b"1\n");
+    }
+
+    Ok(selected)
+}
+
 /// Schreibt Werte in die `options.txt` des Spielverzeichnisses und, wenn das
 /// Modpack YOSBR nutzt, auch in dessen Vorgabedatei – die wird beim Start über
 /// die `options.txt` kopiert und würde die Werte sonst überschreiben.
@@ -864,6 +1063,39 @@ mod tests {
         apply_language(dir.path(), "fr_fr").unwrap();
         let body = std::fs::read_to_string(dir.path().join("options.txt")).unwrap();
         assert_eq!(body, "fov:0.5\nlang:fr_fr\nrenderDistance:12\n");
+    }
+
+    #[test]
+    fn a_new_resource_pack_is_selected_and_kept_compatible() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("resourcepacks")).unwrap();
+        std::fs::write(dir.path().join("resourcepacks/Unique Dark Redefined.zip"), b"pk").unwrap();
+        std::fs::write(dir.path().join("options.txt"), "fov:0.5\nresourcePacks:[\"vanilla\"]\n").unwrap();
+
+        remember_resource_pack(dir.path(), "Unique Dark Redefined.zip").unwrap();
+        assert_eq!(apply_resource_packs(dir.path()).unwrap(), 1);
+
+        let body = std::fs::read_to_string(dir.path().join("options.txt")).unwrap();
+        assert!(body.contains("resourcePacks:[\"vanilla\",\"file/Unique Dark Redefined.zip\"]"));
+        assert!(body.contains("incompatibleResourcePacks:[\"file/Unique Dark Redefined.zip\"]"));
+        assert!(body.contains("fov:0.5"));
+
+        // Der Merkzettel ist abgearbeitet: ein zweiter Start wählt nichts neu.
+        assert_eq!(apply_resource_packs(dir.path()).unwrap(), 0);
+    }
+
+    #[test]
+    fn existing_packs_are_selected_once_even_if_the_game_never_saw_them() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("resourcepacks")).unwrap();
+        std::fs::write(dir.path().join("resourcepacks/Dark.zip"), b"pk").unwrap();
+        std::fs::write(dir.path().join("options.txt"), "resourcePacks:[\"vanilla\"]\n").unwrap();
+
+        assert_eq!(apply_resource_packs(dir.path()).unwrap(), 1);
+
+        // Im Spiel abgewählt: die Auswahl bleibt danach dem Spieler überlassen.
+        std::fs::write(dir.path().join("options.txt"), "resourcePacks:[\"vanilla\"]\n").unwrap();
+        assert_eq!(apply_resource_packs(dir.path()).unwrap(), 0);
     }
 
     #[test]
