@@ -5,7 +5,7 @@
 //! zusätzlich in die Instanz geschrieben. Server, die nur im Spiel eingetragen
 //! wurden, bleiben dabei erhalten.
 
-use crate::error::Result;
+use crate::error::{LauncherError, Result};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -30,18 +30,21 @@ pub struct SyncReport {
     pub kept: usize,
 }
 
-/// Liest die Serverliste. Eine fehlende oder beschädigte Datei ergibt eine
-/// leere Liste; der nächste Schreibvorgang ersetzt sie dann vollständig.
-pub fn read(path: &Path) -> Vec<ServerEntry> {
-    let Ok(file) = std::fs::File::open(path) else {
-        return Vec::new();
+/// Liest die Serverliste. Nur eine fehlende Datei gilt als leer; eine
+/// vorhandene, aber unlesbare wird als Fehler gemeldet. Sie darf nicht als
+/// leere Liste durchgehen, sonst überschreibt der nächste Abgleich die Server,
+/// die der Nutzer im Spiel eingetragen hat.
+pub fn read(path: &Path) -> Result<Vec<ServerEntry>> {
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
     };
-    let mut decoder = GzDecoder::new(file);
     let mut data = Vec::new();
-    if decoder.read_to_end(&mut data).is_err() {
-        return Vec::new();
+    if GzDecoder::new(file).read_to_end(&mut data).is_err() {
+        return Err(LauncherError::ServersDatUnreadable(path.to_path_buf()));
     }
-    parse(&data).unwrap_or_default()
+    parse(&data).ok_or_else(|| LauncherError::ServersDatUnreadable(path.to_path_buf()))
 }
 
 /// Ergänzt die Launcher-Server in der bestehenden Liste. Gleiche IP zählt als
@@ -74,7 +77,8 @@ pub fn merge(mut existing: Vec<ServerEntry>, launcher: &[ServerEntry]) -> Vec<Se
 
 /// Schreibt die Liste und meldet, wie viele Einträge übernommen wurden.
 pub fn sync(path: &Path, launcher: &[ServerEntry]) -> Result<SyncReport> {
-    let existing = read(path);
+    // Bricht hier ab, wenn die Datei unlesbar ist: dann bleibt sie unangetastet.
+    let existing = read(path)?;
     let kept = existing
         .iter()
         .filter(|entry| {
@@ -351,7 +355,7 @@ mod tests {
         let path = dir.path().join(FILE_NAME);
         assert_eq!(write(&path, &sample()).unwrap(), 2);
 
-        let mut read_back = read(&path);
+        let mut read_back = read(&path).unwrap();
         read_back.sort_by(|left, right| left.ip.cmp(&right.ip));
         assert_eq!(read_back.len(), 2);
         assert_eq!(read_back[0].name, "Welt 🌍");
@@ -376,7 +380,7 @@ mod tests {
         assert_eq!(report.written, 3);
         assert_eq!(report.kept, 1);
 
-        let entries = read(&path);
+        let entries = read(&path).unwrap();
         assert!(entries
             .iter()
             .any(|entry| entry.ip == "game-only.example" && entry.name == "Nur im Spiel"));
@@ -405,25 +409,52 @@ mod tests {
         )
         .unwrap();
 
-        let entries = read(&path);
+        let entries = read(&path).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "Neu");
     }
 
     #[test]
-    fn missing_or_corrupt_file_starts_empty() {
+    fn missing_file_starts_empty_and_parent_dirs_are_created() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(FILE_NAME);
-        assert!(read(&path).is_empty());
-
-        std::fs::write(&path, b"not gzip").unwrap();
-        assert!(read(&path).is_empty());
+        assert!(read(&path).unwrap().is_empty());
 
         std::fs::create_dir_all(dir.path().join("sub")).unwrap();
         let nested = dir.path().join("sub").join(FILE_NAME);
         let report = sync(&nested, &sample()).unwrap();
         assert_eq!(report.written, 2);
         assert!(nested.is_file());
+    }
+
+    #[test]
+    fn unreadable_file_is_not_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Kein gzip: das Spiel hat die Datei zerstört oder ein fremdes Programm
+        // hat sie angelegt.
+        let path = dir.path().join(FILE_NAME);
+        let broken = b"not gzip at all".to_vec();
+        std::fs::write(&path, &broken).unwrap();
+        assert!(matches!(
+            read(&path),
+            Err(LauncherError::ServersDatUnreadable(_))
+        ));
+        assert!(sync(&path, &sample()).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), broken);
+
+        // Gültiges gzip, aber abgeschnittenes NBT.
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(b"\x0a\x00\x00").unwrap();
+        let truncated = encoder.finish().unwrap();
+        let path = dir.path().join("truncated.dat");
+        std::fs::write(&path, &truncated).unwrap();
+        assert!(matches!(
+            read(&path),
+            Err(LauncherError::ServersDatUnreadable(_))
+        ));
+        assert!(sync(&path, &sample()).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), truncated);
     }
 
     #[test]
@@ -441,6 +472,6 @@ mod tests {
             },
         ];
         assert_eq!(write(&path, &entries).unwrap(), 1);
-        assert_eq!(read(&path).len(), 1);
+        assert_eq!(read(&path).unwrap().len(), 1);
     }
 }

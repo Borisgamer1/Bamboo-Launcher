@@ -293,6 +293,12 @@ export const ScreenshotsView: React.FC<ScreenshotsViewProps> = ({ lang }) => {
                     {screenshotDate(sc.date, lang)}
                   </span>
                 </div>
+
+                {sc.instance ? (
+                  <span className="absolute left-3 top-3 max-w-[calc(100%-24px)] truncate rounded-md border border-white/10 bg-black/55 px-2 py-1 text-micro font-medium text-white/85 backdrop-blur-sm">
+                    {sc.instance}
+                  </span>
+                ) : null}
               </div>
             </motion.div>
           ))}
@@ -355,11 +361,25 @@ export const ScreenshotsView: React.FC<ScreenshotsViewProps> = ({ lang }) => {
                   {screenshotDate(screenshots[lightboxIndex].date, lang, true)}
                 </h3>
                 <span className="text-small text-ink-secondary">
+                  {screenshots[lightboxIndex].instance
+                    ? `${screenshots[lightboxIndex].instance} · `
+                    : ''}
                   {screenshots[lightboxIndex].dimensions} • {screenshots[lightboxIndex].sizeStr}
                 </span>
               </div>
 
               <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void window.electronAPI?.dialogs.showItem?.(screenshots[lightboxIndex].absolutePath);
+                  }}
+                  className="bg-surface hover:bg-hover border border-stroke p-2.5 rounded-xl text-ink-secondary hover:text-ink transition-colors cursor-pointer flex items-center gap-1.5 text-small font-medium"
+                  title={lang === "de" ? "Im Ordner anzeigen" : "Show in folder"}
+                >
+                  <FolderOpen className="w-4 h-4" />
+                  {lang === "de" ? "Im Ordner" : "In folder"}
+                </button>
                 <button
                   onClick={(e) => handleCopyPath(screenshots[lightboxIndex], e)}
                   className="bg-surface hover:bg-hover border border-stroke p-2.5 rounded-xl text-ink-secondary hover:text-ink transition-colors cursor-pointer flex items-center gap-1.5 text-small font-medium"

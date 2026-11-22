@@ -53,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
-        "mods" => mods_command(&game_root, &settings, &args).await,
+        "mods" => mods_command(&game_root, &args).await,
         "modpacks" => {
             if args.get(1).map(String::as_str) == Some("import") {
                 import_modpack_command(&game_root, &settings, &args).await;
@@ -215,15 +215,29 @@ async fn prepare(
             .unwrap_or_else(|| Account::offline(OFFLINE_USER)),
     };
 
-    let resolved = version::resolve_version(game_root, version_id)?;
-    if require_java && !resolved.client_jar.is_file() {
-        anyhow::bail!(
-            "Version '{}' ist noch nicht installiert ({} fehlt). Führe zuerst `bamboo-launcher install {}` aus.",
-            version_id,
-            resolved.client_jar.display(),
-            version_id
-        );
-    }
+    // Fehlt die Basisversion beim Start, lädt der Launcher sie nach, statt den
+    // Start mit „nicht installiert“ abzulehnen.
+    let resolved = match version::resolve_version(game_root, version_id) {
+        Ok(resolved) if !require_java || resolved.client_jar.is_file() => resolved,
+        other => {
+            if !require_java {
+                other?
+            } else {
+                println!(
+                    "[launcher] Minecraft {version_id} ist noch nicht installiert – wird jetzt geladen …"
+                );
+                Installer::new(config::default_cache_dir())
+                    .install_version(
+                        game_root,
+                        version_id,
+                        &InstallOptions::default(),
+                        progress_printer(),
+                    )
+                    .await?;
+                version::resolve_version(game_root, version_id)?
+            }
+        }
+    };
     let runtime = match java::find_java_in(
         game_root,
         settings.java_path.as_deref(),
@@ -398,6 +412,21 @@ async fn create_instance(game_root: &Path, settings: &LauncherSettings, args: &[
         .unwrap_or(false)
     {
         println!("Fehler: Instanz '{name}' existiert bereits.");
+        return;
+    }
+
+    // Die Basisversion ist Voraussetzung für Loader und Start; fehlt sie,
+    // wird sie beim Anlegen mitinstalliert.
+    if let Err(error) = Installer::new(config::default_cache_dir())
+        .install_version(
+            game_root,
+            version,
+            &InstallOptions::default(),
+            progress_printer(),
+        )
+        .await
+    {
+        println!("Fehler: Minecraft {version} ließ sich nicht installieren: {error}");
         return;
     }
 
@@ -755,14 +784,10 @@ fn list_mods(game_root: &Path, instance: &str) {
     }
 }
 
-async fn mods_command(
-    game_root: &Path,
-    settings: &LauncherSettings,
-    args: &[String],
-) -> anyhow::Result<()> {
+async fn mods_command(game_root: &Path, args: &[String]) -> anyhow::Result<()> {
     match args.get(1).map(String::as_str) {
-        Some("search") => mods_search(settings, args).await,
-        Some("install") => mods_install(game_root, settings, args).await,
+        Some("search") => mods_search(args).await,
+        Some("install") => mods_install(game_root, args).await,
         Some(name) => {
             list_mods(game_root, name);
             Ok(())
@@ -780,9 +805,9 @@ async fn mods_command(
     }
 }
 
-async fn mods_search(settings: &LauncherSettings, args: &[String]) -> anyhow::Result<()> {
+async fn mods_search(args: &[String]) -> anyhow::Result<()> {
     let source = source_flag(args)?;
-    let provider = AnyProvider::from_source(source, curseforge_key(settings))?;
+    let provider = AnyProvider::from_source(source, curseforge_key())?;
     let loader = match flag_value(args, "--loader") {
         Some(value) => Some(parse_loader(&value)?),
         None => None,
@@ -856,11 +881,7 @@ async fn mods_search(settings: &LauncherSettings, args: &[String]) -> anyhow::Re
     Ok(())
 }
 
-async fn mods_install(
-    game_root: &Path,
-    settings: &LauncherSettings,
-    args: &[String],
-) -> anyhow::Result<()> {
+async fn mods_install(game_root: &Path, args: &[String]) -> anyhow::Result<()> {
     let usage = "Nutzung: bamboo-launcher mods install <instanz> <projekt> [--source modrinth|curseforge] [--version-id <id>] [--loader <l>] [--game-version <v>]";
     let instance_name = args
         .get(2)
@@ -895,7 +916,7 @@ async fn mods_install(
     target.validate()?;
 
     let source = source_flag(args)?;
-    let provider = AnyProvider::from_source(source, curseforge_key(settings))?;
+    let provider = AnyProvider::from_source(source, curseforge_key())?;
 
     let mut ledger = ModLedger::load(&instance.dir)?;
     let installed = ledger.installed_projects(&instance.dir);
@@ -1020,6 +1041,7 @@ async fn import_modpack_command(game_root: &Path, settings: &LauncherSettings, a
                 report.overrides,
                 format_bytes(report.downloaded_bytes)
             );
+            print_skipped_files(&report.failures);
             println!(
                 "[modpack] Starten: bamboo-launcher launch {} --instance {}",
                 report.version_id, report.instance.name
@@ -1035,15 +1057,15 @@ fn parse_loader(value: &str) -> anyhow::Result<Loader> {
     })
 }
 
-/// Reihenfolge: Umgebungsvariable, generische Variable, Einstellungsdatei,
-/// zuletzt die Einstellungsdatei der alten Electron-Fassung.
-fn curseforge_key(settings: &LauncherSettings) -> Option<String> {
-    ["BAMBOO_CURSEFORGE_API_KEY", "CURSEFORGE_API_KEY"]
-        .iter()
-        .find_map(|name| std::env::var(name).ok())
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| settings.curseforge_api_key.clone())
-        .or_else(config::legacy_curseforge_api_key)
+/// Jeder Build bringt den CurseForge-Key mit. Nur
+/// `BAMBOO_CURSEFORGE_API_KEY` überschreibt ihn für Entwicklung und Tests;
+/// Keys aus Einstellungsdateien gelten nicht mehr.
+fn curseforge_key() -> Option<String> {
+    std::env::var("BAMBOO_CURSEFORGE_API_KEY")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(config::bundled_curseforge_api_key)
 }
 
 /// Alle Argumente ab `skip`, ohne Flags und deren Werte.
@@ -1064,6 +1086,18 @@ fn positional_args(args: &[String], skip: usize, value_flags: &[&str]) -> Vec<St
         index += 1;
     }
     values
+}
+
+/// Übersprungene Dateien stehen gesammelt am Ende: der Import ist bereits
+/// durchgelaufen, der Bericht sagt danach, was fehlt und warum.
+fn print_skipped_files(failures: &[bamboo_launcher::modpack::curseforge::FileFailure]) {
+    if failures.is_empty() {
+        return;
+    }
+    println!("[modpack] {} Datei(en) übersprungen:", failures.len());
+    for failure in failures {
+        println!("[modpack]   {}: {}", failure.name, failure.reason);
+    }
 }
 
 fn format_count(value: u64) -> String {

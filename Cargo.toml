@@ -1,6 +1,7 @@
 [package]
 name = "bamboo-desktop"
-version = "0.2.7"
+version = "0.2.8"
+authors = ["Borisgamer"]
 edition = "2021"
 description = "Modern Minecraft Launcher"
 publish = false

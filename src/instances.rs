@@ -52,10 +52,13 @@ pub struct Instance {
     pub version_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModMetadata {
+    #[serde(default)]
     pub id: Option<String>,
+    #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
     pub version: Option<String>,
 }
 
@@ -676,6 +679,77 @@ impl InstanceManager {
         std::fs::remove_file(target)?;
         Ok(())
     }
+}
+
+/// Spielzeit einer Instanz aus den Welt-Statistiken, in Millisekunden.
+///
+/// Die Datei hat die Form `{"stats": {"minecraft:custom": {…}}}`. Der
+/// `stats`-Umschlag wurde früher übersehen, weshalb die Launcher-Anzeige
+/// überall 0 zeigte, obwohl das Spiel die Werte längst geschrieben hatte.
+pub fn custom_stats(stats: &serde_json::Value) -> Option<&serde_json::Value> {
+    stats
+        .get("stats")
+        .and_then(|inner| inner.get("minecraft:custom"))
+        .or_else(|| stats.get("minecraft:custom"))
+}
+
+pub fn playtime_ms(instance_dir: &Path) -> u64 {
+    let Ok(worlds) = std::fs::read_dir(instance_dir.join("saves")) else {
+        return 0;
+    };
+    let mut ticks: u64 = 0;
+    for world in worlds.flatten() {
+        let Ok(stats) = std::fs::read_dir(world.path().join("stats")) else {
+            continue;
+        };
+        for file in stats.flatten() {
+            if file.path().extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            let Some(text) = std::fs::read_to_string(file.path()).ok() else {
+                continue;
+            };
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            let Some(play_time) = custom_stats(&value)
+                .and_then(|custom| custom.get("minecraft:play_time"))
+                .and_then(serde_json::Value::as_u64)
+            else {
+                continue;
+            };
+            ticks = ticks.saturating_add(play_time);
+        }
+    }
+    // Ein Tick sind 50 ms.
+    ticks.saturating_mul(50)
+}
+
+/// Belegte Größe eines Ordners in Bytes, rekursiv und ohne Verknüpfungen.
+pub fn folder_size(dir: &Path) -> u64 {
+    fn walk(dir: &Path, total: &mut u64) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_symlink() {
+                continue;
+            }
+            if file_type.is_dir() {
+                walk(&entry.path(), total);
+                continue;
+            }
+            if let Ok(metadata) = entry.metadata() {
+                *total = total.saturating_add(metadata.len());
+            }
+        }
+    }
+    let mut total = 0;
+    walk(dir, &mut total);
+    total
 }
 
 /// Liest Name/ID/Version aus `fabric.mod.json` oder `quilt.mod.json`.

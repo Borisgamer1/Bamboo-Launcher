@@ -68,6 +68,20 @@ export function useModpackUpdate({
   const [modpackUpdateInstalling, setModpackUpdateInstalling] = useState(false)
   const [modpackUpdateProgress, setModpackUpdateProgress] = useState('')
 
+  /** Files the pack could not install are reported once, after the update. */
+  const reportSkippedFiles = (warnings: string[] | undefined) => {
+    if (!warnings || warnings.length === 0) return
+    warnings.forEach((warning) => console.warn('[Modpack] skipped:', warning))
+    const preview = warnings.slice(0, 3).join(' · ')
+    addToast({
+      type: 'warning',
+      message:
+        lang === 'de'
+          ? `${warnings.length} Datei(en) übersprungen: ${preview}${warnings.length > 3 ? ' …' : ''}`
+          : `${warnings.length} file(s) skipped: ${preview}${warnings.length > 3 ? ' …' : ''}`,
+    })
+  }
+
   useEffect(() => {
     if (!inst.isModpack || !inst.modpackProjectId) return
     void (async () => {
@@ -239,6 +253,8 @@ export function useModpackUpdate({
           return failure
         }
 
+        reportSkippedFiles(result.warnings)
+
         const content = contentFromInstall(result)
         setInstances(prev => prev.map(i =>
           i.id === newId ? {
@@ -286,6 +302,8 @@ export function useModpackUpdate({
           return failure
         }
 
+        reportSkippedFiles(result.warnings)
+
         const content = contentFromInstall(result)
         applyToCurrent({
           folderName: result.folderName || inst.folderName,
@@ -332,6 +350,7 @@ export function useModpackUpdate({
           return failure
         }
 
+        reportSkippedFiles(result.warnings)
         setModpackUpdateProgress(t.searchingCompatibleProgress)
 
         const newContent: ContentItem[] = []

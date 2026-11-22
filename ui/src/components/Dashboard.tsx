@@ -17,6 +17,7 @@ import { instanceFolderKeyOf } from "../lib/instanceFolders";
 import { formatPlaytime } from "../lib/launcherPreferences";
 import { parseServerAddress, supportsQuickPlay } from "../lib/quickPlay";
 import { usePinnedWorlds } from "../hooks/usePinnedWorlds";
+import { usePinnedInstances } from "../hooks/usePinnedInstances";
 import { useRecentWorlds, type RecentWorld } from "../hooks/useRecentWorlds";
 import type { RunningInstance } from "../hooks/useLaunchController";
 import type { Instance } from "./InstancesView";
@@ -237,6 +238,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const de = lang === "de";
   const { pinned, togglePinned } = usePinnedWorlds();
+  const { pinned: pinnedInstances, togglePinned: togglePinnedInstance } = usePinnedInstances();
   const { worlds } = useRecentWorlds(instances, pinned);
   const pings = useServerPings(servers);
 
@@ -252,9 +254,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return rightPinned - leftPinned || (right.lastJoinedAt ?? 0) - (left.lastJoinedAt ?? 0);
   }), [servers]);
 
-  const orderedInstances = useMemo(() => [...instances].sort(
-    (left, right) => (right.lastPlayedAt ?? 0) - (left.lastPlayedAt ?? 0),
-  ), [instances]);
+  const orderedInstances = useMemo(() => [...instances].sort((left, right) => {
+    const leftPinned = pinnedInstances.includes(instanceFolderKeyOf(left)) ? 1 : 0;
+    const rightPinned = pinnedInstances.includes(instanceFolderKeyOf(right)) ? 1 : 0;
+    return rightPinned - leftPinned || (right.lastPlayedAt ?? 0) - (left.lastPlayedAt ?? 0);
+  }), [instances, pinnedInstances]);
 
   const totalPlaytime = useMemo(
     () => instances.reduce((sum, instance) => sum + (instance.playTimeMs ?? 0), 0),
@@ -270,13 +274,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return targets.sort((left, right) => {
       const leftPinned = left.kind === "world"
         ? pinned.includes(left.world.key)
-        : left.kind === "server" ? !!left.server.pinned : false;
+        : left.kind === "server"
+          ? !!left.server.pinned
+          : pinnedInstances.includes(instanceFolderKeyOf(left.instance));
       const rightPinned = right.kind === "world"
         ? pinned.includes(right.world.key)
-        : right.kind === "server" ? !!right.server.pinned : false;
+        : right.kind === "server"
+          ? !!right.server.pinned
+          : pinnedInstances.includes(instanceFolderKeyOf(right.instance));
       return Number(rightPinned) - Number(leftPinned) || right.at - left.at;
     });
-  }, [orderedInstances, orderedServers, orderedWorlds, pinned]);
+  }, [orderedInstances, orderedServers, orderedWorlds, pinned, pinnedInstances]);
 
   const hero = heroTargets[0] ?? null;
   const heroServerStatus = hero?.kind === "server" ? pings[hero.server.id] : null;
@@ -388,7 +396,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const heroPinned = hero
     ? hero.kind === "world"
       ? pinned.includes(hero.world.key)
-      : hero.kind === "server" ? !!hero.server.pinned : false
+      : hero.kind === "server"
+        ? !!hero.server.pinned
+        : pinnedInstances.includes(instanceFolderKeyOf(hero.instance))
     : false;
   const heroPlayLabel = heroLaunching
     ? de ? "Startet" : "Starting"
@@ -467,12 +477,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     style={{ background: "linear-gradient(180deg, rgba(7,10,8,0.24) 0%, rgba(7,10,8,0) 30%, rgba(7,10,8,0.4) 100%)" }}
                   />
 
-                  {hero && (hero.kind === "world" || hero.kind === "server") ? (
+                  {hero ? (
                     <PinButton
                       pinned={heroPinned}
                       onClick={() => {
                         if (hero.kind === "world") togglePinned(hero.world.key);
                         else if (hero.kind === "server") onToggleServerPin(hero.server.id);
+                        else togglePinnedInstance(instanceFolderKeyOf(hero.instance));
                       }}
                       label={de ? "Anpinnen" : "Pin"}
                       overlay
@@ -873,6 +884,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               : running ? (de ? "Läuft" : "Running") : relativePlayed(instance.lastPlayedAt, lang)}
                           </span>
                         </button>
+
+                        <PinButton
+                          pinned={pinnedInstances.includes(folder)}
+                          onClick={() => togglePinnedInstance(folder)}
+                          label={de ? "Profil anpinnen" : "Pin profile"}
+                          className={pinnedInstances.includes(folder) ? "" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"}
+                        />
 
                         <button
                           type="button"

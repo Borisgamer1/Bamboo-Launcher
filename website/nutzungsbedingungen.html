@@ -3,45 +3,59 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="Borisgamer">
   <title>Nutzungsbedingungen — Bamboo Launcher</title>
-  <meta name="description" content="Nutzungsbedingungen für Bamboo Launcher 0.2.0, einschließlich der Discord-Rich-Presence-Integration.">
-  <meta name="theme-color" content="#070b08">
+  <meta name="description" content="Nutzungsbedingungen für Bamboo Launcher, einschließlich der Discord-Rich-Presence-Integration.">
+  <meta name="theme-color" content="#050806">
   <link rel="icon" href="assets/bamboo-logo.png" type="image/png">
   <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/site.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">Zum Inhalt springen</a>
 
-  <header class="site-header">
+  <header class="site-header" data-header>
     <div class="wrap header-inner">
       <a class="brand" href="index.html" aria-label="Bamboo Launcher Startseite">
-        <img src="assets/bamboo-logo.png" alt="" width="30" height="30">
-        <span>Bamboo Launcher</span>
+        <img src="assets/bamboo-logo.png" alt="" width="34" height="34">
+        <span class="brand-text"><strong>Bamboo</strong><span>Launcher</span></span>
       </a>
-      <nav class="site-nav" aria-label="Hauptnavigation">
-        <a class="nav-keep" href="index.html">Startseite</a>
-        <a class="current" href="nutzungsbedingungen.html" aria-current="page">Nutzungsbedingungen</a>
+      <nav class="site-nav" id="site-nav" aria-label="Hauptnavigation">
+        <a href="index.html#funktionen">Funktionen</a>
+        <a href="index.html#changelog">Changelog</a>
+        <a href="index.html#download">Download</a>
+        <a href="nutzungsbedingungen.html" aria-current="page">Nutzungsbedingungen</a>
         <a href="datenschutz.html">Datenschutz</a>
       </nav>
-      <span class="head-status"><i aria-hidden="true"></i>0.2.0 · Windows</span>
+      <div class="header-actions">
+        <a class="icon-link" href="https://github.com/Borisgamer1/Bamboo-Launcher" aria-label="GitHub-Repository">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 2.5-.34c.85 0 1.71.12 2.5.34 1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.8-4.57 5.05.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/>
+          </svg>
+        </a>
+        <a class="btn btn-primary btn-sm header-dl" href="index.html#download">Download</a>
+        <button class="menu-btn" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Menü öffnen">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
     </div>
   </header>
 
   <main id="main">
     <div class="wrap">
-      <div class="legal-title">
+      <div class="legal-hero">
+        <p class="eyebrow"><span class="eyebrow-num">§</span>Rechtliches</p>
         <h1>Nutzungsbedingungen</h1>
-        <p>Für Bamboo Launcher, die Website und die Discord-Integration. Die Bedingungen beschreiben den technischen Stand von Version 0.2.0 – ohne Versprechen, die der Code nicht einlöst. Sie gelten zugleich für die Discord-Anwendung „Bamboo Launcher“.</p>
+        <p>Für Bamboo Launcher, die Website und die Discord-Integration. Die Bedingungen beschreiben den technischen Stand der Version 0.2.7 – ohne Versprechen, die der Code nicht einlöst. Sie gelten zugleich für die Discord-Anwendung „Bamboo Launcher“.</p>
         <div class="legal-stamp">
           <span>Stand: 24. Oktober 2026</span>
-          <span>Version: 0.2.0</span>
           <span>Sprache: Deutsch</span>
         </div>
       </div>
 
       <div class="legal-layout">
         <aside class="legal-aside">
-          <p class="caps">Inhalt</p>
+          <p>Inhalt</p>
           <ol class="legal-toc">
             <li><a href="#anbieter"><span>01</span>Anbieter und Geltungsbereich</a></li>
             <li><a href="#gegenstand"><span>02</span>Was Bamboo ist</a></li>
@@ -61,7 +75,7 @@
           <section id="anbieter">
             <h2>01 · Anbieter und Geltungsbereich</h2>
             <p>
-              Bamboo Launcher ist ein unabhängiges Projekt von Boris (GitHub:
+              Bamboo Launcher ist ein unabhängiges Projekt von Borisgamer (GitHub:
               <a href="https://github.com/Borisgamer1" rel="noopener noreferrer">Borisgamer1</a>).
               Diese Bedingungen gelten für die Nutzung des Launchers, dieser Website und der
               Discord-Rich-Presence-Funktion.
@@ -77,18 +91,18 @@
           <section id="gegenstand">
             <h2>02 · Was Bamboo ist</h2>
             <p>
-              Bamboo Launcher ist eine Desktop-Anwendung für Minecraft: Java Edition unter Windows.
-              Der Launcher verwaltet Instanzen, startet das Spiel, lädt Inhalte von CurseForge und
-              Modrinth, verwaltet Java-Laufzeiten und speichert Launcher-Einstellungen lokal.
+              Bamboo Launcher ist eine Desktop-Anwendung für Minecraft: Java Edition unter Windows,
+              macOS und Linux. Der Launcher verwaltet Instanzen, startet das Spiel, lädt Inhalte von
+              CurseForge und Modrinth, verwaltet Java-Laufzeiten und speichert Launcher-Einstellungen
+              lokal.
             </p>
             <p>
               Bamboo ist kein offizielles Produkt von Mojang Studios oder Microsoft und wird von
               diesen weder gesponsert noch unterstützt.
             </p>
             <p class="legal-note">
-              <strong>Kein öffentlicher Download:</strong> Es existiert ein lokaler Windows-Build 0.2.0,
-              aber noch keine öffentliche Download-URL. Diese Bedingungen gelten auch für Testbuilds,
-              die direkt aus dem Projekt stammen.
+              <strong>Öffentlicher Download:</strong> Die Pakete für Windows, macOS und Linux liegen
+              am GitHub-Release des Projekts. Testbuilds können davon abweichen.
             </p>
           </section>
 
@@ -97,7 +111,7 @@
             <ul>
               <li>Ein eigener Minecraft: Java Edition-Account.</li>
               <li>Ein Microsoft-Konto für die Anmeldung und den Spielstart.</li>
-              <li>Windows 10 oder 11 in der 64-Bit-Version für den vorhandenen Build.</li>
+              <li>Windows 10 oder 11, macOS oder eine gängige Linux-Distribution, jeweils in der 64-Bit-Version.</li>
               <li>Die Einhaltung der <a href="https://www.minecraft.net/en-us/eula" rel="noopener noreferrer">Minecraft-EULA</a> und der Bedingungen von Microsoft, Discord sowie der genutzten Mod-Plattformen.</li>
             </ul>
             <p>
@@ -109,7 +123,7 @@
           <section id="entwicklung">
             <h2>04 · Entwicklungsstand und Verfügbarkeit</h2>
             <p>
-              Version 0.2.0 ist eine frühe Version. Funktionen können sich ändern, unvollständig sein oder
+              Version 0.2.7 ist eine frühe Version. Funktionen können sich ändern, unvollständig sein oder
               entfernt werden. Es besteht kein Anspruch auf eine bestimmte Funktion, ein Update, einen
               Support-Zeitraum oder eine dauerhaft verfügbare Download-Quelle.
             </p>
@@ -229,9 +243,42 @@
 
   <footer class="site-footer">
     <div class="wrap">
-      <div class="footer-bottom" style="margin-top: 0; border-top: 0; padding-top: 0;">
-        <span>© 2026 Boris · Bamboo Launcher 0.2.0</span>
-        <span><a href="datenschutz.html">Datenschutz</a> · <a href="index.html">Startseite</a></span>
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html">
+            <img src="assets/bamboo-logo.png" alt="" width="34" height="34">
+            <span class="brand-text"><strong>Bamboo</strong><span>Launcher</span></span>
+          </a>
+          <p>Minecraft-Launcher mit Rust-Kern und React-Oberfläche. Ein unabhängiges Projekt, kein offizielles Minecraft-Produkt.</p>
+        </div>
+        <div class="footer-col">
+          <h3>Launcher</h3>
+          <ul>
+            <li><a href="index.html#funktionen">Funktionen</a></li>
+            <li><a href="index.html#changelog">Changelog</a></li>
+            <li><a href="index.html#download">Download</a></li>
+            <li><a href="index.html#faq">FAQ</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h3>Projekt</h3>
+          <ul>
+            <li><a href="https://github.com/Borisgamer1/Bamboo-Launcher">GitHub</a></li>
+            <li><a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases">Releases</a></li>
+            <li><a href="https://github.com/Borisgamer1/Bamboo-Launcher/issues">Issues</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h3>Rechtliches</h3>
+          <ul>
+            <li><a href="nutzungsbedingungen.html" aria-current="page">Nutzungsbedingungen</a></li>
+            <li><a href="datenschutz.html">Datenschutz</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 Borisgamer · Bamboo Launcher 0.2.7</span>
+        <span>Nicht mit Mojang Studios, Microsoft oder Discord verbunden.</span>
       </div>
     </div>
   </footer>

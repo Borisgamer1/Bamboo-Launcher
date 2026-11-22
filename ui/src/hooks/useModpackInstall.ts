@@ -81,6 +81,21 @@ export function useModpackInstall({
   setInstallProgress,
   addToast,
 }: UseModpackInstallOptions): (mod: ModrinthHit, preferredGameVersion?: string) => Promise<void> {
+  // A single file that cannot be installed no longer cancels the pack: the
+  // import finishes and names what was skipped.
+  const reportSkippedFiles = (warnings: string[] | undefined) => {
+    if (!warnings || warnings.length === 0) return
+    warnings.forEach((warning) => console.warn('[Modpack] skipped:', warning))
+    const preview = warnings.slice(0, 3).join(' · ')
+    addToast({
+      type: 'warning',
+      message:
+        lang === 'de'
+          ? `${warnings.length} Datei(en) übersprungen: ${preview}${warnings.length > 3 ? ' …' : ''}`
+          : `${warnings.length} file(s) skipped: ${preview}${warnings.length > 3 ? ' …' : ''}`,
+    })
+  }
+
   return async (mod, preferredGameVersion) => {
     setInstallingModId(mod.project_id)
     setInstallProgress(3)
@@ -176,6 +191,8 @@ export function useModpackInstall({
         })
         return
       }
+
+      reportSkippedFiles(result.warnings)
 
       let defaultRam = 6144
       try {

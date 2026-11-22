@@ -18,6 +18,7 @@ use crate::loader::{self, LoaderError, LoaderInstaller};
 use crate::mods::{
     CurseForgeClient, Loader, ModError, ModLedger, ModRecord, ModSource, PackFileRecord, PackRecord,
 };
+use crate::safe_fs;
 use crate::version;
 use serde::Deserialize;
 use serde::Serialize;
@@ -33,6 +34,22 @@ const MAX_INDEX_BYTES: u64 = 16 * 1024 * 1024;
 /// Obergrenze für entpackte Overrides – schützt vor ZIP-Bomben.
 const MAX_OVERRIDE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const OVERRIDE_ROOTS: [&str; 2] = ["overrides/", "client-overrides/"];
+/// Arbeitsordner beim Update: Overrides erst entpacken, dann einspielen.
+const OVERRIDE_STAGING: &str = ".bamboo-overrides-staging";
+const OVERRIDE_UNDO: &str = ".bamboo-overrides-undo";
+/// Was ein Update aus der Instanz entfernt, landet erst hier.
+const UPDATE_TRASH: &str = ".bamboo-update-trash";
+/// Arbeitsordner des Launchers in der Instanz. Ein Pack-Eintrag darf dort
+/// nichts anlegen oder überschreiben: die Ordner entstehen während eines
+/// Updates, werden benutzt und wieder entfernt.
+const RESERVED_DIRS: [&str; 6] = [
+    "backups",
+    OVERRIDE_STAGING,
+    OVERRIDE_UNDO,
+    UPDATE_TRASH,
+    ".restore-staging",
+    ".restore-undo",
+];
 /// Metadateien der Instanz dürfen von einem Pack nie überschrieben werden.
 const RESERVED_META: [&str; 2] = ["instance.json", "bamboo-mods.json"];
 
@@ -215,6 +232,9 @@ pub struct ModpackImport {
     pub files: usize,
     /// Client-seitig als „unsupported“ markierte Dateien.
     pub skipped: usize,
+    /// Dateien, die nicht importiert werden konnten, samt Grund. Der Import
+    /// läuft weiter; die Oberfläche nennt sie am Ende.
+    pub failures: Vec<curseforge::FileFailure>,
     pub overrides: usize,
     /// Die Override-Pfade, die tatsächlich geschrieben wurden.
     pub override_files: Vec<String>,
@@ -240,6 +260,8 @@ pub struct ModpackUpdate {
     pub kept: usize,
     pub overrides: usize,
     pub downloaded_bytes: u64,
+    /// Dateien, die das Update nicht laden konnte, samt Grund.
+    pub failures: Vec<curseforge::FileFailure>,
     /// Der Pack-Index, damit die Oberfläche die Inhaltsliste nach dem Update
     /// ohne einen zweiten Platten-Scan füllen kann.
     pub index_files: Vec<PackFileReport>,
@@ -309,6 +331,7 @@ struct PackPlan {
     mods: Vec<PendingModRecord>,
     records: Vec<PackFileRecord>,
     skipped: usize,
+    failures: Vec<curseforge::FileFailure>,
     /// Ordnerwurzeln, aus denen Overrides entpackt werden.
     override_roots: Vec<String>,
     index_files: Vec<PackFileReport>,
@@ -464,34 +487,63 @@ impl ModpackImporter {
         let download = fetch_files(download_specs(&diff.downloads, &instance.dir)).await?;
 
         // Overrides sind auch bei kleinen Updates dabei: sie enthalten die
-        // Konfiguration, die zur neuen Pack-Version gehört.
-        let override_files = extract_overrides(
+        // Konfiguration, die zur neuen Pack-Version gehört. Entpackt wird erst
+        // in einen Staging-Ordner und dann mit Undo-Journal eingespielt: ein
+        // Abbruch hinterlässt keine halb neue Config in der Instanz.
+        let staging = instance.dir.join(OVERRIDE_STAGING);
+        let undo = instance.dir.join(OVERRIDE_UNDO);
+        let _ = safe_fs::remove_path(&staging);
+        let _ = safe_fs::remove_path(&undo);
+        // Auch ein Pack ohne Overrides hinterlässt hier einen leeren Ordner,
+        // den das Einspielen unten wieder aufräumt.
+        std::fs::create_dir_all(&staging)?;
+        let override_files = match extract_overrides(
             archive_path.to_path_buf(),
-            instance.dir.clone(),
+            staging.clone(),
             plan.override_roots.clone(),
         )
-        .await?;
+        .await
+        {
+            Ok(files) => match apply_overrides(&staging, &instance.dir, &undo) {
+                Ok(()) => files,
+                Err(error) => {
+                    let _ = safe_fs::remove_path(&staging);
+                    let _ = safe_fs::remove_path(&undo);
+                    return Err(error);
+                }
+            },
+            Err(error) => {
+                let _ = safe_fs::remove_path(&staging);
+                return Err(error);
+            }
+        };
+        let _ = safe_fs::remove_path(&staging);
+        let _ = safe_fs::remove_path(&undo);
 
         // Erst nach erfolgreichen Downloads aufräumen: Bricht das Update vorher
-        // ab, bleibt die bisherige Installation vollständig benutzbar.
-        for path in diff.stale {
-            remove_file_if_present(&path)?;
-            remove_file_if_present(&disabled_path(&path))?;
+        // ab, bleibt die bisherige Installation vollständig benutzbar. Entfernt
+        // wird über einen Papierkorb – scheitert eine Datei, kommt jede vorher
+        // weggenommene zurück statt eines halb geleerten Mod-Ordners.
+        let mut sweep: Vec<PathBuf> = Vec::new();
+        for path in &diff.stale {
+            sweep.push(path.clone());
+            sweep.push(disabled_path(path));
         }
         for path in &diff.removed {
             let Some(relative) = safe_relative(path) else {
                 continue;
             };
             let target = instance.dir.join(&relative);
-            remove_file_if_present(&target)?;
-            remove_file_if_present(&disabled_path(&target))?;
+            sweep.push(target.clone());
+            sweep.push(disabled_path(&target));
         }
         // Eine deaktivierte Altversion einer aktualisierten Mod darf nicht
         // neben der neuen JAR liegen bleiben.
         for download in &diff.downloads {
             let target = instance.dir.join(&download.relative);
-            remove_file_if_present(&disabled_path(&target))?;
+            sweep.push(disabled_path(&target));
         }
+        sweep_pack_files(&instance.dir, &sweep)?;
 
         let installed_at = now_secs();
         // Nur Dateien, die das Pack selbst gelegt hat, verlassen den Bestand.
@@ -547,6 +599,7 @@ impl ModpackImporter {
             kept: plan.records.len().saturating_sub(diff.downloads.len()),
             overrides: override_files.len(),
             downloaded_bytes: download.bytes,
+            failures: plan.failures,
             index_files: plan.index_files.clone(),
             override_files,
         })
@@ -642,6 +695,7 @@ impl ModpackImporter {
             mods: prepared.mods,
             records: prepared.records,
             skipped: prepared.skipped,
+            failures: Vec::new(),
             override_roots: roots,
             index_files,
         })
@@ -658,13 +712,18 @@ impl ModpackImporter {
         let loader = curseforge::detect_loader(&manifest.minecraft.mod_loaders, &minecraft)?;
         let client = self.curseforge_client()?;
 
-        let resolved = curseforge::resolve(&client, &manifest.files).await?;
+        let resolved = curseforge::resolve(&client, &manifest.files).await;
         let mut entries = CurseForgeEntries::default();
+        let mut failures = resolved.failures;
         let mut seen = HashSet::new();
-        for file in resolved {
+        for file in resolved.files {
             let path = path_string(&file.relative);
             if !seen.insert(path.clone()) {
-                return Err(ModpackError::DuplicatePath(path));
+                failures.push(curseforge::FileFailure {
+                    name: path,
+                    reason: "Diese Datei steht doppelt im Manifest.".to_string(),
+                });
+                continue;
             }
             entries.push(file);
         }
@@ -679,6 +738,7 @@ impl ModpackImporter {
             mods: entries.mods,
             records: entries.records,
             skipped: 0,
+            failures,
             override_roots: roots,
             index_files: entries.index_files,
         })
@@ -728,6 +788,7 @@ impl ModpackImporter {
         let mut mods = Vec::new();
         let mut records = Vec::new();
         let mut index_files = Vec::new();
+        let mut failures = Vec::new();
         let mut seen = HashSet::new();
 
         for file in &manifest.files {
@@ -751,7 +812,11 @@ impl ModpackImporter {
 
             let path = format!("mods/{}", record.file_name);
             if !seen.insert(path.clone()) {
-                return Err(ModpackError::DuplicatePath(path));
+                failures.push(curseforge::FileFailure {
+                    name: path,
+                    reason: "Diese Datei steht doppelt im Manifest.".to_string(),
+                });
+                continue;
             }
             let file_record = previous
                 .files
@@ -786,12 +851,17 @@ impl ModpackImporter {
 
         if !resolved_files.is_empty() {
             let client = self.curseforge_client()?;
-            let resolved = curseforge::resolve(&client, &resolved_files).await?;
+            let resolved = curseforge::resolve(&client, &resolved_files).await;
+            failures.extend(resolved.failures);
             let mut entries = CurseForgeEntries::default();
-            for file in resolved {
+            for file in resolved.files {
                 let path = path_string(&file.relative);
                 if !seen.insert(path.clone()) {
-                    return Err(ModpackError::DuplicatePath(path));
+                    failures.push(curseforge::FileFailure {
+                        name: path,
+                        reason: "Diese Datei steht doppelt im Manifest.".to_string(),
+                    });
+                    continue;
                 }
                 entries.push(file);
             }
@@ -811,6 +881,7 @@ impl ModpackImporter {
             mods,
             records,
             skipped: 0,
+            failures,
             override_roots: roots,
             index_files,
         })
@@ -872,6 +943,7 @@ impl ModpackImporter {
                     system_java: base_install.system_java,
                     files: populated.files,
                     skipped: populated.skipped,
+                    failures: plan.failures,
                     overrides: override_files.len(),
                     override_files,
                     index_files: plan.index_files,
@@ -1030,13 +1102,17 @@ impl CurseForgeEntries {
             sha1: file.sha1.clone(),
             size: file.size,
         });
-        self.mods.push(PendingModRecord {
-            path: file.relative.clone(),
-            source: ModSource::CurseForge,
-            project_id: file.project_id,
-            version_id: file.file_id,
-            version_number: file.version_number,
-        });
+        // Nur `.jar` in `mods/` sind Mods. Ein Ressourcen- oder Shaderpaket
+        // gehört in die Dateiliste des Packs, nicht in den Mod-Bestand.
+        if file.relative.starts_with("mods") {
+            self.mods.push(PendingModRecord {
+                path: file.relative.clone(),
+                source: ModSource::CurseForge,
+                project_id: file.project_id,
+                version_id: file.file_id,
+                version_number: file.version_number,
+            });
+        }
         self.downloads.push(PackDownload {
             relative: file.relative,
             urls: vec![file.url],
@@ -1208,11 +1284,48 @@ fn disabled_path(path: &Path) -> PathBuf {
     path.with_file_name(name)
 }
 
-fn remove_file_if_present(path: &Path) -> Result<()> {
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.into()),
+/// Entfernt die Dateien, die das Pack nicht mehr führt – über einen Papierkorb.
+/// Bricht das Wegnehmen ab, kommt jede vorher weggenommene Datei zurück; die
+/// Instanz behält also entweder den alten oder den neuen Mod-Bestand.
+fn sweep_pack_files(instance_dir: &Path, targets: &[PathBuf]) -> Result<()> {
+    let trash_root = instance_dir.join(UPDATE_TRASH);
+    let mut trash = safe_fs::Trash::under(&trash_root);
+    let swept = (|| -> Result<()> {
+        for target in targets {
+            // Egal woher der Pfad kommt: außerhalb der Instanz wird nie
+            // aufgeräumt.
+            if !target.starts_with(instance_dir) {
+                continue;
+            }
+            trash.take(target)?;
+        }
+        Ok(())
+    })();
+
+    match swept {
+        Ok(()) => {
+            if let Err(error) = trash.discard() {
+                // Die Dateien sind entfernt, nur die Kopien im Papierkorb
+                // bleiben liegen. Das ist kein Grund, das Update scheitern zu
+                // lassen, gehört aber ins Log.
+                eprintln!(
+                    "[launcher] Papierkorb {} nicht geleert: {error}",
+                    trash_root.display()
+                );
+            }
+            Ok(())
+        }
+        Err(error) => {
+            let stuck = trash.restore();
+            if stuck.is_empty() {
+                return Err(error);
+            }
+            Err(LauncherError::TrashRestore {
+                path: trash_root,
+                cause: error.to_string(),
+            }
+            .into())
+        }
     }
 }
 
@@ -1506,6 +1619,41 @@ fn extract_overrides_blocking(
     Err(ModpackError::OverridesIncomplete(still_missing.join(", ")))
 }
 
+/// Spielt die entpackten Overrides aus dem Staging in die Instanz ein.
+///
+/// Jede überschriebene Datei landet vorher im Undo-Ordner; scheitert eine Datei
+/// (gesperrt, Link im Ziel, kein Platz), wird der alte Stand zurückgeschrieben.
+/// Ein halb aktualisiertes Config-Set bleibt so nicht stehen.
+fn apply_overrides(staging: &Path, destination: &Path, undo: &Path) -> Result<()> {
+    let mut journal = safe_fs::Journal::new();
+    let mut fresh_roots: Vec<PathBuf> = Vec::new();
+    let applied = (|| -> Result<()> {
+        for entry in std::fs::read_dir(staging)? {
+            let entry = entry?;
+            let target = destination.join(entry.file_name());
+            if !target.exists() {
+                fresh_roots.push(target.clone());
+            }
+            safe_fs::apply_tree(
+                &entry.path(),
+                &target,
+                undo,
+                Path::new(&entry.file_name()),
+                &mut journal,
+            )?;
+        }
+        Ok(())
+    })();
+
+    match applied {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            safe_fs::roll_back(destination, undo, &journal, &fresh_roots);
+            Err(error)
+        }
+    }
+}
+
 /// Pfad eines Override-Eintrags relativ zur Instanz, falls er sicher ist.
 fn override_relative(name: &str, roots: &[String]) -> Option<PathBuf> {
     roots
@@ -1658,10 +1806,24 @@ fn safe_relative(raw: &str) -> Option<PathBuf> {
 /// `INSTANCE.JSON` würde `instance.json` überschreiben. Deshalb wird
 /// unabhängig vom Betriebssystem konservativ verglichen.
 fn is_reserved(relative: &Path) -> bool {
-    let name = relative.to_string_lossy();
-    RESERVED_META
+    if RESERVED_META
         .iter()
-        .any(|reserved| name.eq_ignore_ascii_case(reserved))
+        .any(|reserved| relative.to_string_lossy().eq_ignore_ascii_case(reserved))
+    {
+        return true;
+    }
+    // Auch die Arbeitsordner des Launchers sind tabu: ein Pack, das dort
+    // schreibt, würde beim Aufräumen des Updates mitgeräumt oder könnte dem
+    // Einspielen in die Quere kommen.
+    relative
+        .components()
+        .next()
+        .and_then(|first| first.as_os_str().to_str())
+        .is_some_and(|first| {
+            RESERVED_DIRS
+                .iter()
+                .any(|reserved| first.eq_ignore_ascii_case(reserved))
+        })
 }
 
 /// Pfad für die Bestandsdatei, unabhängig vom Betriebssystem mit `/`.
@@ -1749,6 +1911,59 @@ fn now_secs() -> u64 {
 mod tests {
     use super::*;
 
+    fn write(path: &Path, contents: &str) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn a_failed_override_apply_restores_the_previous_configs() {
+        let dir = tempfile::tempdir().unwrap();
+        let instance = dir.path().join("instanz");
+        let staging = dir.path().join("staging");
+        let undo = dir.path().join("undo");
+        write(&staging.join("config/a.txt"), "neu-a");
+        write(&staging.join("config/z.txt"), "neu-z");
+        write(&instance.join("config/a.txt"), "alt-a");
+        // An der Stelle der zweiten Override-Datei steht ein Ordner: das
+        // Einspielen scheitert, nachdem a.txt schon ersetzt wurde.
+        std::fs::create_dir_all(instance.join("config/z.txt")).unwrap();
+
+        assert!(apply_overrides(&staging, &instance, &undo).is_err());
+        assert_eq!(
+            std::fs::read_to_string(instance.join("config/a.txt")).unwrap(),
+            "alt-a",
+            "bereits eingespielte Override-Datei wurde nicht zurückgenommen"
+        );
+    }
+
+    #[test]
+    fn overrides_are_not_written_through_links() {
+        use crate::safe_fs::test_support::dir_link;
+
+        let dir = tempfile::tempdir().unwrap();
+        let instance = dir.path().join("instanz");
+        let outside = dir.path().join("aussen");
+        let staging = dir.path().join("staging");
+        let undo = dir.path().join("undo");
+        std::fs::create_dir_all(&instance).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        write(&staging.join("config/one.toml"), "neu");
+        if !dir_link(&outside, &instance.join("config")) {
+            eprintln!("Links werden auf dieser Maschine nicht unterstützt; Test übersprungen");
+            return;
+        }
+
+        assert!(apply_overrides(&staging, &instance, &undo).is_err());
+        assert!(
+            !outside.join("one.toml").exists(),
+            "Override wurde durch einen Link nach außen geschrieben"
+        );
+        assert!(instance.join("config").is_dir());
+    }
+
     #[test]
     fn rejects_unsafe_relative_paths() {
         assert!(safe_relative("mods/a.jar").is_some());
@@ -1779,6 +1994,72 @@ mod tests {
         assert!(is_reserved(Path::new("instance.json")));
         assert!(is_reserved(Path::new("Bamboo-Mods.JSON")));
         assert!(!is_reserved(Path::new("config/instance.json")));
+    }
+
+    #[test]
+    fn packs_cannot_write_into_the_launcher_working_dirs() {
+        for path in [
+            ".bamboo-overrides-staging/config/a.toml",
+            ".bamboo-overrides-undo/options.txt",
+            ".bamboo-update-trash/mods/a.jar",
+            ".restore-staging/saves/Welt/level.dat",
+            ".restore-undo/options.txt",
+            "backups/123/backup.json",
+            // Windows vergleicht Pfade ohne Rücksicht auf Groß-/Kleinschreibung.
+            ".BAMBOO-UPDATE-TRASH/mods/a.jar",
+        ] {
+            assert!(is_reserved(Path::new(path)), "{path} muss gesperrt sein");
+        }
+        assert!(!is_reserved(Path::new("config/bamboo.toml")));
+        assert!(!is_reserved(Path::new("mods/backups.jar")));
+    }
+
+    #[test]
+    fn a_sweep_never_deletes_through_a_link() {
+        use crate::safe_fs::test_support::dir_link;
+
+        let dir = tempfile::tempdir().unwrap();
+        let instance = dir.path().join("instanz");
+        let outside = dir.path().join("aussen");
+        write(&outside.join("geheim.jar"), "draussen");
+        std::fs::create_dir_all(instance.join("mods")).unwrap();
+        if !dir_link(&outside, &instance.join("mods/verknuepft")) {
+            eprintln!("Links werden auf dieser Maschine nicht unterstützt; Test übersprungen");
+            return;
+        }
+
+        sweep_pack_files(&instance, &[instance.join("mods/verknuepft")]).unwrap();
+
+        assert!(!instance.join("mods/verknuepft").exists());
+        assert!(
+            outside.join("geheim.jar").is_file(),
+            "hinter dem Link darf nichts gelöscht werden"
+        );
+        assert!(!instance.join(UPDATE_TRASH).exists());
+    }
+
+    #[test]
+    fn a_failed_sweep_leaves_every_mod_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let instance = dir.path().join("instanz");
+        write(&instance.join("mods/alt.jar"), "alt");
+        write(&instance.join("mods/neu.jar"), "neu");
+        // Ein Papierkorb, der nicht angelegt werden kann: das Wegnehmen
+        // scheitert, bevor eine Datei verschoben wurde.
+        write(&instance.join(UPDATE_TRASH), "im weg");
+
+        let targets = vec![instance.join("mods/alt.jar"), instance.join("mods/neu.jar")];
+        let error = sweep_pack_files(&instance, &targets).unwrap_err();
+        assert!(matches!(error, ModpackError::Launcher(_)), "{error}");
+        assert_eq!(
+            std::fs::read_to_string(instance.join("mods/alt.jar")).unwrap(),
+            "alt",
+            "keine Mod darf halb entfernt werden"
+        );
+        assert_eq!(
+            std::fs::read_to_string(instance.join("mods/neu.jar")).unwrap(),
+            "neu"
+        );
     }
 
     #[test]

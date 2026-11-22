@@ -14,9 +14,21 @@ use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 const MIN_WINDOW_WIDTH: u32 = 1024;
 const MIN_WINDOW_HEIGHT: u32 = 700;
 
+/// Fällt das Laden der Oberfläche aus, wird das Fenster nach dieser Zeit
+/// trotzdem gezeigt – lieber unfertig als unsichtbar.
+const WINDOW_FALLBACK: std::time::Duration = std::time::Duration::from_secs(12);
+
 /// Zählt jedes Größenereignis. Nur der letzte Durchlauf speichert, damit ein
 /// Ziehen am Fensterrand nicht hunderte Schreibvorgänge auslöst.
 static RESIZE_TOKEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Ein maximiertes Fenster wird erst beim Anzeigen maximiert: `maximize()`
+/// kann ein unsichtbares Fenster unter Windows schon sichtbar machen.
+static WANTS_MAXIMIZE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Nur der erste Aufruf zeigt das Fenster; der 12-s-Sicherheitsnetz-Aufruf
+/// darf es später nicht erneut in den Vordergrund holen.
+static WINDOW_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Datei mit Größe, Position und Maximiert-Zustand des Launcher-Fensters.
 fn window_state_path() -> std::path::PathBuf {
@@ -115,8 +127,26 @@ fn restore_window_state(window: &WebviewWindow) {
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
+        WANTS_MAXIMIZE.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Zeigt das Hauptfenster – einmal aus `ui_ready`, sonst nach dem Timeout.
+/// Beide Wege laufen hier zusammen, damit ein Ladefehler das Fenster nie
+/// unsichtbar lässt und der Maximiert-Zustand nur einmal angewandt wird.
+pub(crate) fn show_main_window(window: &WebviewWindow) {
+    if WINDOW_SHOWN.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    if window.show().is_err() {
+        // Nicht als angezeigt merken, damit der Timeout es erneut versucht.
+        WINDOW_SHOWN.store(false, std::sync::atomic::Ordering::SeqCst);
+        return;
+    }
+    if WANTS_MAXIMIZE.swap(false, std::sync::atomic::Ordering::SeqCst) {
         let _ = window.maximize();
     }
+    let _ = window.set_focus();
 }
 
 /// Speichert die Fenstergröße, sobald die Größe kurz stehen bleibt.
@@ -203,11 +233,14 @@ fn main() {
             commands::ui_ready,
             commands::updater::updates_state,
             commands::flush_before_close_complete,
+            commands::client::client_state,
+            commands::client::client_set_enabled,
             commands::show_item_in_folder,
             commands::instances_extra::clone_instance,
             commands::instances_extra::repair_instance,
             commands::instances_extra::create_desktop_shortcut,
             commands::instances_extra::list_instance_worlds,
+            commands::instances_extra::instance_disk_usage,
             commands::instances_extra::open_instance_world,
             commands::instances_extra::export_instance_world,
             commands::instances_extra::import_instance_world,
@@ -251,10 +284,19 @@ fn main() {
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
-                // Erst die gespeicherte Größe setzen, dann zeigen – sonst
-                // springt das Fenster beim Start sichtbar von 1280×800 um.
+                // Erst die gespeicherte Größe setzen, dann warten: Das Fenster
+                // wird sichtbar, sobald die Oberfläche ihre Daten geladen hat
+                // (`ui_ready`). Ein fester Fallback verhindert, dass ein
+                // Ladefehler das Fenster unsichtbar lässt.
                 restore_window_state(&window);
-                let _ = window.show();
+                let fallback = window.clone();
+                // Ein eigener OS-Thread statt eines Async-Timers: Er läuft
+                // auch dann, wenn die Async-Runtime durch einen hängenden
+                // Ladevorgang blockiert ist.
+                std::thread::spawn(move || {
+                    std::thread::sleep(WINDOW_FALLBACK);
+                    show_main_window(&fallback);
+                });
                 // A shortcut made by the launcher asks for one instance. The
                 // request waits for the UI (`ui_ready`) instead of a fixed
                 // delay, so the game never starts before the window is usable.

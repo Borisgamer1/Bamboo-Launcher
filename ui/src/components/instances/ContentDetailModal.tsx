@@ -78,6 +78,7 @@ export const ContentDetailModal = ({
     filename: string
     isCompatible: boolean
     curseforgeFileId?: number
+    versionId?: string
   }[]>([]);
   const [fetchingVersions, setFetchingVersions] = useState(false);
   const [installingVersion, setInstallingVersion] = useState<string | null>(null);
@@ -174,6 +175,7 @@ export const ContentDetailModal = ({
             date_published: version.published || '',
             url: file.url,
             filename: file.filename,
+            versionId: version.versionId,
             isCompatible: isVersionCompatible(version, criteria),
             ...(Number.isFinite(fileId) && fileId > 0 ? { curseforgeFileId: fileId } : {}),
           };
@@ -194,6 +196,7 @@ export const ContentDetailModal = ({
     filename: string
     isCompatible: boolean
     curseforgeFileId?: number
+    versionId?: string
   }) => {
     setInstallPercent(8);
     setInstallingVersion(ver.version_number);
@@ -208,6 +211,13 @@ export const ContentDetailModal = ({
         versionId: localInst.minecraftVersion,
         filename: ver.filename,
         itemType: installItemTypeFor(category),
+        // The core resolves a CurseForge file id by project id; without it the
+        // switch was refused with "CurseForge-Projekt-ID fehlt". The ledger also
+        // needs both to keep the item attached to its project afterwards.
+        ...(item.projectId ? { projectId: item.projectId } : {}),
+        ...(item.source ? { source: item.source } : {}),
+        ...(ver.versionId ? { projectVersionId: ver.versionId } : {}),
+        versionNumber: ver.version_number,
       };
       if (ver.curseforgeFileId) payload.curseforgeFileId = ver.curseforgeFileId;
       else payload.downloadUrl = ver.url;

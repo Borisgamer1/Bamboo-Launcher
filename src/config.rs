@@ -66,7 +66,8 @@ pub struct LauncherSettings {
     pub game_root: PathBuf,
     #[serde(default, alias = "javaPath")]
     pub java_path: Option<PathBuf>,
-    /// Optionaler CurseForge-API-Key. `BAMBOO_CURSEFORGE_API_KEY` hat Vorrang.
+    /// Optionaler CurseForge-API-Key aus älteren Fassungen. Gültig ist der
+    /// mitgelieferte Key; nur `BAMBOO_CURSEFORGE_API_KEY` sticht ihn.
     #[serde(default, alias = "curseForgeApiKey", alias = "curseforgeApiKey")]
     pub curseforge_api_key: Option<String>,
     #[serde(default)]
@@ -156,6 +157,29 @@ pub fn default_settings_path() -> PathBuf {
     default_config_dir().join("settings.json")
 }
 
+/// Mitgelieferter CurseForge-API-Key.
+///
+/// Der Key wird beim Bauen in die Binary eingebettet, damit jeder Nutzer
+/// CurseForge ohne eigene Einrichtung verwenden kann. Die Datei ist bewusst
+/// versioniert: ein Build aus einem frischen Clone oder aus CI muss denselben
+/// Key enthalten wie ein lokaler Build.
+const BUNDLED_CURSEFORGE_API_KEY: &str = include_str!("../resources/curseforge-key.txt");
+
+/// Der eingebettete Key, oder `None`, wenn die Datei leer ist.
+///
+/// Getrimmt und ohne versehentliche Anfuehrungszeichen: ein per Copy-and-paste
+/// gesetzter Key darf an Whitespace oder `"…"` nicht scheitern.
+pub fn bundled_curseforge_api_key() -> Option<String> {
+    let key = BUNDLED_CURSEFORGE_API_KEY
+        .trim()
+        .trim_matches(|ch| ch == '"' || ch == '\'' || ch == '\u{feff}');
+    if key.is_empty() {
+        None
+    } else {
+        Some(key.to_string())
+    }
+}
+
 /// Einstellungsordner der alten Electron-Fassung.
 ///
 /// Electron legte seinen `userData`-Ordner unter dem Paketnamen
@@ -223,6 +247,20 @@ pub fn home_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ein Build ohne eingebetteten Key lässt alle CurseForge-Inhalte aus.
+    /// Abgeschnitten oder mit Leerzeichen wird der Key von der API abgelehnt,
+    /// deshalb prüft der Test auch die Form.
+    #[test]
+    fn build_ships_a_usable_curseforge_key() {
+        let key = bundled_curseforge_api_key()
+            .expect("resources/curseforge-key.txt fehlt oder ist leer");
+        assert!(key.len() >= 40, "Key wirkt abgeschnitten: {} Zeichen", key.len());
+        assert!(
+            !key.chars().any(char::is_whitespace),
+            "Key enthält Leerzeichen oder Zeilenumbrüche"
+        );
+    }
 
     #[test]
     fn default_memory_is_valid() {

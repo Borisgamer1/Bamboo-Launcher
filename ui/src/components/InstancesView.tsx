@@ -289,6 +289,12 @@ const [newInstanceModloaderVersion, setNewInstanceModloaderVersion] = useState("
       createdAt: Date.now(),
     };
 
+    addToast({
+      type: 'info',
+      message: lang === 'de'
+        ? 'Instanz wird erstellt. Fehlt Minecraft, lädt der Launcher die Version jetzt automatisch herunter.'
+        : 'Creating the instance. If Minecraft is missing, the launcher downloads it now.',
+    });
     const seeded = await window.electronAPI?.instances.create?.({
       folderName,
       name: newInst.name,

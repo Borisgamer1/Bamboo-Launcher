@@ -3,6 +3,7 @@
 //! Split by area so `ipc.rs` stays about settings, launch and content.
 
 pub mod backups;
+pub mod client;
 pub mod diagnostics;
 pub mod external_import;
 pub mod instances_extra;
@@ -17,7 +18,7 @@ pub mod updater;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 /// Ein Startwunsch aus `--launch` wartet, bis die Oberfläche bereit ist.
 ///
@@ -35,6 +36,11 @@ pub fn queue_launch(folder: String) {
 /// die Instanz starten.
 #[tauri::command]
 pub fn ui_ready(app: tauri::AppHandle) {
+    // Das Fenster ist unsichtbar gestartet; jetzt steht die Oberfläche und
+    // darf gezeigt werden. Vorher sah man nur leere Karten und Spinner.
+    if let Some(window) = app.get_webview_window("main") {
+        crate::show_main_window(&window);
+    }
     let folder = PENDING_LAUNCH
         .lock()
         .ok()

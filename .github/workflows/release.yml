@@ -27,6 +27,9 @@ jobs:
     runs-on: ${{ matrix.platform }}
     strategy:
       fail-fast: false
+      # Windows zuerst, danach macOS und Linux: die Matrix laeuft in ihrer
+      # Reihenfolge, damit das Windows-Paket zuerst am Release haengt.
+      max-parallel: 1
       matrix:
         include:
           - name: Windows

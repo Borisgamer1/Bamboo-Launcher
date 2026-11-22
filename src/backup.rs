@@ -6,6 +6,7 @@
 //! liegen unter `<instanz>/backups/<id>/` und werden nach Anzahl rotiert.
 
 use crate::error::{LauncherError, Result};
+use crate::safe_fs;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,6 +16,10 @@ pub const DEFAULT_KEEP: usize = 5;
 
 const META_FILE: &str = "backup.json";
 const STAGING_PREFIX: &str = ".tmp-";
+/// Arbeitsordner beim Einspielen: erst vollständig lesen, dann ersetzen.
+const RESTORE_STAGING: &str = ".restore-staging";
+/// Hier liegt jeder Stand, den das Einspielen überschreibt – für den Rückweg.
+const RESTORE_UNDO: &str = ".restore-undo";
 
 /// Einträge, die direkt in der Instanz liegen und mitgesichert werden.
 /// `mods` fehlt bewusst: die lassen sich neu laden, der Rest nicht.
@@ -65,18 +70,37 @@ impl BackupManager {
 
     /// Legt eine Sicherung an. Gibt `None` zurück, wenn es nichts zu sichern
     /// gibt – dann entsteht auch kein leerer Ordner.
+    ///
+    /// Warnungen beim Aufräumen landen hier nur im Log; wer sie anzeigen will,
+    /// ruft `create_reported`.
     pub fn create(&self, reason: &str, keep: usize) -> Result<Option<BackupEntry>> {
+        let (entry, warnings) = self.create_reported(reason, keep)?;
+        for warning in warnings {
+            eprintln!("[launcher] Rotation der Sicherungen: {warning}");
+        }
+        Ok(entry)
+    }
+
+    /// Wie `create`, meldet aber zusätzlich, was beim Aufräumen liegen blieb.
+    pub fn create_reported(
+        &self,
+        reason: &str,
+        keep: usize,
+    ) -> Result<(Option<BackupEntry>, Vec<String>)> {
         let present: Vec<&str> = SNAPSHOT_ENTRIES
             .iter()
             .copied()
             .filter(|name| self.instance_dir.join(name).exists())
             .collect();
         if present.is_empty() {
-            return Ok(None);
+            return Ok((None, Vec::new()));
         }
 
         let backups = self.backups_dir();
         std::fs::create_dir_all(&backups)?;
+        // Reste eines abgebrochenen Laufs sind nicht gelistet; sie würden sonst
+        // dauerhaft Platz belegen.
+        self.sweep_staging();
         let id = self.next_id(&backups);
         let created_at = now_millis();
         let staging = backups.join(format!("{STAGING_PREFIX}{id}"));
@@ -88,7 +112,7 @@ impl BackupManager {
             for name in &present {
                 let source = self.instance_dir.join(name);
                 let target = staging.join(name);
-                copy_tree(&source, &target, &mut files, &mut bytes)?;
+                safe_fs::copy_tree(&source, &target, &mut files, &mut bytes)?;
             }
             let entry = BackupEntry {
                 id: id.clone(),
@@ -105,12 +129,31 @@ impl BackupManager {
             Ok(entry)
         })();
 
-        if result.is_err() {
-            let _ = std::fs::remove_dir_all(&staging);
+        let entry = match result {
+            Ok(entry) => entry,
+            Err(error) => return Err(failed_staging(staging, error)),
+        };
+        // Rotation ist Aufräumen: die neue Sicherung ist fertig und gelistet.
+        // Ein Fehler dabei darf das Anlegen nicht als gescheitert melden – er
+        // wird nach oben gemeldet statt verschluckt.
+        let mut warnings = Vec::new();
+        if let Err(error) = self.prune(keep) {
+            warnings.push(error.to_string());
         }
-        let entry = result?;
-        self.prune(keep)?;
-        Ok(Some(entry))
+        Ok((Some(entry), warnings))
+    }
+
+    /// Räumt liegen gebliebene Arbeitsordner abgebrochener Läufe weg.
+    fn sweep_staging(&self) {
+        let Ok(entries) = std::fs::read_dir(self.backups_dir()) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(STAGING_PREFIX) {
+                let _ = safe_fs::remove_path(&entry.path());
+            }
+        }
     }
 
     /// Alle Sicherungen, neueste zuerst.
@@ -141,38 +184,142 @@ impl BackupManager {
 
     /// Kopiert eine Sicherung zurück in die Instanz. Vorhandene Dateien werden
     /// überschrieben; Dateien, die in der Sicherung fehlen, bleiben liegen.
+    ///
+    /// Die Sicherung wird erst vollständig in einen Staging-Ordner gelesen und
+    /// gegen ihre Metadatei geprüft; erst danach wird die Instanz angefasst.
+    /// Jede überschriebene Datei landet vorher im Undo-Ordner. Bricht etwas ab
+    /// – unvollständige Sicherung, gesperrte oder blockierte Zieldatei –, wird
+    /// der alte Stand zurückgeschrieben, statt eine halb eingespielte Instanz
+    /// zu hinterlassen.
     pub fn restore(&self, id: &str) -> Result<RestoreReport> {
         let source = self.snapshot_dir(id)?;
+        let staging = self.instance_dir.join(RESTORE_STAGING);
+        let undo = self.instance_dir.join(RESTORE_UNDO);
+
+        // 1. Lesen und prüfen, ohne die Instanz anzufassen.
         let mut report = RestoreReport::default();
-        for name in SNAPSHOT_ENTRIES {
-            let from = source.join(name);
-            if !from.exists() {
-                continue;
+        let prepared = (|| -> Result<Vec<PathBuf>> {
+            safe_fs::remove_path(&staging)?;
+            std::fs::create_dir_all(&staging)?;
+            let mut names = Vec::new();
+            for name in SNAPSHOT_ENTRIES {
+                let from = source.join(name);
+                if !from.exists() {
+                    continue;
+                }
+                safe_fs::copy_tree(
+                    &from,
+                    &staging.join(name),
+                    &mut report.files,
+                    &mut report.bytes,
+                )?;
+                names.push(PathBuf::from(name));
             }
-            let to = self.instance_dir.join(name);
-            copy_tree(&from, &to, &mut report.files, &mut report.bytes)?;
+            verify_snapshot(&source, id, &report)?;
+            Ok(names)
+        })();
+        let names = match prepared {
+            Ok(names) => names,
+            Err(error) => {
+                let _ = safe_fs::remove_path(&staging);
+                return Err(error);
+            }
+        };
+
+        // 2. Datei für Datei ersetzen und dabei jeden alten Stand sichern.
+        let mut journal = safe_fs::Journal::new();
+        let mut fresh_roots: Vec<PathBuf> = Vec::new();
+        let applied = (|| -> Result<()> {
+            let _ = safe_fs::remove_path(&undo);
+            for name in &names {
+                let target = self.instance_dir.join(name);
+                if !target.exists() {
+                    fresh_roots.push(target.clone());
+                }
+                safe_fs::apply_tree(&staging.join(name), &target, &undo, name, &mut journal)?;
+            }
+            Ok(())
+        })();
+
+        if let Err(error) = applied {
+            safe_fs::roll_back(&self.instance_dir, &undo, &journal, &fresh_roots);
+            let _ = safe_fs::remove_path(&undo);
+            let _ = safe_fs::remove_path(&staging);
+            return Err(error);
         }
+        let _ = safe_fs::remove_path(&undo);
+        let _ = safe_fs::remove_path(&staging);
         Ok(report)
     }
 
+    /// Papierkorb für Sicherungen, die gerade entfernt werden.
+    fn trash(&self) -> safe_fs::Trash {
+        safe_fs::Trash::under(&self.backups_dir().join(format!("{STAGING_PREFIX}trash")))
+    }
+
+    /// Löscht eine Sicherung. Sie wird erst beiseitegelegt und dann entfernt:
+    /// scheitert das Löschen, bleibt kein halb gelöschter Ordner im Bestand.
     pub fn remove(&self, id: &str) -> Result<()> {
         let dir = self.snapshot_dir(id)?;
-        std::fs::remove_dir_all(dir)?;
+        let mut trash = self.trash();
+        trash.take(&dir)?;
+        let root = trash.root().to_path_buf();
+        trash
+            .discard()
+            .map_err(|error| LauncherError::TrashLeftover {
+                path: root,
+                cause: error.to_string(),
+            })?;
         Ok(())
     }
 
     /// Entfernt die ältesten Sicherungen, bis `keep` übrig sind.
+    ///
+    /// Erst werden alle überzähligen Sicherungen beiseitegelegt, dann werden sie
+    /// gelöscht. Scheitert schon das Beiseitelegen, ist der Bestand unverändert
+    /// und der Fehler kommt an der Aufrufstelle an – statt einer halb gelöschten
+    /// Sicherung, die noch als gültig aufgelistet wird.
     pub fn prune(&self, keep: usize) -> Result<usize> {
         let keep = keep.max(1);
         let backups = self.list()?;
-        let mut removed = 0;
-        for backup in backups.iter().skip(keep) {
+        let excess: Vec<&BackupEntry> = backups.iter().skip(keep).collect();
+        if excess.is_empty() {
+            return Ok(0);
+        }
+
+        let mut trash = self.trash();
+        let mut moved = 0;
+        for backup in &excess {
             let dir = self.backups_dir().join(&backup.id);
-            if std::fs::remove_dir_all(&dir).is_ok() {
-                removed += 1;
+            match trash.take(&dir) {
+                Ok(true) => moved += 1,
+                Ok(false) => {}
+                Err(error) => {
+                    let stuck = trash.restore();
+                    if !stuck.is_empty() {
+                        return Err(LauncherError::TrashRestore {
+                            path: trash.root().to_path_buf(),
+                            cause: error.to_string(),
+                        });
+                    }
+                    return Err(error);
+                }
             }
         }
-        Ok(removed)
+
+        // Sie sind jetzt nicht mehr gelistet; das endgültige Löschen darf
+        // scheitern, ohne einen halben Bestand zu hinterlassen.
+        let root = trash.root().to_path_buf();
+        trash
+            .discard()
+            .map_err(|error| LauncherError::TrashLeftover {
+                path: root,
+                cause: error.to_string(),
+            })?;
+        // Reste eines früheren, abgebrochenen Löschens sind nicht gelistet und
+        // werden hier eingesammelt, statt dauerhaft Platz zu belegen.
+        let _ = safe_fs::remove_path(&self.backups_dir().join(format!("{STAGING_PREFIX}trash")));
+        Ok(moved)
     }
 
     fn snapshot_dir(&self, id: &str) -> Result<PathBuf> {
@@ -198,6 +345,18 @@ impl BackupManager {
     }
 }
 
+/// Räumt einen gescheiterten Staging-Ordner weg. Bleibt er liegen, nennt der
+/// Fehler den Pfad, statt ihn stillschweigend zu verschweigen.
+fn failed_staging(staging: PathBuf, cause: LauncherError) -> LauncherError {
+    match safe_fs::remove_path(&staging) {
+        Ok(()) => cause,
+        Err(error) => LauncherError::TrashLeftover {
+            path: staging,
+            cause: error.to_string(),
+        },
+    }
+}
+
 /// Nur die selbst erzeugten IDs dürfen einen Pfad bilden.
 fn valid_id(id: &str) -> bool {
     !id.is_empty()
@@ -213,25 +372,19 @@ fn now_millis() -> u64 {
         .unwrap_or(0)
 }
 
-/// Kopiert Dateien und Ordner und zählt dabei mit. Symbolische Verknüpfungen
-/// werden übersprungen: ihnen zu folgen könnte aus der Instanz herausführen.
-fn copy_tree(source: &Path, target: &Path, files: &mut usize, bytes: &mut u64) -> Result<()> {
-    if source.is_dir() {
-        std::fs::create_dir_all(target)?;
-        for entry in std::fs::read_dir(source)? {
-            let entry = entry?;
-            copy_tree(&entry.path(), &target.join(entry.file_name()), files, bytes)?;
-        }
-        return Ok(());
+/// Vergleicht die Metadatei mit dem, was wirklich in der Sicherung liegt.
+///
+/// Eine angefangene Sicherung, aus der jemand Dateien entfernt hat, würde die
+/// Instanz sonst halb einspielen: die fehlenden Dateien blieben auf ihrem
+/// aktuellen Stand, alles andere käme aus der Sicherung.
+fn verify_snapshot(source: &Path, id: &str, staged: &RestoreReport) -> Result<()> {
+    let meta = std::fs::read_to_string(source.join(META_FILE))
+        .ok()
+        .and_then(|text| serde_json::from_str::<BackupEntry>(&text).ok());
+    match meta {
+        Some(meta) if meta.files == staged.files && meta.bytes == staged.bytes => Ok(()),
+        _ => Err(LauncherError::BackupIncomplete(id.to_string())),
     }
-    if !source.is_file() {
-        return Ok(());
-    }
-    let size = std::fs::metadata(source)?.len();
-    std::fs::copy(source, target)?;
-    *files += 1;
-    *bytes = bytes.saturating_add(size);
-    Ok(())
 }
 
 #[cfg(test)]
@@ -280,6 +433,68 @@ mod tests {
             std::fs::read_to_string(dir.path().join("config/bamboo.toml")).unwrap(),
             "setting = 1"
         );
+        // Die Arbeitsordner des Einspielens bleiben nicht liegen.
+        assert!(!dir.path().join(RESTORE_STAGING).exists());
+        assert!(!dir.path().join(RESTORE_UNDO).exists());
+    }
+
+    #[test]
+    fn an_incomplete_snapshot_is_not_applied() {
+        let dir = temp_instance();
+        let manager = BackupManager::new(dir.path());
+        let backup = manager.create("manuell", DEFAULT_KEEP).unwrap().unwrap();
+        std::fs::write(dir.path().join("saves/Welt/level.dat"), "aktuell").unwrap();
+
+        // Datei aus der Sicherung entfernt; die Metadatei zählt sie noch mit.
+        std::fs::remove_file(
+            manager
+                .backups_dir()
+                .join(&backup.id)
+                .join("saves/Welt/region/r.0.0.mca"),
+        )
+        .unwrap();
+
+        let error = manager.restore(&backup.id).unwrap_err();
+        assert!(
+            matches!(error, LauncherError::BackupIncomplete(_)),
+            "{error}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("saves/Welt/level.dat")).unwrap(),
+            "aktuell",
+            "eine unvollständige Sicherung darf nichts überschreiben"
+        );
+    }
+
+    #[test]
+    fn a_failed_restore_rolls_back_what_it_already_wrote() {
+        let dir = temp_instance();
+        let manager = BackupManager::new(dir.path());
+        let backup = manager.create("manuell", DEFAULT_KEEP).unwrap().unwrap();
+
+        std::fs::write(dir.path().join("saves/Welt/level.dat"), "aktuell").unwrap();
+        std::fs::write(dir.path().join("config/bamboo.toml"), "aktuelle-config").unwrap();
+        // An der Stelle einer Datei aus der Sicherung steht jetzt ein Ordner:
+        // das Zurückschreiben dieser Datei muss scheitern – und zwar nachdem
+        // Welt und Config bereits ersetzt wurden.
+        std::fs::remove_file(dir.path().join("options.txt")).unwrap();
+        std::fs::create_dir_all(dir.path().join("options.txt")).unwrap();
+
+        assert!(manager.restore(&backup.id).is_err());
+
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("saves/Welt/level.dat")).unwrap(),
+            "aktuell",
+            "bereits eingespielte Welt wurde nicht zurückgenommen"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("config/bamboo.toml")).unwrap(),
+            "aktuelle-config",
+            "bereits eingespielte Config wurde nicht zurückgenommen"
+        );
+        assert!(dir.path().join("options.txt").is_dir());
+        assert!(!dir.path().join(RESTORE_STAGING).exists());
+        assert!(!dir.path().join(RESTORE_UNDO).exists());
     }
 
     #[test]
@@ -322,11 +537,280 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_prune_deletes_nothing() {
+        let dir = temp_instance();
+        let manager = BackupManager::new(dir.path());
+        let mut ids = Vec::new();
+        for index in 0..3 {
+            write(
+                &dir.path().join("options.txt"),
+                &format!("fov:{}", 70 + index),
+            );
+            ids.push(manager.create("Rotation", 99).unwrap().unwrap().id);
+        }
+        // Der Papierkorb lässt sich nicht anlegen: das Beiseitelegen der
+        // überzähligen Sicherungen scheitert, bevor eine angefasst wurde.
+        let blocked = manager.backups_dir().join(format!("{STAGING_PREFIX}trash"));
+        write(&blocked, "im weg");
+
+        let error = manager.prune(1).unwrap_err();
+        assert!(matches!(error, LauncherError::Io(_)), "{error}");
+        assert_eq!(
+            manager.list().unwrap().len(),
+            3,
+            "keine Sicherung darf verschwinden"
+        );
+        for id in &ids {
+            assert!(
+                manager.backups_dir().join(id).join(META_FILE).is_file(),
+                "Sicherung {id} wurde halb gelöscht"
+            );
+        }
+    }
+
+    #[test]
+    fn deleting_a_snapshot_reports_a_failure_instead_of_a_half_backup() {
+        let dir = temp_instance();
+        let manager = BackupManager::new(dir.path());
+        let backup = manager.create("manuell", DEFAULT_KEEP).unwrap().unwrap();
+        let blocked = manager.backups_dir().join(format!("{STAGING_PREFIX}trash"));
+        write(&blocked, "im weg");
+
+        assert!(manager.remove(&backup.id).is_err());
+        assert!(
+            manager
+                .backups_dir()
+                .join(&backup.id)
+                .join(META_FILE)
+                .is_file(),
+            "die Sicherung muss unverändert und gelistet bleiben"
+        );
+        assert_eq!(manager.list().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn deleting_a_snapshot_does_not_follow_a_link_inside_it() {
+        use crate::safe_fs::test_support::dir_link;
+
+        let dir = temp_instance();
+        let outside = tempfile::tempdir().unwrap();
+        write(&outside.path().join("geheim.txt"), "draussen");
+        let manager = BackupManager::new(dir.path());
+        let backup = manager.create("manuell", DEFAULT_KEEP).unwrap().unwrap();
+        if !dir_link(
+            outside.path(),
+            &manager.backups_dir().join(&backup.id).join("link"),
+        ) {
+            eprintln!("Links werden auf dieser Maschine nicht unterstützt; Test übersprungen");
+            return;
+        }
+
+        manager.remove(&backup.id).unwrap();
+
+        assert!(manager.list().unwrap().is_empty());
+        assert!(
+            outside.path().join("geheim.txt").is_file(),
+            "hinter dem Link darf nichts gelöscht werden"
+        );
+    }
+
+    #[test]
+    fn a_half_deleted_snapshot_is_not_listed_and_is_swept_by_rotation() {
+        let dir = temp_instance();
+        let manager = BackupManager::new(dir.path());
+        manager.create("alt", 99).unwrap().unwrap();
+        write(&dir.path().join("options.txt"), "fov:90");
+        let backup = manager.create("neu", 99).unwrap().unwrap();
+        // Rest eines abgebrochenen Löschens: nicht mehr gelistet, aber noch auf
+        // der Platte.
+        let leftover = manager
+            .backups_dir()
+            .join(format!("{STAGING_PREFIX}trash/0"));
+        write(&leftover.join("saves/Welt/level.dat"), "rest");
+
+        assert_eq!(manager.list().unwrap().len(), 2);
+        assert_eq!(manager.prune(1).unwrap(), 1);
+        assert!(!leftover.exists(), "der Rest muss eingesammelt werden");
+        assert_eq!(manager.list().unwrap().len(), 1);
+        assert!(manager.backups_dir().join(&backup.id).is_dir());
+    }
+
+    #[test]
+    fn a_create_sweeps_leftover_staging() {
+        let dir = temp_instance();
+        let manager = BackupManager::new(dir.path());
+        let leftover = manager
+            .backups_dir()
+            .join(format!("{STAGING_PREFIX}abgebrochen"));
+        write(&leftover.join("mods/alt.jar"), "rest");
+
+        let backup = manager.create("manuell", DEFAULT_KEEP).unwrap().unwrap();
+
+        assert!(!leftover.exists(), "der Rest muss eingesammelt werden");
+        assert_eq!(manager.list().unwrap().len(), 1);
+        // Ein Rest darf die neue Sicherung nicht verfälschen.
+        assert!(manager.restore(&backup.id).is_ok());
+    }
+
+    #[test]
+    fn a_failed_rotation_is_reported_not_swallowed() {
+        let dir = temp_instance();
+        let manager = BackupManager::new(dir.path());
+        let old = manager.create("alt", 99).unwrap().unwrap();
+
+        #[cfg(windows)]
+        let held = {
+            use std::os::windows::fs::OpenOptionsExt;
+            // Ohne Löschfreigabe geöffnet: die alte Sicherung lässt sich nicht
+            // beiseitelegen, die Rotation scheitert.
+            std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0x0000_0001)
+                .open(manager.backups_dir().join(&old.id).join(META_FILE))
+                .unwrap()
+        };
+        #[cfg(not(windows))]
+        {
+            eprintln!("Ohne Windows keine Sperre; Test übersprungen");
+            return;
+        }
+
+        write(&dir.path().join("options.txt"), "fov:90");
+        let (entry, warnings) = manager.create_reported("neu", 1).unwrap();
+
+        assert!(entry.is_some(), "die neue Sicherung entsteht trotzdem");
+        assert_eq!(
+            warnings.len(),
+            1,
+            "die misslungene Rotation muss gemeldet werden, nicht nur geloggt"
+        );
+        assert_eq!(
+            manager.list().unwrap().len(),
+            2,
+            "nichts wurde halb gelöscht"
+        );
+        assert!(
+            manager
+                .backups_dir()
+                .join(&old.id)
+                .join(META_FILE)
+                .is_file(),
+            "die alte Sicherung bleibt vollständig"
+        );
+        drop(held);
+    }
+
+    #[test]
+    fn a_staging_that_cannot_be_removed_is_named() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join(format!("{STAGING_PREFIX}weg"));
+        let error = failed_staging(missing, LauncherError::BackupNotFound("x".to_string()));
+        assert!(
+            matches!(error, LauncherError::BackupNotFound(_)),
+            "ohne Rest bleibt die Ursache: {error}"
+        );
+
+        let staging = dir.path().join(format!("{STAGING_PREFIX}gescheitert"));
+        write(&staging.join("mods/alt.jar"), "rest");
+        #[cfg(windows)]
+        let held = {
+            use std::os::windows::fs::OpenOptionsExt;
+            // Ohne Löschfreigabe geöffnet: der Ordner lässt sich nicht entfernen.
+            std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0x0000_0001)
+                .open(staging.join("mods/alt.jar"))
+                .unwrap()
+        };
+        #[cfg(not(windows))]
+        {
+            eprintln!("Ohne Windows keine Sperre; Test übersprungen");
+            return;
+        }
+
+        let error = failed_staging(
+            staging.clone(),
+            LauncherError::BackupNotFound("x".to_string()),
+        );
+        assert!(
+            matches!(error, LauncherError::TrashLeftover { .. }),
+            "ein liegen gebliebener Rest muss gemeldet werden: {error}"
+        );
+        assert!(
+            error.to_string().contains("gescheitert"),
+            "die Meldung nennt den Pfad: {error}"
+        );
+
+        drop(held);
+        assert!(safe_fs::remove_path(&staging).is_ok());
+    }
+
+    #[test]
     fn empty_instance_produces_no_backup() {
         let dir = tempfile::tempdir().unwrap();
         let manager = BackupManager::new(dir.path());
         assert!(manager.create("leer", DEFAULT_KEEP).unwrap().is_none());
         assert!(!manager.backups_dir().exists());
+    }
+
+    #[test]
+    fn a_backup_does_not_read_through_links() {
+        use crate::safe_fs::test_support::dir_link;
+
+        let dir = temp_instance();
+        let outside = tempfile::tempdir().unwrap();
+        write(&outside.path().join("geheim.txt"), "draussen");
+        if !dir_link(outside.path(), &dir.path().join("saves/Welt/link")) {
+            eprintln!("Links werden auf dieser Maschine nicht unterstützt; Test übersprungen");
+            return;
+        }
+
+        let manager = BackupManager::new(dir.path());
+        let backup = manager.create("links", DEFAULT_KEEP).unwrap().unwrap();
+        let snapshot = manager.backups_dir().join(&backup.id);
+
+        assert_eq!(
+            backup.files, 4,
+            "nur echte Dateien gehören in die Sicherung"
+        );
+        assert!(!snapshot.join("saves/Welt/link").exists());
+        assert!(
+            !snapshot.join("saves/Welt/geheim.txt").exists(),
+            "Datei außerhalb der Instanz wurde mitgesichert"
+        );
+    }
+
+    #[test]
+    fn restore_refuses_a_linked_target_and_rolls_back() {
+        use crate::safe_fs::test_support::dir_link;
+
+        let dir = temp_instance();
+        let manager = BackupManager::new(dir.path());
+        let backup = manager.create("manuell", DEFAULT_KEEP).unwrap().unwrap();
+
+        // `config` zeigt auf einen Ordner außerhalb der Instanz; `saves` ist
+        // bereits eingespielt, wenn das Zurückschreiben an `config` scheitert.
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::remove_dir_all(dir.path().join("config")).unwrap();
+        if !dir_link(outside.path(), &dir.path().join("config")) {
+            eprintln!("Links werden auf dieser Maschine nicht unterstützt; Test übersprungen");
+            return;
+        }
+        std::fs::write(dir.path().join("saves/Welt/level.dat"), "aktuell").unwrap();
+
+        let error = manager.restore(&backup.id).unwrap_err();
+        assert!(matches!(error, LauncherError::UnsafePath(_)), "{error}");
+        assert!(
+            !outside.path().join("bamboo.toml").exists(),
+            "durch den Link wurde außerhalb der Instanz geschrieben"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("saves/Welt/level.dat")).unwrap(),
+            "aktuell",
+            "nach dem Abbruch muss der alte Weltstand stehen"
+        );
+        assert!(!dir.path().join(RESTORE_STAGING).exists());
+        assert!(!dir.path().join(RESTORE_UNDO).exists());
     }
 
     #[test]

@@ -24,6 +24,8 @@ export interface ModpackContentItem {
   iconUrl?: string
   versionNumber?: string
   projectId?: string
+  slug?: string
+  modId?: string
   source?: 'modrinth' | 'curseforge'
 }
 
@@ -32,6 +34,8 @@ export interface ModpackFileMetadata {
   slug: string
   iconUrl: string
   versionNumber: string
+  /** Stable store project id; slug is only the readable URL name. */
+  projectId: string
 }
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -115,7 +119,8 @@ export function buildModpackContentItems(
       locked: true,
       ...(meta?.iconUrl ? { iconUrl: meta.iconUrl } : {}),
       ...(meta?.versionNumber ? { versionNumber: meta.versionNumber } : {}),
-      ...(meta?.slug ? { projectId: meta.slug, source: 'modrinth' as const } : {}),
+      ...(meta?.slug ? { slug: meta.slug } : {}),
+      ...(meta?.projectId ? { projectId: meta.projectId, source: 'modrinth' as const } : {}),
     })
   }
   return items
@@ -212,6 +217,7 @@ export async function resolveModpackContentMetadata(
       slug: project.slug,
       iconUrl: project.icon_url || '',
       versionNumber: version.version_number || '',
+      projectId: version.project_id || project.id || '',
     }
     for (const path of paths) metadata[path] = entry
   }

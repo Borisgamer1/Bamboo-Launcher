@@ -7,6 +7,42 @@ version, so every release needs a block here in **both** languages.
 Group headings are fixed: `Neu` / `Besser` / `Behoben` / `Entfernt` for German,
 `New` / `Better` / `Fixed` / `Removed` for English.
 
+## 0.2.8 - 2026-11-22
+
+### Behoben
+
+- **CurseForge funktioniert ohne eigenen Key:** Jeder Build bringt den Key des Launchers mit. Suche, Projektseiten, Modpack-Importe und Inhalts-Updates nutzen ihn für alle Nutzer; niemand trägt mehr einen eigenen Key ein.
+- **Ein alter Key kann die Mod-Suche nicht mehr blockieren:** Keys aus früheren Fassungen und Einstellungsdateien werden ignoriert. Bisher konnte ein dort abgelaufener Key den gültigen Build-Key verdrängen, sodass CurseForge „Key ungültig“ meldete.
+- **Ressourcenpakete aus Modpacks werden installiert:** Ein `.zip` im CurseForge-Manifest ist ein Ressourcen- oder Shaderpaket und landet jetzt in `resourcepacks/` bzw. `shaderpacks/`. Vorher wurde es als „keine .jar“ abgelehnt und der ganze Import brach ab.
+- **Eine kaputte Datei stoppt den Import nicht mehr:** Was sich nicht installieren lässt, wird übersprungen. Der Rest kommt an, und am Ende nennt der Launcher die übersprungenen Dateien samt Grund.
+- **Importierte Instanzen stimmen jetzt:** Der Export schreibt Name, Minecraft-Version, Loader, Bild, Beschreibung und RAM unter `instance`; der Import las nur die oberste Ebene und machte aus jedem Pack „Profil“ mit Minecraft 1.21. Jetzt kommen alle Angaben an, und der Loader aus dem Manifest wird direkt mitinstalliert.
+- **Versionswechsel kennt die Store-Metadaten wieder:** Bei importierten Instanzen fehlten Projekt-ID und Quelle, deshalb fand der Wechsel keine Store-Version und hätte die Dateien sogar entfernt. Der Launcher identifiziert sie jetzt über SHA-1/Fingerprint und schreibt sie in die Bestandsdatei; was sich nicht zuordnen lässt, bleibt stehen und wird als ungeprüft gemeldet.
+- **Ein Start ohne Ergebnis sagt jetzt, warum:** Schlägt der Start fehl, erscheint eine Fehlermeldung statt eines kurz aufblitzenden Ladebalkens. Beendet sich Minecraft unerwartet, nennt ein Hinweis den Exit-Code und verweist auf die Crash-Analyse.
+- **CurseForge-Mods passen jetzt zum Loader der Instanz:** Die API nennt den Loader einer Datei nur in ihrer Versionsliste. Bisher galt deshalb jede Datei als loaderlos, und aus einer CurseForge-Suche landete die neueste Datei in der Instanz – auch eine NeoForge-Datei in einer Fabric-Instanz. Jetzt werden nur Dateien für den eigenen Loader angeboten und eingebaut.
+- **Mod-Version wechseln funktioniert wieder:** Beim Wechsel einer CurseForge-Mod auf eine andere Version fehlten Projekt-ID und Quelle in der Anfrage, deshalb brach der Wechsel mit „CurseForge-Projekt-ID fehlt“ ab. Die Angaben werden jetzt mitgeschickt, und der Wechsel bleibt auch nach einem Neustart korrekt zugeordnet.
+- **Minecraft installiert sich beim Anlegen der Instanz selbst:** Fehlt die Basisversion (z. B. `26.3`), lädt der Launcher sie samt Java, Libraries und Assets herunter, bevor die Instanz fertig ist. Bisher endete das Anlegen mit „Basisversion nicht installiert“. Dasselbe gilt beim Versionswechsel und beim Start einer Instanz.
+
+### Entfernt
+
+- Das Key-Feld unter Einstellungen → Erweitert. Die Karte zeigt nur noch, dass der Key enthalten ist.
+
+### Fixed
+
+- **CurseForge works without your own key:** every build ships the launcher's key. Search, project pages, modpack imports and content updates use it for all users; nobody has to enter a key any more.
+- **An old key can no longer block mod search:** keys from earlier versions and settings files are ignored. Previously an expired key there could override the valid build key, so CurseForge reported an invalid key.
+- **Resource packs from modpacks install:** a `.zip` in a CurseForge manifest is a resource or shader pack and now goes into `resourcepacks/` or `shaderpacks/`. It used to be rejected as “not a .jar”, which aborted the whole import.
+- **One broken file no longer stops the import:** anything that cannot be installed is skipped. The rest arrives, and the launcher names the skipped files and reasons at the end.
+- **Imported instances are correct now:** the export writes name, Minecraft version, loader, cover, description and RAM under `instance`; the import only read the top level, turning every pack into “Profil” with Minecraft 1.21. All values arrive now, and the loader named in the manifest is installed during the import.
+- **The version switch finds store metadata again:** imported instances had no project id or source, so the switch found no store version and would even have removed the files. The launcher now identifies them by SHA-1/fingerprint and records them in the ledger; anything it cannot match stays in place and is listed as unverified.
+- **A launch without a result now says why:** a failed launch shows an error instead of a loading bar that vanishes. If Minecraft exits unexpectedly, a notice names the exit code and points to the crash analysis.
+- **CurseForge mods now match the instance's loader:** the API only names a file's loader inside its version list. Every file therefore counted as loader-agnostic, and a CurseForge search could put the newest file into the instance – including a NeoForge build in a Fabric instance. Only files for the instance's own loader are offered and installed now.
+- **Changing a mod's version works again:** switching a CurseForge mod to another version left out the project id and source, so it failed with “CurseForge project id missing”. Both are sent now, and the item stays attached to its project after a restart.
+- **Minecraft installs itself when you create an instance:** if the base version (e.g. `26.3`) is missing, the launcher downloads it together with Java, libraries and assets before finishing the instance. Creating one used to end with “base version not installed”. The same now applies to changing an instance's version and to starting it.
+
+### Removed
+
+- The key field under Settings → Advanced. The card now only states that the key is built in.
+
 ## 0.2.7 - 2026-11-11
 
 ### Neu

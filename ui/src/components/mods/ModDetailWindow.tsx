@@ -8,7 +8,9 @@ import { toCurseForgeFailure, type CurseForgeFailure } from "../../lib/curseforg
 import { CurseForgeFailureNotice } from "./CurseForgeFailureNotice";
 import { projectTypeToCategory, type ProjectType } from "../../lib/contentCategories";
 import {
+  curseForgeLoaders,
   isVersionCompatible,
+  minecraftGameVersions,
   versionFileFor,
   type StoreVersion,
 } from "../../lib/modVersions";
@@ -109,13 +111,8 @@ export const ModDetailWindow: React.FC<ModDetailWindowProps> = ({
             setVersions(filesResult.map((f) => ({
               version_number: f.displayName || f.fileName || String(f.id),
               date_published: f.fileDate || "",
-              game_versions: f.gameVersions || [],
-              loaders: (() => {
-                const num = f.modLoader;
-                if (num == null) return [];
-                const map: Record<number, string> = { 1: 'forge', 4: 'fabric', 5: 'quilt', 6: 'neoforge' };
-                return map[num as number] ? [map[num as number]] : [String(num).toLowerCase()];
-              })(),
+              game_versions: minecraftGameVersions(f.gameVersions),
+              loaders: curseForgeLoaders(f.gameVersions, f.modLoader),
               files: [{ url: f.downloadUrl || "", filename: f.fileName || `${mod.slug}.jar`, primary: true }],
             })));
           }

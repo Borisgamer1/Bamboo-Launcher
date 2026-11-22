@@ -32,8 +32,28 @@ pub enum LauncherError {
     #[error("Sicherung '{0}' wurde nicht gefunden")]
     BackupNotFound(String),
 
+    #[error(
+        "Die Sicherung '{0}' ist unvollständig und wurde nicht eingespielt. Die Instanz ist unverändert."
+    )]
+    BackupIncomplete(String),
+
+    #[error(
+        "{cause} Die Dateien in {path} konnten nicht zurückgelegt werden und bleiben dort liegen."
+    )]
+    TrashRestore { path: PathBuf, cause: String },
+
+    #[error(
+        "Die Dateien in {path} konnten nicht gelöscht werden; sie werden nicht mehr verwendet. Ursache: {cause}"
+    )]
+    TrashLeftover { path: PathBuf, cause: String },
+
     #[error("Ungültiger Instanzname: {0}")]
     InvalidInstanceName(String),
+
+    #[error(
+        "Die Serverliste {0} ist unlesbar und wurde nicht überschrieben. Repariere oder lösche die Datei, um die Launcher-Server einzutragen."
+    )]
+    ServersDatUnreadable(PathBuf),
 
     #[error("Pfad liegt außerhalb des erlaubten Verzeichnisses: {0}")]
     UnsafePath(PathBuf),

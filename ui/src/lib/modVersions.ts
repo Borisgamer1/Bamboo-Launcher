@@ -297,18 +297,65 @@ interface RawCurseForgeFile {
 
 const CURSEFORGE_LOADERS: Record<number, string> = { 1: 'forge', 4: 'fabric', 5: 'quilt', 6: 'neoforge' }
 
+const CURSEFORGE_LOADER_NAMES = ['forge', 'neoforge', 'fabric', 'quilt', 'liteloader', 'rift']
+
+/** Einträge, die CurseForge in `gameVersions` mischt, aber keine Spielversion sind. */
+const NOT_A_GAME_VERSION = new Set([
+  'client',
+  'server',
+  ...CURSEFORGE_LOADER_NAMES,
+  // Shader-Loader stehen bei Shader-Dateien an derselben Stelle.
+  'iris',
+  'optifine',
+  'canvas',
+])
+
+/**
+ * Nur die echten Minecraft-Versionen einer CurseForge-Datei.
+ *
+ * `gameVersions` enthält auch "Client", "Server" und den Loader ("Fabric",
+ * "NeoForge", ...). Ungefiltert landeten diese Wörter als Minecraft-Versionen
+ * im Versionsfilter der Mod-Seite.
+ */
+export function minecraftGameVersions(gameVersions: string[] | undefined): string[] {
+  return (gameVersions || []).filter(
+    (entry) => !NOT_A_GAME_VERSION.has(entry.trim().toLowerCase()),
+  )
+}
+
+/**
+ * CurseForge files do not carry a `modLoader` field; the loader is one entry of
+ * `gameVersions` ("Fabric", "NeoForge", ...). Without deriving it every file
+ * counted as loader-agnostic, so the picker took the newest one - a NeoForge
+ * build could land in a Fabric instance. A numeric `modLoader` is still used
+ * when a response has one.
+ */
+export function curseForgeLoaders(
+  gameVersions: string[] | undefined,
+  modLoader?: number | null,
+): string[] {
+  const loaders = new Set<string>()
+  if (modLoader != null) {
+    loaders.add(CURSEFORGE_LOADERS[modLoader] ?? String(modLoader).toLowerCase())
+  }
+  for (const entry of gameVersions || []) {
+    const name = entry.trim().toLowerCase()
+    if (CURSEFORGE_LOADER_NAMES.includes(name)) loaders.add(name)
+  }
+  return [...loaders]
+}
+
 function curseForgeReleaseType(value: number | undefined): 'release' | 'beta' | 'alpha' {
   return value === 2 ? 'beta' : value === 3 ? 'alpha' : 'release'
 }
 
 export function fromCurseForgeFile(raw: RawCurseForgeFile): StoreVersion {
-  const loader = raw.modLoader == null ? null : CURSEFORGE_LOADERS[raw.modLoader] ?? String(raw.modLoader)
   return {
     versionNumber: raw.displayName || raw.fileName || String(raw.id ?? ''),
     versionId: raw.id === undefined ? undefined : String(raw.id),
     published: raw.fileDate,
-    gameVersions: raw.gameVersions || [],
-    loaders: loader ? [loader] : [],
+    gameVersions: minecraftGameVersions(raw.gameVersions),
+    loaders: curseForgeLoaders(raw.gameVersions, raw.modLoader),
     releaseType: curseForgeReleaseType(raw.releaseType),
     // CurseForge hides the download URL when the author blocks third-party
     // downloads; the core can still fetch those by file id, so the file stays.

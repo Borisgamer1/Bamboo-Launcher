@@ -152,7 +152,7 @@ export function AboutTab({
 
       <div className="flex flex-col items-center gap-1 border-t border-hairline pb-1 pt-4 text-center">
         <p className="m-0 text-small font-medium text-ink-secondary">Made by Borisgamer</p>
-        <p className="m-0 text-micro text-ink-quaternary">© 2026 Bamboo Launcher</p>
+        <p className="m-0 text-micro text-ink-quaternary">© 2026 Borisgamer</p>
       </div>
     </div>
   )

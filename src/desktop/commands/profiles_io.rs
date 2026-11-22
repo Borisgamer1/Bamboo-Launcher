@@ -7,8 +7,11 @@ use std::sync::{Mutex, OnceLock};
 
 use bamboo_launcher::backup::{BackupManager, DEFAULT_KEEP};
 use bamboo_launcher::config;
+use bamboo_launcher::install::{InstallOptions, Installer};
 use bamboo_launcher::instances::validate_instance_name;
+use bamboo_launcher::loader::LoaderInstaller;
 use bamboo_launcher::modpack::{curseforge, ModpackImporter};
+use bamboo_launcher::mods::Loader;
 use serde_json::{json, Value};
 use zip::write::SimpleFileOptions;
 
@@ -201,6 +204,46 @@ fn read_entry(archive: &mut zip::ZipArchive<std::fs::File>, name: &str) -> Optio
     Some(text)
 }
 
+/// Ein Textfeld aus dem Bamboo-Manifest.
+///
+/// Neue Exporte legen die Instanzfelder unter `instance` ab, ältere hatten sie
+/// oben. Wer nur oben liest, bekommt für jede importierte Instanz „Profil“ und
+/// „1.21“ – genau die Vorgaben.
+fn manifest_text(manifest: &Value, key: &str, alias: &str) -> Option<String> {
+    [Some(manifest), manifest.get("instance")]
+        .into_iter()
+        .flatten()
+        .find_map(|scope| scope.get(key).or_else(|| scope.get(alias)))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+/// Eine Zahl aus dem Manifest, verschachtelt oder oben.
+fn manifest_u64(manifest: &Value, key: &str) -> Option<u64> {
+    manifest
+        .get("instance")
+        .and_then(|instance| instance.get(key))
+        .or_else(|| manifest.get(key))
+        .and_then(Value::as_u64)
+}
+
+/// Das im Export genannte Titelbild.
+///
+/// Eingebaute Cover stehen als relativer Pfad (`./instance-covers/x.jpg`) im
+/// Manifest und funktionieren in jeder Installation; hochgeladene Bilder sind
+/// Data-URLs. Beides übernimmt die Oberfläche direkt.
+fn manifest_cover(manifest: &Value) -> Option<String> {
+    manifest
+        .get("contents")
+        .and_then(|contents| contents.get("icon"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "null")
+        .map(str::to_string)
+}
+
 /// Counts content by the folder prefix it lives in.
 fn count_by_prefix(names: &[String], prefix: &str) -> usize {
     names
@@ -317,31 +360,33 @@ pub fn import_profile_preview(file_path: String) -> Value {
     if let Some(text) = read_entry(&mut archive, "bamboo/manifest.json") {
         if let Ok(manifest) = serde_json::from_str::<Value>(&text) {
             preview["format"] = json!("zip");
-            preview["title"] = manifest
-                .get("name")
-                .or_else(|| manifest.get("instanceName"))
-                .cloned()
-                .unwrap_or_else(|| json!("Profil"));
-            preview["description"] = manifest
-                .get("description")
-                .cloned()
-                .unwrap_or_else(|| json!(""));
-            preview["author"] = manifest.get("author").cloned().unwrap_or_else(|| json!(""));
-            preview["minecraftVersion"] = manifest
-                .get("minecraftVersion")
-                .or_else(|| manifest.get("version"))
-                .cloned()
-                .unwrap_or_else(|| json!("1.21"));
-            preview["modloader"] = manifest
-                .get("modloader")
-                .or_else(|| manifest.get("loader"))
-                .cloned()
-                .unwrap_or_else(|| json!("Vanilla"));
-            preview["modloaderVersion"] = manifest
-                .get("modloaderVersion")
-                .or_else(|| manifest.get("loaderVersion"))
-                .cloned()
-                .unwrap_or_else(|| json!(""));
+            preview["title"] = json!(manifest_text(&manifest, "name", "instanceName")
+                .unwrap_or_else(|| "Profil".to_string()));
+            preview["description"] =
+                json!(manifest_text(&manifest, "description", "desc").unwrap_or_default());
+            preview["author"] = json!(manifest
+                .get("metadata")
+                .and_then(|metadata| metadata.get("author"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or_default());
+            preview["minecraftVersion"] =
+                json!(manifest_text(&manifest, "minecraftVersion", "version")
+                    .unwrap_or_else(|| "1.21".to_string()));
+            preview["modloader"] = json!(manifest_text(&manifest, "modloader", "loader")
+                .unwrap_or_else(|| "Vanilla".to_string()));
+            preview["modloaderVersion"] =
+                json!(
+                    manifest_text(&manifest, "modloaderVersion", "loaderVersion")
+                        .unwrap_or_default()
+                );
+            if let Some(ram) = manifest_u64(&manifest, "ram") {
+                preview["ram"] = json!(ram);
+            }
+            if let Some(cover) = manifest_cover(&manifest) {
+                preview["icon"] = json!(cover);
+            }
         }
         return preview;
     }
@@ -417,6 +462,7 @@ pub async fn import_profile(data: Value) -> Value {
                 "success": true,
                 "instanceName": report.instance.name,
                 "modsInstalled": report.files,
+                "warnings": warnings_of(&report.failures),
                 "profile": ipc::instance_profile(&root, &report.instance),
             }),
             Err(error) => {
@@ -432,13 +478,80 @@ pub async fn import_profile(data: Value) -> Value {
         return json!({"success": false, "code": "INVALID", "error": "Kein gültiges Archiv."});
     };
 
-    let version = preview["minecraftVersion"]
-        .as_str()
-        .unwrap_or("1.21")
-        .to_string();
+    // Die im Dialog gezeigte Version hat Vorrang; sonst gilt die Manifest-Angabe.
+    let version = data
+        .get("minecraftVersion")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            preview["minecraftVersion"]
+                .as_str()
+                .unwrap_or("1.21")
+                .to_string()
+        });
     let Ok(instance) = manager.create(target, Some(&version)) else {
         return json!({"success": false, "code": "create-failed", "error": "Instanz konnte nicht angelegt werden."});
     };
+
+    // Der Loader aus dem Manifest wurde bisher ignoriert: die Instanz startete
+    // als Vanilla, obwohl ihre Mods Fabric, Forge oder NeoForge erwarten.
+    let mut warnings: Vec<String> = Vec::new();
+    if let Some(loader) = preview["modloader"].as_str().and_then(Loader::parse) {
+        let cache = config::default_cache_dir();
+        match Installer::new(cache.clone())
+            .install_version(&root, &version, &InstallOptions::default(), |_| {})
+            .await
+        {
+            Ok(_) => {
+                let pinned = preview["modloaderVersion"]
+                    .as_str()
+                    .filter(|value| !value.trim().is_empty());
+                match LoaderInstaller::new(cache)
+                    .install(&root, &version, loader, pinned)
+                    .await
+                {
+                    Ok(installed) => {
+                        if let Err(error) = manager.set_version(target, &installed.version_id) {
+                            warnings.push(format!(
+                                "{} konnte nicht aktiviert werden: {error}",
+                                loader.label()
+                            ));
+                        }
+                    }
+                    Err(error) => warnings.push(format!(
+                        "{} für Minecraft {version} konnte nicht installiert werden: {error}",
+                        loader.label()
+                    )),
+                }
+            }
+            Err(error) => warnings.push(format!(
+                "Minecraft {version} konnte nicht installiert werden: {error}"
+            )),
+        }
+    }
+
+    // Bild, Beschreibung und RAM stehen im Manifest. Ohne sie zeigte die
+    // importierte Instanz ein zufälliges Cover und den globalen Speicher.
+    // Erst nach dem Loader schreiben: `set_version` speichert die Instanzdatei
+    // aus ihrem festen Feldsatz und würde diese Angaben sonst verwerfen.
+    let meta_path = instance.dir.join("instance.json");
+    if let Ok(text) = std::fs::read_to_string(&meta_path) {
+        if let Ok(mut meta) = serde_json::from_str::<Value>(&text) {
+            if let Some(description) = preview["description"].as_str() {
+                meta["description"] = json!(description);
+            }
+            if let Some(cover) = preview["icon"].as_str() {
+                meta["thumbnail"] = json!(cover);
+            }
+            if let Some(ram) = preview["ram"].as_u64() {
+                meta["ram"] = json!(ram);
+            }
+            if let Ok(written) = serde_json::to_vec_pretty(&meta) {
+                let _ = std::fs::write(&meta_path, written);
+            }
+        }
+    }
 
     let folders = wanted_folders(&data);
     let mut counts: Vec<(&'static str, usize)> = folders.iter().map(|(_, dir)| (*dir, 0)).collect();
@@ -482,6 +595,7 @@ pub async fn import_profile(data: Value) -> Value {
             .map(|(_, value)| *value)
             .unwrap_or(0)
     };
+    let instance = manager.load(target).unwrap_or(instance);
     json!({
         "success": true,
         "instanceName": instance.name,
@@ -491,7 +605,13 @@ pub async fn import_profile(data: Value) -> Value {
         "shaderpacksInstalled": count("shaderpacks"),
         "datapacksInstalled": count("datapacks"),
         "worldsImported": count("saves"),
+        "warnings": warnings,
     })
+}
+
+/// Übersprungene Dateien als fertige Zeilen für die Oberfläche.
+fn warnings_of(failures: &[curseforge::FileFailure]) -> Vec<String> {
+    failures.iter().map(curseforge::FileFailure::message).collect()
 }
 
 /// Aktualisiert eine importierte Pack-Instanz aus einer neuen Pack-Datei.
@@ -570,6 +690,7 @@ pub async fn update_modpack(data: Value) -> Value {
                 "content": content,
                 "mods": mods,
                 "modpackSource": source,
+                "warnings": warnings_of(&report.failures),
                 "backup": backup,
             })
         }
@@ -646,6 +767,80 @@ mod tests {
         assert_eq!(preview["hasIcon"], json!(true));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn preview_of_manifest(manifest: &str) -> Value {
+        let dir = std::env::temp_dir().join(format!(
+            "bamboo-zip-preview-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|value| value.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("profile.zip");
+        let file = std::fs::File::create(&path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        zip.start_file("bamboo/manifest.json", SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(manifest.as_bytes()).unwrap();
+        zip.finish().unwrap();
+        let preview = import_profile_preview(path.to_string_lossy().to_string());
+        let _ = std::fs::remove_dir_all(&dir);
+        preview
+    }
+
+    /// Der Export legt die Instanzfelder unter `instance` ab. Wer nur oben
+    /// liest, importiert jede Instanz als „Profil“ mit Minecraft 1.21 – der
+    /// gemeldete Fehler.
+    #[test]
+    fn previews_the_nested_instance_of_a_bamboo_export() {
+        let manifest = json!({
+            "formatVersion": 1,
+            "instance": {
+                "name": "Crazy",
+                "minecraftVersion": "26.3",
+                "modloader": "Fabric",
+                "modloaderVersion": "0.20.1",
+                "description": "Eine Minecraft 26.3 Instanz mit Fabric.",
+                "ram": 4096
+            },
+            "contents": { "icon": "./instance-covers/the-garden-awakens.jpg" },
+            "metadata": { "author": "Boris" }
+        });
+        let preview = preview_of_manifest(&manifest.to_string());
+        assert_eq!(preview["format"], json!("zip"));
+        assert_eq!(preview["title"], json!("Crazy"));
+        assert_eq!(preview["minecraftVersion"], json!("26.3"));
+        assert_eq!(preview["modloader"], json!("Fabric"));
+        assert_eq!(preview["modloaderVersion"], json!("0.20.1"));
+        assert_eq!(
+            preview["description"],
+            json!("Eine Minecraft 26.3 Instanz mit Fabric.")
+        );
+        assert_eq!(preview["author"], json!("Boris"));
+        assert_eq!(preview["ram"], json!(4096));
+        assert_eq!(
+            preview["icon"],
+            json!("./instance-covers/the-garden-awakens.jpg")
+        );
+    }
+
+    /// Ältere Exporte hatten die Felder oben; sie müssen weiter funktionieren.
+    #[test]
+    fn previews_a_flat_legacy_manifest() {
+        let manifest = json!({
+            "name": "Alt",
+            "minecraftVersion": "1.20.1",
+            "modloader": "Forge",
+            "modloaderVersion": "47.2.0"
+        });
+        let preview = preview_of_manifest(&manifest.to_string());
+        assert_eq!(preview["title"], json!("Alt"));
+        assert_eq!(preview["minecraftVersion"], json!("1.20.1"));
+        assert_eq!(preview["modloader"], json!("Forge"));
+        assert_eq!(preview["modloaderVersion"], json!("47.2.0"));
     }
 
     #[test]

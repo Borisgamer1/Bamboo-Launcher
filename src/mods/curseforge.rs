@@ -77,6 +77,14 @@ impl CurseForgeClient {
         let envelope: DataEnvelope<RawMod> = self.api.get(&format!("/mods/{mod_id}"), &[]).await?;
         Ok(envelope.data.allow_mod_distribution)
     }
+
+    /// CurseForge-Klasse eines Projekts (`6` Mod, `12` Ressourcenpaket,
+    /// `6552` Shader). Ein Modpack-Manifest nennt nur IDs; ohne die Klasse
+    /// ließe sich ein `.zip` keinem Ordner zuordnen.
+    pub async fn class_id(&self, mod_id: u64) -> Result<u32> {
+        let envelope: DataEnvelope<RawMod> = self.api.get(&format!("/mods/{mod_id}"), &[]).await?;
+        Ok(envelope.data.class_id)
+    }
 }
 
 impl ModProvider for CurseForgeClient {
@@ -313,6 +321,8 @@ struct RawMod {
     summary: String,
     #[serde(default)]
     download_count: u64,
+    #[serde(default)]
+    class_id: u32,
     #[serde(default)]
     allow_mod_distribution: Option<bool>,
     #[serde(default)]

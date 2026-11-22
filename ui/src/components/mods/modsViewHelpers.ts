@@ -6,6 +6,7 @@ import type { ContentCategory } from "../../lib/contentCategories";
 import {
   fromCurseForgeFile,
   fromModrinthVersion,
+  isVersionCompatible,
   pickVersion,
   versionFileFor,
   type StoreFile,
@@ -90,7 +91,17 @@ export function createInstallPicker({ source, t }: { source: "modrinth" | "curse
   ): Promise<InstallPick> => {
     const versions = await fetchStoreVersions(mod, modSource);
     if (forcedVersionNumber) {
-      const chosen = versions.find((version) => version.versionNumber === forcedVersionNumber);
+      // The same release can exist once per loader (Forge, NeoForge, Fabric).
+      // A hand-picked version number must still not install the build for a
+      // loader this instance does not use.
+      const matching = versions.filter((version) => version.versionNumber === forcedVersionNumber);
+      const chosen = matching.find((version) =>
+        isVersionCompatible(version, {
+          category,
+          minecraftVersion: inst.minecraftVersion,
+          modloader: inst.modloader,
+        }),
+      ) ?? matching[0];
       if (chosen) {
         const file = versionFileFor(chosen, category);
         if (!file) return { kind: "missing", reason: "file", fallback: null };

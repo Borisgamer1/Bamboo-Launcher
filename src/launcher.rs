@@ -402,6 +402,11 @@ const OPTIONS_MARKER: &str = ".bamboo-options-applied";
 /// Danach gehören die Werte dem Spiel: Was im Spiel geändert wird, bleibt
 /// stehen, statt bei jedem Start von den Launcher-Standardwerten überschrieben
 /// zu werden. `Ok(false)` heißt, dass schon einmal geschrieben wurde.
+///
+/// Den Marker setzt erst der erfolgreiche Start (`mark_options_applied`).
+/// Vorher galt die Instanz auch dann als eingerichtet, wenn der Start gar nicht
+/// zustande kam – etwa ohne Java oder bei einem fehlgeschlagenen Download –,
+/// und die später im Launcher gewählten Werte wurden nie mehr übernommen.
 pub fn apply_options_once<K: AsRef<str>>(
     game_dir: &Path,
     language: &str,
@@ -414,8 +419,14 @@ pub fn apply_options_once<K: AsRef<str>>(
     if !values.is_empty() {
         apply_options(game_dir, values)?;
     }
-    std::fs::write(game_dir.join(OPTIONS_MARKER), b"1\n")?;
     Ok(true)
+}
+
+/// Merkt, dass das Spiel wirklich gestartet ist: ab jetzt gehören die Werte in
+/// der `options.txt` dem Spiel, nicht mehr dem Launcher.
+pub fn mark_options_applied(game_dir: &Path) -> Result<()> {
+    std::fs::write(game_dir.join(OPTIONS_MARKER), b"1\n")?;
+    Ok(())
 }
 
 /// Setzt den Vollbild-Schalter, den die Oberfläche für die Instanz vorgibt.
@@ -909,6 +920,33 @@ mod tests {
         let body = std::fs::read_to_string(&yosbr).unwrap();
         assert!(body.contains("fullscreen:true"));
         assert!(body.contains("lang:en_us"));
+    }
+
+    #[test]
+    fn the_first_start_marker_waits_for_a_successful_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let values = [("fov", "0.5".to_string())];
+
+        // Der erste Start schreibt die Werte, gilt aber noch nicht als
+        // eingerichtet: sonst wären die Werte nach einem abgebrochenen Start
+        // für immer verloren.
+        assert!(apply_options_once(dir.path(), "de_de", &values).unwrap());
+        assert!(!dir.path().join(OPTIONS_MARKER).is_file());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("options.txt")).unwrap(),
+            "lang:de_de\nfov:0.5\n"
+        );
+
+        mark_options_applied(dir.path()).unwrap();
+        assert!(dir.path().join(OPTIONS_MARKER).is_file());
+
+        // Ab jetzt gehören die Werte dem Spiel.
+        std::fs::write(dir.path().join("options.txt"), "fov:0.9\n").unwrap();
+        assert!(!apply_options_once(dir.path(), "de_de", &values).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("options.txt")).unwrap(),
+            "fov:0.9\n"
+        );
     }
 
     #[test]

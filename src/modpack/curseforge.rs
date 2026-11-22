@@ -12,7 +12,7 @@
 
 use super::{LoaderDependency, ModpackError, Result};
 use crate::mods::curseforge::CurseForgeClient;
-use crate::mods::{validate_mod_file_name, Loader, ModError, ModProvider};
+use crate::mods::{validate_content_file_name, Loader, ModProvider};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -211,62 +211,127 @@ pub struct ResolvedFile {
     pub version_number: String,
 }
 
+/// CurseForge-Klassen, die ein Modpack-Manifest enthalten kann.
+pub const CLASS_MOD: u32 = 6;
+pub const CLASS_RESOURCE_PACK: u32 = 12;
+pub const CLASS_SHADER: u32 = 6552;
+
+/// Ein Manifest-Eintrag, der nicht importiert werden konnte. Der Import läuft
+/// weiter; gesammelt stehen die Gründe am Ende im Bericht.
+#[derive(Debug, Clone)]
+pub struct FileFailure {
+    pub name: String,
+    pub reason: String,
+}
+
+impl FileFailure {
+    /// Eine Zeile für Bericht und Oberfläche: „Name: Grund“.
+    pub fn message(&self) -> String {
+        format!("{}: {}", self.name, self.reason)
+    }
+}
+
+/// Ergebnis von [`resolve`]: was geladen werden kann und was übersprungen wurde.
+pub struct ResolveOutcome {
+    pub files: Vec<ResolvedFile>,
+    pub failures: Vec<FileFailure>,
+}
+
 /// Löst alle Mods des Manifests nacheinander über die API auf.
 ///
 /// Bewusst sequenziell: 200 Mods bedeuten hier 400 Anfragen, und CurseForge
-/// drosselt pro Key. Ein einzelner Fehler bricht ab – eine halb installierte
-/// Instanz wäre schlimmer als ein klarer Abbruch.
-pub async fn resolve(client: &CurseForgeClient, files: &[FileRef]) -> Result<Vec<ResolvedFile>> {
+/// drosselt pro Key. Ein einzelner Eintrag, der nicht aufgelöst werden kann,
+/// wird übersprungen statt den ganzen Pack zu verwerfen – der Bericht nennt
+/// ihn am Ende mit Grund.
+pub async fn resolve(client: &CurseForgeClient, files: &[FileRef]) -> ResolveOutcome {
     let mut resolved = Vec::with_capacity(files.len());
+    let mut failures = Vec::new();
     for file in files {
-        if file.project_id == 0 || file.file_id == 0 {
-            return Err(ModpackError::InvalidManifest(
-                "Das Manifest enthält eine Datei ohne Projekt- oder Datei-ID.".to_string(),
-            ));
+        match resolve_file(client, file).await {
+            Ok(entry) => resolved.push(entry),
+            Err(reason) => failures.push(FileFailure {
+                name: file_label(file),
+                reason,
+            }),
         }
-        let project = file.project_id.to_string();
-        let file_id = file.file_id.to_string();
-        let version = client
-            .version(&project, &file_id)
-            .await
-            .map_err(|error| wrap(error, file))?;
-        let name =
-            validate_mod_file_name(&version.file.file_name).map_err(|error| match error {
-                // Ein Archiv im Mod-Ordner wäre nutzlos, aber kein Angriff.
-                ModError::NotAJar(invalid) => {
-                    ModpackError::InvalidManifest(format!("'{invalid}' ist keine .jar-Datei."))
-                }
-                _ => ModpackError::UnsafePath(format!("mods/{}", version.file.file_name)),
-            })?;
-        let download = client
-            .download(&version)
-            .await
-            .map_err(|error| wrap(error, file))?;
-        resolved.push(ResolvedFile {
-            relative: PathBuf::from("mods").join(name),
-            url: download.url,
-            sha1: download.sha1,
-            size: download.size,
-            project_id: file.project_id.to_string(),
-            file_id: file.file_id.to_string(),
-            version_number: if version.version_number.trim().is_empty() {
-                version.name.clone()
-            } else {
-                version.version_number.clone()
-            },
-        });
     }
-    Ok(resolved)
+    ResolveOutcome {
+        files: resolved,
+        failures,
+    }
 }
 
-fn wrap(error: ModError, file: &FileRef) -> ModpackError {
-    match error {
-        ModError::MissingApiKey => ModpackError::MissingCurseForgeKey,
-        other => ModpackError::CurseForgeFile {
-            project_id: file.project_id,
-            file_id: file.file_id,
-            message: other.to_string(),
+fn file_label(file: &FileRef) -> String {
+    if file.project_id == 0 || file.file_id == 0 {
+        return "Eintrag ohne Projekt- oder Datei-ID".to_string();
+    }
+    format!("Datei {} (Projekt {})", file.file_id, file.project_id)
+}
+
+async fn resolve_file(
+    client: &CurseForgeClient,
+    file: &FileRef,
+) -> std::result::Result<ResolvedFile, String> {
+    if file.project_id == 0 || file.file_id == 0 {
+        return Err("Eintrag ohne Projekt- oder Datei-ID".to_string());
+    }
+    let project = file.project_id.to_string();
+    let file_id = file.file_id.to_string();
+    let version = client
+        .version(&project, &file_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let name = validate_content_file_name(&version.file.file_name)
+        .map_err(|_| format!("'{}' ist kein gültiger Dateiname.", version.file.file_name))?;
+    let folder = content_folder(client, file.project_id, name).await?;
+    let download = client
+        .download(&version)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(ResolvedFile {
+        relative: PathBuf::from(folder).join(name),
+        url: download.url,
+        sha1: download.sha1,
+        size: download.size,
+        project_id: file.project_id.to_string(),
+        file_id: file.file_id.to_string(),
+        version_number: if version.version_number.trim().is_empty() {
+            version.name.clone()
+        } else {
+            version.version_number.clone()
         },
+    })
+}
+
+/// Mods sind `.jar` und gehören nach `mods/`; Ressourcen- und Shaderpakete sind
+/// `.zip` und bekommen ihren eigenen Ordner. Die Klasse kommt aus der API, weil
+/// sich die beiden Archivarten nicht am Namen unterscheiden lassen.
+async fn content_folder(
+    client: &CurseForgeClient,
+    project_id: u64,
+    file_name: &str,
+) -> std::result::Result<&'static str, String> {
+    if file_name.to_ascii_lowercase().ends_with(".jar") {
+        return Ok("mods");
+    }
+    match client.class_id(project_id).await {
+        Ok(class) => folder_for_class(class),
+        // Ohne Klassifizierung ist ein ZIP in einem Modpack fast immer ein
+        // Ressourcenpaket; die Datei ist dann wenigstens vorhanden.
+        Err(_) => Ok("resourcepacks"),
+    }
+}
+
+/// Ordner für einen `.zip`-Eintrag. Alles, was weder Ressourcen- noch
+/// Shaderpaket ist, wird nicht als Inhalt einer Instanz installiert.
+fn folder_for_class(class: u32) -> std::result::Result<&'static str, String> {
+    match class {
+        CLASS_RESOURCE_PACK => Ok("resourcepacks"),
+        CLASS_SHADER => Ok("shaderpacks"),
+        CLASS_MOD => Err("Als Mod gemeldet, aber die Datei ist kein .jar.".to_string()),
+        other => Err(format!(
+            "Inhaltstyp {other} lässt sich nicht als Mod oder Pack installieren."
+        )),
     }
 }
 
@@ -285,6 +350,14 @@ mod tests {
         format!(
             r#"{{"manifestType":"minecraftModpack","manifestVersion":1,"name":"Test","version":"2.0","minecraft":{{"version":"1.20.1","modLoaders":{loaders}}},"files":[{{"projectID":238222,"fileID":4610000,"required":true}}]}}"#
         )
+    }
+
+    #[test]
+    fn archive_classes_get_their_own_folder() {
+        assert_eq!(folder_for_class(CLASS_RESOURCE_PACK), Ok("resourcepacks"));
+        assert_eq!(folder_for_class(CLASS_SHADER), Ok("shaderpacks"));
+        assert!(folder_for_class(CLASS_MOD).is_err());
+        assert!(folder_for_class(17).is_err(), "Welten sind kein Instanzinhalt");
     }
 
     #[test]

@@ -5,10 +5,13 @@
 
 use bamboo_launcher::auth::{self, MicrosoftAuth};
 use bamboo_launcher::backup::{BackupManager, DEFAULT_KEEP};
+use bamboo_launcher::client_mode;
 use bamboo_launcher::config::{self, LauncherSettings, MemorySettings, Resolution};
 use bamboo_launcher::cosmetics;
 use bamboo_launcher::download::{Downloader as FileDownloader, FileSpec};
+use bamboo_launcher::error::LauncherError;
 use bamboo_launcher::game_settings;
+use bamboo_launcher::install::{InstallEvent, InstallOptions, Installer};
 use bamboo_launcher::instances::{self, InstanceManager};
 use bamboo_launcher::java;
 use bamboo_launcher::launcher::{self, Account, LaunchEvent, LaunchOptions};
@@ -185,10 +188,13 @@ fn instance_display_name(instance: &instances::Instance) -> String {
 }
 
 /// Instanzordner für einen Ordnernamen – auch für Profile der Vorgänger-App.
-fn instance_dir_or(root: &Path, folder: &str) -> PathBuf {
-    manager(root)
-        .instance_dir(folder)
-        .unwrap_or_else(|_| root.join("instances").join(folder))
+///
+/// Ein ungültiger Name wird abgelehnt, statt als Pfad unter `instances/`
+/// weiterverwendet zu werden: `..\..` oder ein Laufwerksbuchstabe landeten
+/// sonst außerhalb der Spielwurzel – beim Start, beim Download und beim
+/// Löschen von Dateien.
+fn instance_dir_or(root: &Path, folder: &str) -> Result<PathBuf, LauncherError> {
+    manager(root).instance_dir(folder)
 }
 
 pub(crate) fn read_json(path: &Path) -> Option<Value> {
@@ -344,6 +350,20 @@ fn content_dir(instance_dir: &Path, item_type: &str) -> PathBuf {
     instance_dir.join(sub)
 }
 
+/// Entfernt eine Datei samt ihrer deaktivierten Variante. Fehler werden
+/// bewusst ignoriert: Ein neuer Download darf nie an einer alten Kopie scheitern.
+fn remove_content_variants(dir: &Path, file_name: &str) {
+    let bare = file_name.trim_end_matches(".disabled");
+    for candidate in [
+        file_name.to_string(),
+        format!("{file_name}.disabled"),
+        bare.to_string(),
+        format!("{bare}.disabled"),
+    ] {
+        let _ = std::fs::remove_file(dir.join(candidate));
+    }
+}
+
 fn loader_label(loader: Loader) -> String {
     loader.label().to_string()
 }
@@ -382,6 +402,42 @@ fn loader_version_from_id(loader: Loader, version_id: &str) -> String {
             .or_else(|| id.split_once("-neoforge-").map(|(_, version)| version)),
     };
     version.unwrap_or_default().to_string()
+}
+
+/// Erstellungsdatum (Millisekunden) und gemerkte Ordnergröße einer Instanz.
+///
+/// Das Datum kommt aus `instance.json`; fehlt es (alte Profile), zählt der
+/// Anlagezeitpunkt des Ordners. So steht bei Importen immer der Importtag da.
+/// Erstellungsdatum in Millisekunden: aus `instance.json`, sonst der Ordner.
+fn instance_created_at(meta: Option<&Value>, dir: &Path) -> u64 {
+    let stored = meta
+        .and_then(|meta| meta.get("created_at").or_else(|| meta.get("createdAt")))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    // Ältere Stände schrieben Sekunden, neue Millisekunden.
+    let stored = if stored > 0 && stored < 10_000_000_000 {
+        stored.saturating_mul(1000)
+    } else {
+        stored
+    };
+    if stored > 0 {
+        return stored;
+    }
+    std::fs::metadata(dir)
+        .and_then(|meta| meta.created())
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+/// Zuletzt ermittelte Ordnergröße aus `instance.json`.
+fn cached_instance_size(meta: Option<&Value>) -> Option<String> {
+    meta.and_then(|meta| meta.get("size_label"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 pub(crate) fn instance_profile(root: &Path, instance: &instances::Instance) -> Value {
@@ -432,6 +488,34 @@ pub(crate) fn instance_profile(root: &Path, instance: &instances::Instance) -> V
             .map(|pack| (pack, ledger_source(ledger)))
     });
 
+    // Erstellungsdatum und zuletzt ermittelte Ordnergröße stehen in der
+    // Instanzdatei. Für importierte Instanzen ist das der Importtag, weil
+    // `create` den Zeitpunkt beim Anlegen schreibt.
+    let meta = read_json(&instance.dir.join("instance.json"));
+    let created_at = instance_created_at(meta.as_ref(), &instance.dir);
+    let cached_size = cached_instance_size(meta.as_ref());
+    // Bild, Beschreibung und Speicher eines Imports stehen in der Instanzdatei.
+    let stored_description = meta
+        .as_ref()
+        .and_then(|meta| meta.get("description").or_else(|| meta.get("desc")))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default()
+        .to_string();
+    let stored_thumbnail = meta
+        .as_ref()
+        .and_then(|meta| meta.get("thumbnail"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default()
+        .to_string();
+    let stored_ram = meta
+        .as_ref()
+        .and_then(|meta| meta.get("ram"))
+        .and_then(Value::as_u64);
+    let play_time_ms = instances::playtime_ms(&instance.dir);
     let mut profile = json!({
         "id": instance.name,
         "name": display_name,
@@ -442,15 +526,16 @@ pub(crate) fn instance_profile(root: &Path, instance: &instances::Instance) -> V
         "loaderVersion": loader_version,
         "minecraftVersion": minecraft,
         "lastPlayed": "Nie",
-        "size": "0 MB",
+        "size": cached_size.unwrap_or_default(),
         "mods": mod_count,
-        "desc": "",
-        "thumbnail": "",
+        "desc": stored_description,
+        "thumbnail": stored_thumbnail,
         "javaPath": "Automatisch",
         "installedMods": installed_mods,
         "content": content,
-        "ram": settings.memory.max_mb,
-        "playTimeMs": 0,
+        "ram": stored_ram.unwrap_or(u64::from(settings.memory.max_mb)),
+        "playTimeMs": play_time_ms,
+        "createdAt": created_at,
         "sessionCount": session_summary.count,
         "lastPlayedAt": session_summary.last_seen,
         "isModpack": pack.is_some(),
@@ -505,9 +590,72 @@ pub(crate) fn instance_content(
 /// Jar selbst, damit ein Forge-Mod nicht als Dateiname erscheint. Für Mods aus
 /// der Bestandsdatei kommen Projekt-ID, Quelle und Versionsnummer dazu – ohne
 /// sie würde die Inhaltsliste nach einem Pack-Update ihre Identität verlieren.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct CachedModMeta {
+    size: u64,
+    modified: u64,
+    #[serde(default)]
+    metadata: Option<instances::ModMetadata>,
+}
+
+/// Größe und Änderungszeit mit einem einzigen `metadata`-Aufruf.
+fn file_size_and_mtime(path: &Path) -> (u64, u64) {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return (0, 0);
+    };
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or_default();
+    (meta.len(), modified)
+}
+
+/// Metadaten einer Mod: aus dem Cache, sonst aus der JAR. Größe und
+/// Änderungszeit entscheiden, ob der Eintrag noch gilt.
+fn cached_mod_metadata(
+    cache: &mut HashMap<String, CachedModMeta>,
+    path: &Path,
+    file_name: &str,
+    dirty: &mut bool,
+) -> Option<instances::ModMetadata> {
+    let (size, modified) = file_size_and_mtime(path);
+    // `x.jar.disabled` und `x.jar` sind dieselbe Datei; ein Deaktivieren soll
+    // sie nicht neu einlesen lassen.
+    let key = file_name
+        .strip_suffix(".disabled")
+        .unwrap_or(file_name)
+        .to_string();
+    if let Some(entry) = cache.get(&key) {
+        if entry.size == size && entry.modified == modified {
+            return entry.metadata.clone();
+        }
+    }
+    let metadata = instances::read_mod_metadata(path);
+    cache.insert(
+        key,
+        CachedModMeta {
+            size,
+            modified,
+            metadata: metadata.clone(),
+        },
+    );
+    *dirty = true;
+    metadata
+}
+
 fn disk_content(instance_dir: &Path, ledger: Option<&mods::ModLedger>) -> (Vec<Value>, usize) {
     let mut items = Vec::new();
     let mut mods = 0;
+    // Name und Version stecken in der JAR. Das Auspacken ist der teuerste Teil
+    // des Profil-Ladens, deshalb wird das Ergebnis je Datei (Größe + mtime)
+    // zwischengespeichert; ein geänderter Mod wird neu gelesen.
+    let cache_path = instance_dir.join("bamboo").join("mod-meta-cache.json");
+    let mut cache: HashMap<String, CachedModMeta> = read_json(&cache_path)
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default();
+    let mut cache_dirty = false;
     for item_type in ["mods", "resourcepacks", "shaderpacks", "datapacks"] {
         let dir = instance_dir.join(item_type);
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -521,7 +669,12 @@ fn disk_content(instance_dir: &Path, ledger: Option<&mods::ModLedger>) -> (Vec<V
         names.sort_by_key(|name| name.to_lowercase());
         for file_name in names {
             let metadata = if item_type == "mods" {
-                instances::read_mod_metadata(&dir.join(&file_name))
+                cached_mod_metadata(
+                    &mut cache,
+                    &dir.join(&file_name),
+                    &file_name,
+                    &mut cache_dirty,
+                )
             } else {
                 None
             };
@@ -534,6 +687,7 @@ fn disk_content(instance_dir: &Path, ledger: Option<&mods::ModLedger>) -> (Vec<V
                 .as_ref()
                 .and_then(|meta| meta.name.clone().or_else(|| meta.id.clone()))
                 .unwrap_or(stem);
+            let mod_id = metadata.as_ref().and_then(|meta| meta.id.clone());
             let plain_name = file_name.strip_suffix(".disabled").unwrap_or(&file_name);
             let record = if item_type == "mods" {
                 ledger.and_then(|ledger| {
@@ -548,7 +702,7 @@ fn disk_content(instance_dir: &Path, ledger: Option<&mods::ModLedger>) -> (Vec<V
             let version_number = record
                 .map(|record| record.version_number.clone())
                 .filter(|value| !value.trim().is_empty())
-                .or_else(|| metadata.and_then(|meta| meta.version))
+                .or_else(|| metadata.as_ref().and_then(|meta| meta.version.clone()))
                 .unwrap_or_default();
             if item_type == "mods" {
                 mods += 1;
@@ -563,6 +717,9 @@ fn disk_content(instance_dir: &Path, ledger: Option<&mods::ModLedger>) -> (Vec<V
                 "enabled": !file_name.ends_with(".disabled"),
                 "locked": false,
             });
+            if let Some(mod_id) = mod_id {
+                item["modId"] = json!(mod_id);
+            }
             if let Some(record) = record {
                 item["projectId"] = json!(record.project_id);
                 item["source"] = json!(match record.source {
@@ -571,6 +728,11 @@ fn disk_content(instance_dir: &Path, ledger: Option<&mods::ModLedger>) -> (Vec<V
                 });
             }
             items.push(item);
+        }
+    }
+    if cache_dirty {
+        if let Ok(value) = serde_json::to_value(&cache) {
+            let _ = write_json(&cache_path, &value);
         }
     }
     (items, mods)
@@ -597,9 +759,15 @@ fn merged_profiles(root: &Path) -> Vec<Value> {
     if let Ok(instances) = manager(root).list() {
         for instance in instances {
             let fresh = instance_profile(root, &instance);
-            match known.iter().position(|folder| folder == &instance.name) {
+            match known
+                .iter()
+                .position(|folder| folder.eq_ignore_ascii_case(&instance.name))
+            {
                 // The stored profile keeps cover, description and playtime;
-                // version, loader and path come from the disk truth.
+                // version, loader and path come from the disk truth. Content
+                // is disk truth too: keeping an old in-memory list here made
+                // updated jars appear twice and kept slug-only project ids
+                // alive after a restart.
                 Some(index) => {
                     let mut merged = profiles[index].clone();
                     for key in [
@@ -610,10 +778,16 @@ fn merged_profiles(root: &Path) -> Vec<Value> {
                         "versionId",
                         "modLoader",
                         "path",
+                        "folderName",
                         "isModpack",
+                        "content",
+                        "mods",
                         "installedMods",
                         "modpackVersion",
                         "modpackSource",
+                        "size",
+                        "createdAt",
+                        "playTimeMs",
                         // Sessions gehören dem Kern, nicht dem zuletzt von der
                         // Oberfläche gespeicherten Stand.
                         "sessionCount",
@@ -630,6 +804,81 @@ fn merged_profiles(root: &Path) -> Vec<Value> {
         }
     }
     profiles
+}
+
+/// Lädt die Basisversion nach, wenn sie fehlt oder unvollständig ist.
+///
+/// Eine neue Instanz darf nicht daran scheitern, dass Minecraft noch nicht
+/// installiert ist: der Launcher holt Version, Client-Jar, Libraries, Assets und
+/// bei Bedarf Java selbst. Der Fortschritt läuft über
+/// `instance-install-progress`.
+async fn ensure_installed_version(
+    app: &AppHandle,
+    root: &Path,
+    version_id: &str,
+    folder: &str,
+) -> std::result::Result<(), String> {
+    if let Ok(resolved) = version::resolve_version(root, version_id) {
+        if resolved.client_jar.is_file() {
+            return Ok(());
+        }
+    }
+
+    let installer = Installer::new(config::default_cache_dir());
+    let progress_app = app.clone();
+    let progress_folder = folder.to_string();
+    let listener = move |event: InstallEvent| {
+        let percent = if event.progress.total == 0 {
+            0
+        } else {
+            (event.progress.completed * 100 / event.progress.total) as u32
+        };
+        // Bewusst kein `launch-progress`: der Startzustand der Oberfläche hängt
+        // an diesem Event und würde für eine noch unfertige Instanz hängen
+        // bleiben. Hier läuft nur die Installation einer Version.
+        let _ = progress_app.emit(
+            "instance-install-progress",
+            json!({
+                "folderName": progress_folder,
+                "percent": percent,
+                "label": event.step.label(),
+            }),
+        );
+    };
+
+    installer
+        .install_version(root, version_id, &InstallOptions::default(), listener)
+        .await
+        .map_err(|error| {
+            format!("Minecraft {version_id} ließ sich nicht automatisch installieren: {error}")
+        })?;
+    Ok(())
+}
+
+/// Lädt eine fehlende Basisversion vor dem Start nach.
+///
+/// Alte Profile bringen ihre eigene Version mit; dort bleibt es beim Fehler,
+/// statt in einen fremden Spielordner zu schreiben.
+async fn ensure_version_for_launch(
+    content_root: &Path,
+    root: &Path,
+    version_id: &str,
+) -> std::result::Result<(), String> {
+    if let Ok(resolved) = version::resolve_version(content_root, version_id) {
+        if resolved.client_jar.is_file() {
+            return Ok(());
+        }
+    }
+    if content_root != root {
+        return Err(format!("Version '{version_id}' ist nicht installiert."));
+    }
+    Installer::new(config::default_cache_dir())
+        .install_version(root, version_id, &InstallOptions::default(), |_| {})
+        .await
+        .map_err(|error| {
+            format!("Minecraft {version_id} ließ sich nicht automatisch installieren: {error}")
+        })?;
+    Ok(())
 }
 
 fn emit_progress(
@@ -767,8 +1016,32 @@ pub fn list_instances() -> Value {
     Value::Array(records)
 }
 
+/// Legt die Instanz im geprüften Ordner an; ein abweichender Anzeigename
+/// landet in `instance.json`.
+///
+/// Vorher entstand der Ordner aus dem ungeprüften Anzeigenamen: eine zweite
+/// Instanz mit gleichem Namen scheiterte an „existiert bereits“, obwohl die
+/// Oberfläche einen freien Ordnernamen (`survival-2`) mitgeschickt hatte, und
+/// Zeichen wie `:` oder `\` umgingen die Namensprüfung ganz.
+fn create_instance_in(
+    manager: &InstanceManager,
+    folder: &str,
+    name: &str,
+    version_id: &str,
+) -> Result<instances::Instance, LauncherError> {
+    let instance = manager.create(folder, Some(version_id))?;
+    if !name.trim().is_empty() && name.trim() != folder.trim() {
+        let meta_path = instance.dir.join("instance.json");
+        if let Some(mut meta) = read_json(&meta_path) {
+            meta["name"] = json!(name.trim());
+            let _ = write_json(&meta_path, &meta);
+        }
+    }
+    Ok(instance)
+}
+
 #[tauri::command]
-pub async fn create_instance(data: Value) -> Value {
+pub async fn create_instance(app: AppHandle, data: Value) -> Value {
     let root = load_rust_settings().game_root;
     let folder = data
         .get("folderName")
@@ -800,6 +1073,12 @@ pub async fn create_instance(data: Value) -> Value {
         .unwrap_or(false)
     {
         return json!({"success": false, "error": format!("'{folder}' existiert bereits."), "code": "exists"});
+    }
+
+    // Ohne installierte Basisversion kann weder ein Loader-Profil entstehen
+    // noch die Instanz starten. Der Launcher lädt sie deshalb beim Anlegen mit.
+    if let Err(error) = ensure_installed_version(&app, &root, &base_version, &folder).await {
+        return json!({"success": false, "code": "install-failed", "error": error});
     }
 
     // A loader instance needs its launch profile; when that fails the instance
@@ -837,7 +1116,7 @@ pub async fn create_instance(data: Value) -> Value {
         }
     }
 
-    match manager.create(&name, Some(&version_id)) {
+    match create_instance_in(&manager, &folder, &name, &version_id) {
         Ok(instance) => {
             // Eine neue Instanz startet mit den installierten Cosmetics, sofern
             // sie nicht auf der Ausschlussliste steht.
@@ -900,9 +1179,19 @@ pub fn rename_instance(data: Value) -> Value {
 }
 
 #[tauri::command]
-pub fn delete_instance_files(folder_name: String) -> Value {
+pub fn delete_instance_files(folder_name: String, state: State<'_, LauncherState>) -> Value {
+    let folder = folder_name.trim();
+    // Offene Spieldateien sperren das Löschen nur teilweise: remove_dir_all
+    // würde Welten und Configs mitnehmen und einen Rest zurücklassen.
+    if state.is_instance_running(folder) {
+        return json!({
+            "success": false,
+            "code": "running",
+            "error": "Die Instanz läuft. Beende das Spiel, bevor du sie löschst."
+        });
+    }
     let root = load_rust_settings().game_root;
-    match manager(&root).remove(&folder_name) {
+    match manager(&root).remove(folder) {
         Ok(()) => json!({"success": true, "deleted": true}),
         Err(error) => {
             json!({"success": false, "error": error.to_string(), "code": "delete-failed"})
@@ -924,14 +1213,32 @@ pub fn open_instance_folder(folder_name: String) -> Value {
 }
 
 #[tauri::command]
-pub async fn change_instance_version(data: Value) -> Value {
+pub async fn change_instance_version(data: Value, app: AppHandle) -> Value {
     let root = load_rust_settings().game_root;
     let folder = data.get("folderName").and_then(Value::as_str).unwrap_or("");
     let mc_version = data.get("mcVersion").and_then(Value::as_str).unwrap_or("");
+    // Ein laufendes Spiel hält seine Version und Welten offen; der Wechsel
+    // würde ihm die Basis unter den Füßen wegziehen.
+    let running = app
+        .try_state::<LauncherState>()
+        .is_some_and(|state| state.is_instance_running(folder));
+    if running {
+        return json!({
+            "success": false,
+            "code": "running",
+            "error": "Die Instanz läuft. Beende das Spiel, bevor du die Version wechselst."
+        });
+    }
     let loader = data
         .get("loader")
         .and_then(Value::as_str)
         .and_then(Loader::parse);
+
+    // Auch ein Versionswechsel braucht die Basis. Fehlt sie, wird sie geladen,
+    // statt den Wechsel mit „nicht installiert“ abzulehnen.
+    if let Err(error) = ensure_installed_version(&app, &root, mc_version, folder).await {
+        return json!({"success": false, "code": "install-failed", "error": error});
+    }
 
     let mut version_id = mc_version.to_string();
     if let Some(loader) = loader {
@@ -1005,9 +1312,10 @@ pub fn update_launch_settings(folder_name: String, patch: Value) -> Value {
 #[tauri::command]
 pub fn read_latest_log(folder_name: String) -> String {
     let root = load_rust_settings().game_root;
-    let path = instance_dir_or(&root, &folder_name)
-        .join("logs")
-        .join("latest.log");
+    let Ok(instance_dir) = instance_dir_or(&root, &folder_name) else {
+        return String::new();
+    };
+    let path = instance_dir.join("logs").join("latest.log");
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
@@ -1209,7 +1517,28 @@ pub async fn launch_game(
         .to_string();
     let started = token_store::now_ms();
     let root = load_rust_settings().game_root;
-    let instance_dir = instance_dir_or(&root, &folder);
+    // Ohne Ordnernamen startet das Spiel im Spielverzeichnis selbst; so war es
+    // schon vor der Namensprüfung. Ein roher Pfad aus dem Payload darf dagegen
+    // nie zur Spielwurzel werden.
+    let instance_dir = if folder.trim().is_empty() {
+        root.join("instances")
+    } else {
+        match instance_dir_or(&root, &folder) {
+            Ok(dir) => dir,
+            Err(error) => {
+                let _ = app.emit(
+                    "launch-failed",
+                    json!({
+                        "folderName": folder.clone(),
+                        "profileName": profile.clone(),
+                        "message": error.to_string(),
+                        "code": "invalid-folder",
+                    }),
+                );
+                return Ok(());
+            }
+        }
+    };
     let track_session = statistics_enabled();
 
     // Dieselbe Instanz nicht zweimal starten; verschiedene Instanzen dürfen
@@ -1248,11 +1577,15 @@ pub async fn launch_game(
     );
 
     match prepare_and_spawn(&payload, &folder).await {
-        Ok(mut process) => {
+        Ok((mut process, options_pending)) => {
             if let Some(pid) = process.pid() {
                 if let Ok(mut running) = state.running.lock() {
                     running.insert(folder.clone(), pid);
                 }
+            }
+            // Erst jetzt: Das Spiel läuft, die Panel-Werte gehören ihm.
+            if let Some(dir) = options_pending {
+                let _ = launcher::mark_options_applied(&dir);
             }
             if track_session {
                 let _ = sessions::record_start(&instance_dir);
@@ -1316,7 +1649,13 @@ pub async fn launch_game(
     }
 }
 
-async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::GameProcess, String> {
+/// Startet das Spiel und meldet zurück, in welchem Ordner die Panel-Optionen
+/// noch als „nicht übernommen“ markiert werden müssen (siehe
+/// `launcher::mark_options_applied`).
+async fn prepare_and_spawn(
+    payload: &Value,
+    folder: &str,
+) -> Result<(launcher::GameProcess, Option<PathBuf>), String> {
     let settings = load_rust_settings();
     let root = settings.game_root.clone();
     // Ein Start ist der sicherste Moment für den Abgleich: auch Instanzen, die
@@ -1340,6 +1679,7 @@ async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::Ga
     // bleibt stehen, statt bei jedem Start von den Launcher-Standardwerten
     // überschrieben zu werden. Schlägt das Schreiben fehl, startet das Spiel
     // trotzdem – beides ist kein Startkriterium.
+    let mut options_pending: Option<PathBuf> = None;
     if let Some(game_options) = payload.get("gameOptions").and_then(Value::as_object) {
         let language = game_options
             .get("lang")
@@ -1350,8 +1690,12 @@ async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::Ga
             pairs.extend(game_settings::keybinds_from_ui(keybinds));
         }
         // Pflegt zusätzlich die YOSBR-Vorgabedatei und lehnt ungültige
-        // Sprachcodes ab, bevor etwas geschrieben wird.
-        let _ = launcher::apply_options_once(&working_dir, language, &pairs);
+        // Sprachcodes ab, bevor etwas geschrieben wird. Der Marker folgt erst
+        // nach dem Spawn: ein abgebrochener Start darf die Instanz nicht als
+        // eingerichtet zurücklassen.
+        if let Ok(true) = launcher::apply_options_once(&working_dir, language, &pairs) {
+            options_pending = Some(working_dir.clone());
+        }
 
         // Vollbild ist keine Option des Panels, sondern eine Startvorgabe der
         // Instanz. Ohne diesen Eintrag entscheidet allein die options.txt:
@@ -1380,9 +1724,11 @@ async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::Ga
         None => root.clone(),
     };
 
-    let resolved = version::resolve_version(&content_root, &version_id).map_err(|error| {
-        format!("Version '{version_id}' ist nicht installiert: {error}. Installiere sie zuerst.")
-    })?;
+    // Fehlt die Basisversion, lädt der Launcher sie nach – ein Start darf nicht
+    // daran scheitern, dass Minecraft noch nicht installiert ist.
+    ensure_version_for_launch(&content_root, &root, &version_id).await?;
+    let resolved = version::resolve_version(&content_root, &version_id)
+        .map_err(|error| format!("Version '{version_id}' ist nicht installiert: {error}."))?;
 
     let java_hint = payload
         .get("javaPath")
@@ -1426,7 +1772,7 @@ async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::Ga
         })
         .or(settings.resolution);
 
-    let extra_jvm_args = payload
+    let mut extra_jvm_args: Vec<String> = payload
         .get("extraJvmArgs")
         .and_then(Value::as_array)
         .map(|args| {
@@ -1436,6 +1782,18 @@ async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::Ga
                 .collect()
         })
         .unwrap_or_default();
+
+    // Client-Modus gilt nur für Fabric 26.3 und nur für diesen Start. Die Jars
+    // bleiben im Launcher-Ordner; das Spiel liest sie über die Property.
+    // Andere Fabric-Versionen würden den 26.3-Mod sonst als inkompatibel
+    // ablehnen und gar nicht erst starten.
+    if resolved.minecraft_version == "26.3"
+        && version_id.to_ascii_lowercase().contains("fabric")
+    {
+        if let Some(argument) = client_mode::fabric_add_mods_arg(&working_dir.join("mods")) {
+            extra_jvm_args.push(argument);
+        }
+    }
 
     let server = payload
         .get("gameOptions")
@@ -1480,9 +1838,10 @@ async fn prepare_and_spawn(payload: &Value, folder: &str) -> Result<launcher::Ga
 
     let plan = launcher::build_launch_plan(&content_root, &version_id, &working_dir, &options)
         .map_err(|error| error.to_string())?;
-    launcher::spawn_game(&plan, log_path)
+    let process = launcher::spawn_game(&plan, log_path)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    Ok((process, options_pending))
 }
 
 #[tauri::command]
@@ -1532,7 +1891,10 @@ pub fn list_content_files(data: Value) -> Value {
     let root = load_rust_settings().game_root;
     let folder = data.get("folderName").and_then(Value::as_str).unwrap_or("");
     let item_type = data.get("type").and_then(Value::as_str).unwrap_or("mods");
-    let dir = content_dir(&instance_dir_or(&root, folder), item_type);
+    let Ok(instance_dir) = instance_dir_or(&root, folder) else {
+        return json!([]);
+    };
+    let dir = content_dir(&instance_dir, item_type);
     let mut names: Vec<String> = std::fs::read_dir(dir)
         .map(|entries| {
             entries
@@ -1559,7 +1921,10 @@ pub fn delete_content_file(data: Value) -> bool {
     else {
         return false;
     };
-    let dir = content_dir(&instance_dir_or(&root, folder), item_type);
+    let Ok(instance_dir) = instance_dir_or(&root, folder) else {
+        return false;
+    };
+    let dir = content_dir(&instance_dir, item_type);
     // Die Oberfläche kennt Dateien mit und ohne `.disabled`, und Windows hält
     // frisch geladene Dateien kurz gesperrt (Virenscanner, Suchindex). Deshalb
     // mehrere Namensvarianten und ein paar Wiederholungen statt eines
@@ -1591,6 +1956,57 @@ pub fn delete_content_file(data: Value) -> bool {
 /// des Tabs, und ein Fehlschlag soll nicht den ganzen Tab blockieren.
 const IDENTIFY_BATCH: usize = 400;
 
+/// Trägt eine erkannte Mod in die Bestandsdatei ein und hält den Dateinamen
+/// aktuell. Ohne das blieb nach einem Update oder einer gecachten Erkennung
+/// die Projekt-ID an der alten Datei hängen; der Mod galt dann im Browser
+/// wieder als "nicht installiert".
+fn remember_identified_mod(
+    ledger: &mut mods::ModLedger,
+    identified: &mods::identify::Identified,
+    file_name: &str,
+) -> bool {
+    if identified.project_id.trim().is_empty() {
+        return false;
+    }
+    let Some(source) = mods::ModSource::parse(&identified.source) else {
+        return false;
+    };
+    let previous = ledger.find(&identified.project_id).cloned();
+    // Eine Identifikation ohne Versionsnummer darf die bekannte nicht löschen.
+    let version_number = if identified.version_number.trim().is_empty() {
+        previous
+            .as_ref()
+            .map(|record| record.version_number.clone())
+            .unwrap_or_default()
+    } else {
+        identified.version_number.clone()
+    };
+    if previous
+        .as_ref()
+        .is_some_and(|record| {
+            record.file_name == file_name
+                && record.source == source
+                && record.version_number == version_number
+        })
+    {
+        return false;
+    }
+    ledger.upsert(mods::ModRecord {
+        file_name: file_name.to_string(),
+        source,
+        project_id: identified.project_id.clone(),
+        version_id: previous
+            .as_ref()
+            .map(|record| record.version_id.clone())
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| file_name.to_string()),
+        version_number,
+        installed_at: previous.as_ref().map(|record| record.installed_at).unwrap_or_default(),
+        required_by: previous.map(|record| record.required_by).unwrap_or_default(),
+    });
+    true
+}
+
 /// Eine Datei auf der Platte, benannt wie sie in der Oberfläche erscheint.
 /// Deaktivierte Dateien heißen `paket.jar.disabled`; ihr Inhalt ist aber das
 /// unveränderte Paket, deshalb wird für den Abgleich ohne Endung geprüft.
@@ -1614,7 +2030,9 @@ fn identify_candidate(path: &Path, display_name: &str) -> Option<mods::identify:
 pub async fn identify_content_files(data: Value) -> Value {
     let root = load_rust_settings().game_root;
     let folder = data.get("folderName").and_then(Value::as_str).unwrap_or("");
-    let instance = instance_dir_or(&root, folder);
+    let Ok(instance) = instance_dir_or(&root, folder) else {
+        return json!({});
+    };
 
     let mut wanted: Vec<(String, String)> = Vec::new();
     for entry in data
@@ -1637,6 +2055,8 @@ pub async fn identify_content_files(data: Value) -> Value {
     // Derselbe Dateiname kann in zwei Ordnern liegen (Mod und Resourcepack
     // mit gleichem Namen); der erste Treffer zählt.
     let mut cache = mods::cache::IdentityCache::load(&instance);
+    let mut ledger = mods::ModLedger::load(&instance).unwrap_or_default();
+    let mut ledger_dirty = false;
     let mut answer = serde_json::Map::new();
     let mut candidates: Vec<(
         String,
@@ -1666,6 +2086,14 @@ pub async fn identify_content_files(data: Value) -> Value {
         // Unveränderte Dateien kosten keinen Netzaufruf; der Tab zeigt ihren
         // Namen auch dann, wenn Modrinth oder CurseForge gerade nicht antworten.
         if let Some(identified) = cache.get(&cache_key, size, modified) {
+            // Auch ein Cache-Treffer muss die Bestandsdatei reparieren: Sie
+            // kann fehlen oder noch den alten Dateinamen tragen.
+            if item_type.starts_with("mod") {
+                let ledger_name = file_name.strip_suffix(".disabled").unwrap_or(&file_name);
+                if remember_identified_mod(&mut ledger, identified, ledger_name) {
+                    ledger_dirty = true;
+                }
+            }
             answer.insert(file_name, identified_json(identified));
             continue;
         }
@@ -1692,7 +2120,17 @@ pub async fn identify_content_files(data: Value) -> Value {
 
         for (display_name, cache_key, candidate, metadata, size, modified) in candidates {
             if let Some(identified) = found.get(&candidate.file_name) {
+                let is_mod_file = cache_key.starts_with("mods/");
                 cache.insert(cache_key, size, modified, identified.clone());
+                // Persist the identity next to the file. The renderer may only
+                // cache it in memory, and the next app start reads the ledger,
+                // not that memory. Without this a downloaded mod lost its
+                // project id and looked uninstalled in search again.
+                if is_mod_file {
+                    if remember_identified_mod(&mut ledger, identified, &candidate.file_name) {
+                        ledger_dirty = true;
+                    }
+                }
                 answer.insert(display_name, identified_json(identified));
                 continue;
             }
@@ -1724,6 +2162,9 @@ pub async fn identify_content_files(data: Value) -> Value {
     }
 
     cache.save(&instance);
+    if ledger_dirty {
+        let _ = ledger.save(&instance);
+    }
     Value::Object(answer)
 }
 
@@ -1756,7 +2197,9 @@ fn identified_json(identified: &mods::identify::Identified) -> Value {
 pub async fn check_mod_updates(data: Value) -> Value {
     let root = load_rust_settings().game_root;
     let folder = data.get("folderName").and_then(Value::as_str).unwrap_or("");
-    let instance_dir = instance_dir_or(&root, folder);
+    let Ok(instance_dir) = instance_dir_or(&root, folder) else {
+        return json!({ "resolved": [], "updates": [] });
+    };
     let instance = manager(&root).load(folder).ok();
     let version_id = instance
         .as_ref()
@@ -1869,41 +2312,21 @@ async fn download_to(url: &str, dest: &Path) -> Result<u64, String> {
 // CurseForge
 // ---------------------------------------------------------------------------
 
-/// Einstellungen haben Vorrang vor der Umgebung? Nein: eine gesetzte
-/// Umgebungsvariable stammt aus einer bewussten Sitzung und gewinnt.
+/// Jeder Build bringt denselben CurseForge-Key mit.
+///
+/// Niemand muss einen eigenen Key eintragen: der eingebettete Key gilt für
+/// alle Nutzer. `BAMBOO_CURSEFORGE_API_KEY` überschreibt ihn ausschließlich
+/// für Entwicklung und Tests. Gespeicherte Keys aus älteren Fassungen werden
+/// bewusst nicht mehr befragt – ein dort abgelaufener Key hat schon einmal den
+/// gültigen Build-Key verdrängt und die Mod-Suche lahmgelegt.
 pub(crate) fn curseforge_api_key() -> Option<String> {
-    for name in ["BAMBOO_CURSEFORGE_API_KEY", "CURSEFORGE_API_KEY"] {
-        if let Ok(value) = std::env::var(name) {
-            let value = value.trim().to_string();
-            if !value.is_empty() {
-                return Some(value);
-            }
+    if let Ok(value) = std::env::var("BAMBOO_CURSEFORGE_API_KEY") {
+        let value = value.trim().to_string();
+        if !value.is_empty() {
+            return Some(value);
         }
     }
-    // Die Oberfläche schreibt in `ui-settings.json`. Ein dort gesetzter Key
-    // gilt vor allen Dateien des Kerns – auch ein leerer Wert, damit
-    // „Entfernen“ nicht von einem älteren Key überstimmt wird.
-    if let Ok(ui) = LauncherSettings::load(&ui_settings_path()) {
-        if let Some(key) = ui.curseforge_api_key {
-            let key = key.trim().to_string();
-            return if key.is_empty() { None } else { Some(key) };
-        }
-    }
-    load_rust_settings()
-        .curseforge_api_key
-        .or_else(|| {
-            // Der Key der alten Electron-Shell liegt in `settings.json` und
-            // gilt weiter, auch wenn der Kern schon eigene Einstellungen hat.
-            LauncherSettings::load(&config::default_settings_path())
-                .ok()
-                .and_then(|settings| settings.curseforge_api_key)
-        })
-        // Electron schrieb unter `<appdata>/bamboo-launcher` – ein anderer
-        // Ordner als `BambooLauncher`. Ohne diesen Rückfall meldet der
-        // Launcher nach dem Wechsel „Key fehlt“, obwohl einer hinterlegt ist.
-        .or_else(config::legacy_curseforge_api_key)
-        .map(|key| key.trim().to_string())
-        .filter(|key| !key.is_empty())
+    config::bundled_curseforge_api_key()
 }
 
 /// Fehlerform, die `ui/src/lib/curseforge.ts` in Titel und Text übersetzt.
@@ -2060,6 +2483,7 @@ pub async fn install_mod(app: AppHandle, data: Value) -> Value {
         .and_then(Value::as_str)
         .unwrap_or("mods")
         .to_string();
+    let is_mod = item_type == "mod" || item_type == "mods";
     let mut url = data
         .get("downloadUrl")
         .and_then(Value::as_str)
@@ -2072,6 +2496,22 @@ pub async fn install_mod(app: AppHandle, data: Value) -> Value {
         .filter(|id| *id > 0);
     let project_id = data
         .get("projectId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let requested_source = data
+        .get("source")
+        .and_then(Value::as_str)
+        .and_then(mods::ModSource::parse);
+    let project_version_id = data
+        .get("projectVersionId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let version_number = data
+        .get("versionNumber")
         .and_then(Value::as_str)
         .unwrap_or("")
         .trim()
@@ -2108,7 +2548,14 @@ pub async fn install_mod(app: AppHandle, data: Value) -> Value {
         return json!({"success": false, "error": "Diese Mod hat keine direkte Download-URL.", "code": "no-url"});
     }
 
-    let dir = content_dir(&instance_dir_or(&root, &folder), &item_type);
+    let Ok(instance_dir) = instance_dir_or(&root, &folder) else {
+        return json!({
+            "success": false,
+            "error": "Ungültiger Instanzname.",
+            "code": "invalid-name"
+        });
+    };
+    let dir = content_dir(&instance_dir, &item_type);
     let dest = dir.join(filename);
     let task_id = data
         .get("taskId")
@@ -2126,6 +2573,58 @@ pub async fn install_mod(app: AppHandle, data: Value) -> Value {
     }
     match FileDownloader::new().download_all(vec![spec], |_| {}).await {
         Ok(_) => {
+            // A download from the browser must update the same ledger the
+            // modpack/CLI installer uses. Without this record the file loses
+            // its project id on the next app start, which made it show up as
+            // "not installed" in search and as a second copy after updates.
+            if is_mod && !project_id.is_empty() {
+                let source = requested_source
+                    .or_else(|| {
+                        curseforge_file_id
+                            .is_some()
+                            .then_some(mods::ModSource::CurseForge)
+                    })
+                    .or_else(|| {
+                        project_id
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                            .then_some(mods::ModSource::CurseForge)
+                    })
+                    .unwrap_or(mods::ModSource::Modrinth);
+                let mut ledger = mods::ModLedger::load(&instance_dir).unwrap_or_default();
+                let previous = ledger.find(&project_id).cloned();
+                if let Some(record) = &previous {
+                    if record.file_name != filename {
+                        remove_content_variants(&dir, &record.file_name);
+                    }
+                }
+                // An old disabled copy would otherwise sit next to the fresh
+                // enabled jar and make Minecraft load the same mod twice.
+                let _ = std::fs::remove_file(dir.join(format!("{filename}.disabled")));
+                ledger.upsert(mods::ModRecord {
+                    file_name: filename.to_string(),
+                    source,
+                    project_id: project_id.clone(),
+                    version_id: if project_version_id.is_empty() {
+                        filename.to_string()
+                    } else {
+                        project_version_id
+                    },
+                    version_number: if version_number.is_empty() {
+                        filename.to_string()
+                    } else {
+                        version_number
+                    },
+                    installed_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|duration| duration.as_secs())
+                        .unwrap_or(0),
+                    required_by: previous
+                        .map(|record| record.required_by)
+                        .unwrap_or_default(),
+                });
+                let _ = ledger.save(&instance_dir);
+            }
             let _ = app.emit(
                 "background-task-progress",
                 json!({"id": task_id, "percent": 100, "label": filename}),
@@ -2156,7 +2655,14 @@ pub async fn upload_local_mod(data: Value) -> Value {
     else {
         return json!({"success": false, "error": "Ungültige Datei.", "code": "invalid-file"});
     };
-    let dir = content_dir(&instance_dir_or(&root, folder), item_type);
+    let Ok(instance_dir) = instance_dir_or(&root, folder) else {
+        return json!({
+            "success": false,
+            "error": "Ungültiger Instanzname.",
+            "code": "invalid-name"
+        });
+    };
+    let dir = content_dir(&instance_dir, item_type);
     if let Err(error) = std::fs::create_dir_all(&dir) {
         return json!({"success": false, "error": error.to_string(), "code": "io"});
     }
@@ -2251,6 +2757,7 @@ pub async fn install_modpack(app: AppHandle, data: Value) -> Value {
                 "downloadedBytes": report.downloaded_bytes,
                 "index": { "files": report.index_files },
                 "overrideFiles": report.override_files,
+                "warnings": warnings_of(&report.failures),
                 "backup": backup,
             }),
             Err(error) => json!({
@@ -2275,6 +2782,7 @@ pub async fn install_modpack(app: AppHandle, data: Value) -> Value {
                 // liegen.
                 "index": { "files": report.index_files },
                 "overrideFiles": report.override_files,
+                "warnings": warnings_of(&report.failures),
                 "backup": backup,
             }),
             Err(error) => json!({
@@ -2286,6 +2794,16 @@ pub async fn install_modpack(app: AppHandle, data: Value) -> Value {
     };
     let _ = std::fs::remove_file(&archive);
     response
+}
+
+/// Übersprungene Pack-Dateien als fertige Zeilen für die Oberfläche.
+fn warnings_of(
+    failures: &[bamboo_launcher::modpack::curseforge::FileFailure],
+) -> Vec<String> {
+    failures
+        .iter()
+        .map(bamboo_launcher::modpack::curseforge::FileFailure::message)
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -2862,6 +3380,7 @@ mod image_tests {
 
         std::fs::remove_dir_all(dir).unwrap();
     }
+
 }
 
 #[cfg(test)]
@@ -2923,5 +3442,85 @@ mod content_tests {
         assert_eq!(profile["content"][0]["fileName"], json!("lokal.jar"));
 
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn folder_names_cannot_escape_the_instance_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // Ein roher Payload-Name wurde früher ungeprüft zu einem Pfad unter
+        // `instances/`; `..\..` zeigte damit auf den ganzen Datenträger.
+        for folder in ["..\\..\\Windows", "../escape", "C:\\Windows", "", "CON"] {
+            assert!(
+                instance_dir_or(root, folder).is_err(),
+                "'{folder}' hätte abgelehnt werden müssen"
+            );
+        }
+
+        let valid = instance_dir_or(root, "Meine Welt").unwrap();
+        assert_eq!(valid, root.join("instances").join("Meine Welt"));
+    }
+
+    #[test]
+    fn creation_uses_the_validated_folder_and_keeps_the_display_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = InstanceManager::new(dir.path().join("instances"));
+
+        // Zweite Instanz mit gleichem Anzeigenamen: der Ordner kommt aus der
+        // Oberfläche (`survival-2`), nicht aus dem Namen – sonst scheiterte
+        // das Anlegen an “existiert bereits”.
+        let first = create_instance_in(&manager, "survival", "Survival", "1.21").unwrap();
+        let second = create_instance_in(&manager, "survival-2", "Survival", "1.21").unwrap();
+        assert_eq!(first.dir, dir.path().join("instances").join("survival"));
+        assert_eq!(second.name, "survival-2");
+        assert_eq!(
+            read_json(&second.dir.join("instance.json")).unwrap()["name"],
+            json!("Survival")
+        );
+
+        // Ein Anzeigename mit verbotenen Zeichen darf nie zum Ordner werden.
+        assert!(create_instance_in(&manager, "a:b", "a:b", "1.21").is_err());
+    }
+
+    #[test]
+    #[ignore = "Timing-Messung; nicht Teil des normalen Testlaufs"]
+    fn measures_the_mod_metadata_cache() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mods = dir.path().join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        // 200 Mods mit je 60 Einträgen: realistischer als eine JAR mit einem
+        // einzigen Eintrag, weil das Öffnen die zentrale Zip-Liste liest.
+        for index in 0..200 {
+            let file = std::fs::File::create(mods.join(format!("mod{index}.jar"))).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            zip.start_file("fabric.mod.json", options).unwrap();
+            write!(
+                zip,
+                r#"{{"id":"mod{index}","name":"Mod {index}","version":"1.0.{index}"}}"#
+            )
+            .unwrap();
+            for asset in 0..60 {
+                zip.start_file(format!("assets/mod{index}/file{asset}.txt"), options)
+                    .unwrap();
+                zip.write_all(b"x").unwrap();
+            }
+            zip.finish().unwrap();
+        }
+
+        // Kalt = ohne Cache (altes Verhalten), warm = mit Cache (neu).
+        let cold_start = std::time::Instant::now();
+        let (cold_items, cold_mods) = disk_content(dir.path(), None);
+        let cold = cold_start.elapsed();
+        let warm_start = std::time::Instant::now();
+        let (warm_items, warm_mods) = disk_content(dir.path(), None);
+        let warm = warm_start.elapsed();
+
+        eprintln!("200 Mods (je 60 Zip-Einträge): kalt {cold:?}, warm {warm:?}");
+        assert_eq!((cold_mods, warm_mods), (200, 200));
+        assert_eq!(cold_items, warm_items);
+        assert!(warm < cold, "Cache war nicht schneller: kalt {cold:?}, warm {warm:?}");
     }
 }

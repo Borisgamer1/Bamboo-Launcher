@@ -169,15 +169,32 @@ export function useLaunchController({
       },
     }))
 
-    try {
-      window.electronAPI?.launch.start?.(payload)
-    } catch {
-      console.warn('[Bamboo] Launch failed')
-      endLaunch(folderName)
-      return false
-    }
-
-    setRunningInstances((prev) => [...prev, { name: target.name, folderName, startedAt: Date.now() }])
+    // Der Start läuft asynchron: ein abgelehnter Befehl (fehlende Version,
+    // ungültige Instanz, Core-Fehler) muss als Toast ankommen, statt den
+    // Ladezustand stillschweigend zu beenden.
+    void (async () => {
+      try {
+        await window.electronAPI?.launch.start?.(payload)
+        setRunningInstances((prev) => [...prev, { name: target.name, folderName, startedAt: Date.now() }])
+      } catch (error) {
+        console.warn('[Bamboo] Launch failed', error)
+        setLaunchProgress((prev) => {
+          if (!(folderName in prev)) return prev
+          const next = { ...prev }
+          delete next[folderName]
+          return next
+        })
+        endLaunch(folderName)
+        addToast({
+          type: 'error',
+          message: mainErrorText(
+            { error: error instanceof Error ? error.message : String(error) },
+            lang,
+            lang === 'de' ? 'Start fehlgeschlagen' : 'Launch failed',
+          ),
+        })
+      }
+    })()
     return true
   }
 
@@ -281,6 +298,29 @@ export function useLaunchController({
           })
         }
 
+        // Nach dem Umbenennen heißt die Datei `…jar.disabled`. Die gemerkte
+        // Inhaltsliste muss mitziehen, sonst zeigt die Ansicht den Mod einmal
+        // aktiv (alte Zeile) und einmal deaktiviert (Plattenstand).
+        const disabledNames = new Set(
+          files.map((file) => file.replace(/\.disabled$/i, '').toLowerCase()),
+        )
+        setInstances((prev) => prev.map((instance) => {
+          if (
+            instance.id !== prompt.instanceId &&
+            instanceFolderKeyOf(instance) !== prompt.folderName
+          ) {
+            return instance
+          }
+          return {
+            ...instance,
+            content: (instance.content || []).map((item) => {
+              const name = (item.fileName || '').replace(/\.disabled$/i, '')
+              if (!name || !disabledNames.has(name.toLowerCase())) return item
+              return { ...item, fileName: `${name}.disabled`, enabled: false }
+            }),
+          }
+        }))
+
         let report
         try {
           report = await window.electronAPI?.instances.preflight?.(prompt.folderName)
@@ -366,6 +406,18 @@ export function useLaunchController({
         }
       }))
 
+      // Ein sofortiger Absturz beendet den Start ohne Fehlermeldung. Ohne
+      // diesen Hinweis sah es aus, als wäre der Klick auf „Spielen“ ins Leere
+      // gegangen.
+      if (data.code !== 0) {
+        addToast({
+          type: 'warning',
+          message: lang === 'de'
+            ? `Minecraft wurde unerwartet beendet (Code ${data.code}). Die Crash-Analyse der Instanz nennt Details.`
+            : `Minecraft exited unexpectedly (code ${data.code}). The instance's crash analysis has details.`,
+        })
+      }
+
       if (preferences.behavior.focusOnGameClose) window.electronAPI?.window.focus?.()
 
       // Ein normaler Ausstieg (Code 0) braucht keine Analyse. Bei allem anderen
@@ -376,7 +428,7 @@ export function useLaunchController({
       }
     })
     return () => { unsubscribe?.() }
-  }, [analyzeAfterCrash, endLaunch, preferences.behavior.focusOnGameClose, setInstances])
+  }, [addToast, analyzeAfterCrash, endLaunch, lang, preferences.behavior.focusOnGameClose, setInstances])
 
   useEffect(() => {
     const unsubscribe = window.electronAPI?.launch.onFailed?.((data) => {

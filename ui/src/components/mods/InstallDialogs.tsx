@@ -24,7 +24,7 @@ export function InstancePickerDialog({
   instances: Instance[]
   t: Translation
   isCompatible: (mod: ModrinthHit, inst: Instance) => boolean
-  isInstalled: (slug: string) => boolean
+  isInstalled: (inst: Instance, mod: ModrinthHit) => boolean
   onClose: () => void
   onPick: (inst: Instance) => void
   onIncompatible: (mod: ModrinthHit, inst: Instance) => void
@@ -73,7 +73,7 @@ export function InstancePickerDialog({
               ) : (
                 instances.map(inst => {
                   const compatible = isCompatible(mod, inst)
-                  const alreadyInstalled = isInstalled(mod.slug)
+                  const alreadyInstalled = isInstalled(inst, mod)
                   return (
                     <div
                       key={inst.id}

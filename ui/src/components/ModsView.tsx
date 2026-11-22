@@ -3,7 +3,6 @@ import { TabType } from "./Sidebar";
 import { Instance } from "./InstancesView";
 import { translations, formatMessage, LanguageType } from "../lib/translations";
 import type { CurseForgeFailure } from "../lib/curseforge";
-import { requestSettingsTarget } from "../lib/settingsNavigation";
 import { mainErrorText } from "../lib/mainErrors";
 import { fetchVersionMap } from "../lib/versionApi";
 import {
@@ -24,6 +23,7 @@ import {
 } from "../lib/backgroundTasks";
 import { instanceFolderKeyOf } from "../lib/instanceFolders";
 import { type AccentClasses, type ModrinthHit } from "./mods/modDetailModel";
+import { instanceHasProject } from "./instances/instanceModel";
 import {
   createInstallPicker,
   fetchModVersionsFromApi,
@@ -169,6 +169,71 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
   useEffect(() => {
     clearBrowserEntryIntent();
   }, []);
+
+  // Importierte Instanzen kennen ihre Mods oft nur als Datei. Der Browser
+  // braucht die Projekt-ID, um „Installiert“ statt „Installieren“ zu zeigen.
+  // Der Kern schreibt sie beim Identifizieren in die Bestandsdatei, damit die
+  // Erkennung auch nach einem Neustart erhalten bleibt.
+  const missingIdentityKey = contextInstance
+    ? (contextInstance.content || [])
+        .filter((item) => item.type === 'mods' && item.fileName && !item.projectId)
+        .map((item) => item.fileName)
+        .sort()
+        .join('|')
+    : '';
+  useEffect(() => {
+    if (!contextInstance || !setInstances || !missingIdentityKey) return;
+    const missing = (contextInstance.content || [])
+      .filter((item) => item.type === 'mods' && item.fileName && !item.projectId)
+      .map((item) => ({ fileName: item.fileName, type: 'mods' }));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const metadata = await window.electronAPI?.mods.identifyContentFiles?.({
+            folderName: instanceFolderKeyOf(contextInstance),
+            files: missing.slice(0, 200),
+          });
+          if (cancelled || !metadata) return;
+          const byFileName = new Map(Object.entries(metadata));
+          if (byFileName.size === 0) return;
+          setInstances((prev) => prev.map((instance) => {
+            if (instance.id !== contextInstance.id) return instance;
+            const content = (instance.content || []).map((item) => {
+              const meta = item.fileName ? byFileName.get(item.fileName) : undefined;
+              if (!meta || (!meta.projectId && !meta.name)) return item;
+              return {
+                ...item,
+                id: meta.projectId || item.id,
+                name: meta.name || item.name,
+                iconUrl: meta.iconUrl || item.iconUrl,
+                versionNumber: meta.versionNumber || item.versionNumber,
+                projectId: meta.projectId || item.projectId,
+                slug: meta.slug || item.slug,
+                source: meta.source || item.source,
+              };
+            });
+            return {
+              ...instance,
+              content,
+              installedMods: [...new Set([
+                ...(instance.installedMods || []),
+                ...content.map((item) => item.projectId).filter((id): id is string => Boolean(id)),
+              ])],
+            };
+          }));
+        } catch {
+          // Ohne Netz bleibt der Dateiname stehen; nichts geht verloren.
+        }
+      })();
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextInstance?.id, missingIdentityKey, setInstances]);
 
   const resultsRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -482,6 +547,10 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
         downloadUrl: pick.file.url,
         filename: pick.file.filename,
         itemType: installItemTypeFor("mods"),
+        projectId: depHit.project_id,
+        source: "modrinth",
+        projectVersionId: pick.version.versionId,
+        versionNumber: pick.version.versionNumber,
       });
       if (!result?.success) {
         addToast({
@@ -570,9 +639,10 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
       if (category === 'mods' && !incompatible) {
         const deps = await fetchDependencies(mod, inst);
         for (const dep of deps) {
-          const alreadyInstalled = (inst.installedMods || []).includes(dep.slug) ||
-            (inst.content || []).some(c => c.id === dep.slug);
-          if (!alreadyInstalled) {
+          // Dependencies are Modrinth projects. The old check compared only the
+          // slug, while disk content stores the project id; a dependency with
+          // the two different values was therefore installed again and again.
+          if (!instanceHasProject(inst, undefined, dep.slug)) {
             await installDependency(dep, inst);
           }
         }
@@ -596,10 +666,11 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
         versionId: inst.minecraftVersion,
         filename: file.filename,
         itemType: installItemTypeFor(category),
+        projectId: mod.project_id,
+        source,
+        projectVersionId: version.versionId,
+        versionNumber: version.versionNumber,
         ...(backgroundTaskId ? { taskId: backgroundTaskId } : {}),
-        // CurseForge installs arrive as a file id; the core needs the project
-        // to resolve the (author-approved) download address.
-        ...(source === 'curseforge' ? { projectId: mod.project_id } : {}),
       };
       const curseForgeFileId = source === 'curseforge' ? Number(version.versionId) : NaN;
       if (Number.isFinite(curseForgeFileId) && curseForgeFileId > 0) {
@@ -619,12 +690,18 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
       report(92);
 
       if (result?.success) {
-        // Switching versions replaces the existing entry and removes the old
-        // file; the list must not end up with two versions of the same project.
-        const previous = (inst.content || []).find(
-          (item) => item.projectId === mod.project_id || item.id === mod.slug,
-        );
-        if (previous?.fileName && previous.fileName !== file.filename && category !== 'worlds') {
+        // Switching versions replaces every existing entry for the project
+        // and removes each old file; otherwise an older jar next to the new one
+        // becomes the second row the user sees after an update.
+        const sameProject = (item: NonNullable<Instance['content']>[number]) =>
+          (Boolean(mod.project_id) && item.projectId === mod.project_id) ||
+          item.id === mod.slug ||
+          item.slug === mod.slug;
+        const previousEntries = category === 'worlds'
+          ? []
+          : (inst.content || []).filter(sameProject);
+        for (const previous of previousEntries) {
+          if (!previous.fileName || previous.fileName === file.filename) continue;
           try {
             await window.electronAPI?.mods.deleteContentFile?.({
               folderName,
@@ -638,13 +715,20 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
         if (setInstances) {
           setInstances(prev => prev.map(i => {
             if (i.id !== inst.id) return i;
-            const sameProject = (item: NonNullable<Instance['content']>[number]) =>
-              item.projectId === mod.project_id || item.id === mod.slug;
             const content = (i.content || []).filter((item) => !(item.type === category && sameProject(item)));
+            const staleIds = new Set(
+              [mod.project_id, mod.slug, ...previousEntries.flatMap((item) => [item.id, item.projectId, item.slug])]
+                .map((value) => value?.toLowerCase())
+                .filter((value): value is string => Boolean(value)),
+            );
             const base = {
               ...i,
               installedMods: category === 'mods'
-                ? [...new Set([...((i.installedMods || []).filter((slug) => slug !== previous?.id)), mod.slug])]
+                ? [...new Set([
+                    ...(i.installedMods || []).filter((value) => !staleIds.has(value.toLowerCase())),
+                    mod.slug,
+                    mod.project_id,
+                  ])]
                 : i.installedMods,
               modCount: category === 'mods' ? content.filter((item) => item.type === 'mods').length + 1 : i.modCount,
             };
@@ -664,6 +748,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
                 iconUrl: mod.icon_url,
                 versionNumber: version.versionNumber || inst.minecraftVersion,
                 projectId: mod.project_id,
+                slug: mod.slug,
                 source,
               }],
             };
@@ -828,10 +913,9 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
     cardHover: "hover:theme-border-md",
   };
 
-  const isInstalledInContext = (slug: string): boolean => {
+  const isInstalledInContext = (mod: ModrinthHit): boolean => {
     if (isGlobal || !contextInstance) return false;
-    return (contextInstance.installedMods || []).includes(slug) ||
-      (contextInstance.content || []).some(c => c.id === slug);
+    return instanceHasProject(contextInstance, mod.project_id, mod.slug);
   };
 
   return (
@@ -918,10 +1002,6 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
           onSortChange={(sort) => { setSortIndex(sort); handleFilterChange(); }}
           onPageChange={handlePageChange}
           onRetry={() => fetchMods()}
-          onOpenSettings={() => {
-            requestSettingsTarget("advanced");
-            setActiveTab("settings");
-          }}
           isInstalledInContext={isInstalledInContext}
           onOpenDetail={openModDetail}
           onInstall={(mod) => {
@@ -949,7 +1029,7 @@ export const ModsView = React.memo(function ModsView({ setActiveTab, searchQuery
         instances={instances}
         t={t}
         isCompatible={isModCompatibleWithInstance}
-        isInstalled={isInstalledInContext}
+        isInstalled={(inst, mod) => instanceHasProject(inst, mod.project_id, mod.slug)}
         onClose={() => { setShowInstancePicker(false); setPendingModForInstall(null); }}
         onPick={handleCompatibleClick}
         onIncompatible={handleIncompatibleClick}

@@ -39,6 +39,7 @@ import { formatMessage, translations, type LanguageType } from '../../lib/transl
 import type { VersionMap } from '../../lib/versionApi'
 import type { DownloadModPayload } from '../../electron'
 import type { ContentItem, Instance } from '../InstancesView'
+import { dedupeContent } from './instanceModel'
 import { fetchContentVersions } from './contentDetailModel'
 
 type Stage = 'select' | 'checking' | 'review' | 'running' | 'done' | 'error'
@@ -269,8 +270,11 @@ export const InstanceVersionSwitchModal: React.FC<InstanceVersionSwitchModalProp
     catalog: Map<string, StoreVersion[]>,
   ): Promise<CheckEntry> => {
     if (!isSwitchable(item)) return { item, status: 'keep' }
+    // Ohne Projekt-ID lässt sich keine Store-Version finden. Die Datei bleibt
+    // dann stehen: sie zu löschen, weil ihre Herkunft unbekannt ist, hätte bei
+    // importierten Instanzen den halben Mod-Ordner entfernt.
     if (!item.projectId || !item.source || !item.versionNumber) {
-      return { item, status: 'remove', reason: 'metadata' }
+      return { item, status: 'keep', unverified: true, reason: 'metadata' }
     }
     if (targetLoader === 'Vanilla' && SHADER_LOADER_ALWAYS_INCOMPATIBLE.has(item.type)) {
       return { item, status: 'remove', reason: 'no-loader' }
@@ -321,7 +325,38 @@ export const InstanceVersionSwitchModal: React.FC<InstanceVersionSwitchModalProp
     setProgressLabel(t.instanceVersionChecking)
     // Worlds and any unknown entry stay in the list untouched; only known
     // switchable categories are checked against the target version.
-    const items = instance.content || []
+    const items: ContentItem[] = (instance.content || []).map((item) => ({ ...item }))
+
+    // Importierte Instanzen kennen ihre Mods oft nur als Datei. Der Kern
+    // identifiziert sie über SHA-1/Fingerprint und schreibt Projekt-ID und
+    // Quelle in die Bestandsdatei; erst danach findet der Wechsel überhaupt
+    // eine Store-Version für diese Datei.
+    const unidentified = items
+      .filter((item) => item.type === 'mods' && item.fileName && !item.projectId)
+      .map((item) => ({ fileName: item.fileName as string, type: 'mods' }))
+    if (unidentified.length > 0) {
+      setProgressLabel(t.instanceVersionChecking)
+      try {
+        const metadata = await window.electronAPI?.mods.identifyContentFiles?.({
+          folderName: instanceFolderKey(instance),
+          files: unidentified.slice(0, 200),
+        })
+        const byFileName = new Map(Object.entries(metadata || {}))
+        for (const item of items) {
+          const meta = item.fileName ? byFileName.get(item.fileName) : undefined
+          if (!meta) continue
+          if (meta.projectId) item.projectId = meta.projectId
+          if (meta.source) item.source = meta.source
+          if (meta.versionNumber) item.versionNumber = meta.versionNumber
+          if (meta.name) item.name = meta.name
+          if (meta.iconUrl) item.iconUrl = meta.iconUrl
+          if (meta.slug) item.slug = meta.slug
+        }
+      } catch {
+        // Ohne Netz bleibt die Datei unverändert stehen (unten `unverified`).
+      }
+    }
+
     const nextEntries: CheckEntry[] = []
     const catalog = new Map<string, StoreVersion[]>()
     const batchSize = 5
@@ -426,6 +461,10 @@ export const InstanceVersionSwitchModal: React.FC<InstanceVersionSwitchModalProp
               versionId: targetMc,
               filename: entry.nextFile.filename,
               itemType: installItemTypeFor(entry.item.type),
+              projectId: entry.item.projectId,
+              source: entry.item.source,
+              projectVersionId: entry.next.versionId,
+              versionNumber: entry.next.versionNumber,
             }
             const curseForgeFileId = entry.item.source === 'curseforge'
               ? Number(entry.next.versionId)
@@ -476,9 +515,11 @@ export const InstanceVersionSwitchModal: React.FC<InstanceVersionSwitchModalProp
         setProgressLabel(formatMessage(t.instanceVersionStepContentCount, { done, total }))
       }
 
-      const normalizedContent = nextContent.map((item) => (
+      // Two files of the same project may both have survived the old install;
+      // after switching, keep exactly one row for it.
+      const normalizedContent = dedupeContent(nextContent.map((item) => (
         item.updateAvailable ? { ...item, updateAvailable: false } : item
-      ))
+      )))
       const modCount = normalizedContent.filter((item) => item.type === 'mods').length
       const installedMods = [...new Set(
         normalizedContent.map((item) => item.projectId).filter((id): id is string => Boolean(id)),

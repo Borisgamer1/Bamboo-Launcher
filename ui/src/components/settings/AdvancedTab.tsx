@@ -1,10 +1,10 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { type RefObject } from 'react'
 import { translations } from '../../lib/translations';
-import { Download, KeyRound, RotateCcw, ShieldCheck, Upload } from 'lucide-react'
+import { Download, RotateCcw, ShieldCheck, Upload } from 'lucide-react'
 import { DEFAULT_PREFERENCES, type LauncherPreferences } from '../../lib/launcherPreferences'
 import { DEFAULT_KEYBINDS } from '../../lib/keybinds'
 import { DEFAULT_GAME_OPTIONS } from '../../lib/gameOptions'
-import { Button, ConfirmButton, SettingsCard, SettingsRow, TextField, type Lang } from './SettingsPrimitives'
+import { Button, ConfirmButton, SettingsCard, SettingsRow, type Lang } from './SettingsPrimitives'
 import { t } from './settingsUtils'
 
 export interface AdvancedTabProps {
@@ -25,91 +25,25 @@ export function AdvancedTab({
   onImport,
   onReset,
 }: AdvancedTabProps) {
-  const [keySet, setKeySet] = useState(false)
-  const [keyValue, setKeyValue] = useState('')
-  const [savingKey, setSavingKey] = useState(false)
-  const [keySaved, setKeySaved] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    void window.electronAPI?.settings.get?.()
-      .then((snapshot) => {
-        if (active && snapshot) setKeySet(snapshot.curseForgeApiKeySet === true)
-      })
-      .catch(() => {
-        // Without settings the card still offers the input.
-      })
-    return () => { active = false }
-  }, [])
-
-  const saveKey = async (value: string) => {
-    setSavingKey(true)
-    try {
-      const saved = await window.electronAPI?.settings.save?.({ curseForgeApiKey: value.trim() })
-      if (!saved) return
-      const snapshot = await window.electronAPI?.settings.get?.()
-      setKeySet(snapshot?.curseForgeApiKeySet === true)
-      setKeyValue('')
-      setKeySaved(true)
-      window.setTimeout(() => setKeySaved(false), 2500)
-    } finally {
-      setSavingKey(false)
-    }
-  }
-
   return (
     <div className="flex flex-col gap-4">
       <SettingsCard
         title="CurseForge"
         description={t(
           L,
-          'API-Key für Suche, Projektseiten und Modpack-Importe.',
-          'API key for search, project pages and modpack imports.',
+          'Mod-Suche, Projektseiten und Modpack-Importe.',
+          'Mod search, project pages and modpack imports.',
         )}
       >
         <SettingsRow
-          icon={<KeyRound className="h-4 w-4" />}
-          title={t(L, 'API-Key', 'API key')}
-          description={
-            keySet
-              ? t(L, 'Ein Key ist hinterlegt. Ein neuer Wert ersetzt ihn.', 'A key is stored. A new value replaces it.')
-              : t(
-                  L,
-                  'Ohne Key liefert CurseForge keine Ergebnisse. Kostenlos erstellen unter console.curseforge.com.',
-                  'Without a key CurseForge returns no results. Create one for free at console.curseforge.com.',
-                )
-          }
-          control={
-            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
-              <TextField
-                type="password"
-                value={keyValue}
-                onChange={setKeyValue}
-                placeholder={keySet ? '••••••••••••' : '$CURSEFORGE_API_KEY'}
-                ariaLabel={t(L, 'CurseForge API-Key', 'CurseForge API key')}
-                className="w-full sm:w-56"
-              />
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={savingKey || !keyValue.trim()}
-                onClick={() => void saveKey(keyValue)}
-              >
-                {savingKey ? t(L, 'Speichere…', 'Saving…') : t(L, 'Speichern', 'Save')}
-              </Button>
-              {keySet && (
-                <Button variant="ghost" size="sm" disabled={savingKey} onClick={() => void saveKey('')}>
-                  {t(L, 'Entfernen', 'Remove')}
-                </Button>
-              )}
-            </div>
-          }
+          icon={<ShieldCheck className="h-4 w-4" />}
+          title={t(L, 'API-Key ist enthalten', 'API key is built in')}
+          description={t(
+            L,
+            'Der Launcher bringt seinen eigenen Key mit. Du musst keinen eintragen – er gilt für alle Inhalte von CurseForge.',
+            'The launcher ships its own key. There is nothing to enter – it covers all CurseForge content.',
+          )}
         />
-        {keySaved && (
-          <p className="m-0 border-t border-hairline px-5 py-2 text-micro text-success">
-            {t(L, 'Key gespeichert.', 'Key saved.')}
-          </p>
-        )}
       </SettingsCard>
 
       <SettingsCard

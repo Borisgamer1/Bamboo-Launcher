@@ -62,12 +62,17 @@ pub fn create_backup(data: Value, state: State<'_, LauncherState>) -> Value {
         .filter(|reason| !reason.is_empty())
         .unwrap_or("Manuell");
 
-    match manager.create(reason, DEFAULT_KEEP) {
-        Ok(Some(entry)) => json!({"success": true, "backup": entry}),
-        Ok(None) => json!({
+    match manager.create_reported(reason, DEFAULT_KEEP) {
+        Ok((Some(entry), warnings)) => json!({
+            "success": true,
+            "backup": entry,
+            "warnings": warnings
+        }),
+        Ok((None, warnings)) => json!({
             "success": true,
             "backup": null,
             "empty": true,
+            "warnings": warnings,
             "error": "Es gibt noch keine Welten oder Configs zum Sichern."
         }),
         Err(error) => {

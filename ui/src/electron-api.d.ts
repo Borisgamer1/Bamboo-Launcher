@@ -324,8 +324,14 @@ export interface DownloadModPayload {
   taskId?: string
   /** CurseForge file id: the core resolves and verifies it against the API. */
   curseforgeFileId?: number
-  /** CurseForge project id needed to resolve `curseforgeFileId`. */
+  /** Store project id; also needed to resolve `curseforgeFileId`. */
   projectId?: string
+  /** Store that owns the file, so the ledger records the right source. */
+  source?: 'modrinth' | 'curseforge'
+  /** Store version id (not the Minecraft version in `versionId`). */
+  projectVersionId?: string
+  /** Store version number, for update checks after a restart. */
+  versionNumber?: string
   /** Project title, used as the world name when the archive has no folder of its own. */
   title?: string
 }
@@ -380,6 +386,8 @@ export interface InstallModpackResult {
   folderName?: string
   /** Relative paths of every override file the pack installed. */
   overrideFiles?: string[]
+  /** Pack files that were skipped, as "name: reason". The rest installed. */
+  warnings?: string[]
 }
 
 export interface ModpackInstallProgress {
@@ -413,6 +421,7 @@ export interface IdentifiedContentFile {
   /** Empty when only the jar itself knows the file, not a store. */
   source: 'modrinth' | 'curseforge' | ''
   projectId: string
+  slug?: string
   name: string
   iconUrl: string
   versionNumber: string
@@ -605,7 +614,7 @@ export interface ServerPingResult {
 }
 
 export interface LaunchApi {
-  start(payload: LaunchGamePayload): void
+  start(payload: LaunchGamePayload): Promise<void>
   stop(payload: LaunchStopPayload): Promise<boolean>
   onStatus(callback: (status: string) => void): Unsubscribe
   onClosed(callback: (data: GameClosedPayload) => void): Unsubscribe
@@ -620,6 +629,15 @@ export interface LogsApi {
   undoFix(undoToken: string): Promise<LogFixResult>
   readLatest(folderName: string): Promise<string>
   createSupportBundle(destination: string): Promise<SupportBundleResult>
+}
+
+export interface ClientModeState {
+  enabled: boolean
+}
+
+export interface ClientApi {
+  state(): Promise<ClientModeState | null>
+  setEnabled(enabled: boolean): Promise<ClientModeState | null>
 }
 
 export interface SettingsApi {
@@ -731,6 +749,8 @@ export interface BackupActionResult {
   bytes?: number
   error?: string
   code?: string
+  /** Was trotz Erfolg liegen blieb, etwa Reste einer misslungenen Rotation. */
+  warnings?: string[]
 }
 
 export interface WorldActionResult {
@@ -741,6 +761,8 @@ export interface WorldActionResult {
   bytes?: number
   error?: string
   code?: string
+  /** Was trotz Erfolg liegen blieb, etwa nicht löschbare Reste. */
+  warnings?: string[]
 }
 
 export interface CloneInstanceResult {
@@ -791,6 +813,8 @@ export interface PreflightDisableResult {
 
 export interface InstancesApi {
   list(): Promise<CoreInstanceRecord[]>
+  /** Actual size on disk; computed when an instance is opened. */
+  diskUsage(folderName: string): Promise<{ success: boolean; bytes: number; label: string } | undefined>
   /** Reads the instance's mod jars before starting; never blocks the launch. */
   preflight(folderName: string): Promise<PreflightResult | undefined>
   preflightDisable(folderName: string, files: string[]): Promise<PreflightDisableResult | undefined>
@@ -1109,6 +1133,7 @@ export interface BambooApi {
   }
   launch: LaunchApi
   logs: LogsApi
+  client: ClientApi
   settings: SettingsApi
   statistics: StatisticsApi
   instances: InstancesApi

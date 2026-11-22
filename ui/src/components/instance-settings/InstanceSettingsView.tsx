@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { translations } from '../../lib/translations';
 import {
   AlertTriangle,
@@ -59,6 +59,9 @@ const SECTIONS: { id: InstanceSection; label: { de: string; en: string }; icon: 
   { id: 'stats', label: { de: 'Statistiken', en: 'Statistics' }, icon: Clock3 },
 ]
 
+/** Einmal pro App-Sitzung berechnet; erneutes Öffnen der Statistiken kostet nichts. */
+const diskSizeCache = new Map<string, string>()
+
 export interface InstanceSettingsViewProps {
   instance: Instance
   lang: LanguageType
@@ -96,6 +99,36 @@ export function InstanceSettingsView({
   const folderName = instance.folderName || instance.name.toLowerCase().replace(/\s+/g, '-')
   const created = instance.createdAt || Number(/\d{10,}/.exec(instance.id)?.[0]) || undefined
   const totalContent = instance.content?.length || 0
+
+  const [diskSize, setDiskSize] = useState(() => diskSizeCache.get(folderName) ?? instance.size)
+  // Die Größe wird nur berechnet, wenn die Statistiken geöffnet werden, und
+  // danach für diese Sitzung gemerkt. Jedes Öffnen einer Instanz dafür den
+  // ganzen Ordner zu durchlaufen wäre zu teuer.
+  useEffect(() => {
+    if (section !== 'stats') return
+    const known = diskSizeCache.get(folderName)
+    if (known) {
+      setDiskSize(known)
+      if (known !== instance.size) onUpdate({ size: known })
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const usage = await window.electronAPI?.instances.diskUsage?.(folderName)
+        if (cancelled || !usage?.label) return
+        diskSizeCache.set(folderName, usage.label)
+        setDiskSize(usage.label)
+        if (usage.label !== instance.size) onUpdate({ size: usage.label })
+      } catch {
+        // Ohne Größe bleibt der zuletzt gemerkte Wert stehen.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section, folderName])
 
   /**
    * Pack-Update aus einer neuen Pack-Datei. Der Kern lädt nur geänderte Mods;
@@ -561,7 +594,7 @@ export function InstanceSettingsView({
             <StatTile
               icon={<HardDrive className="h-3.5 w-3.5" />}
               label={t(L, 'Größe', 'Size')}
-              value={instance.size || '—'}
+              value={diskSize || '—'}
               hint={t(L, 'Auf der Festplatte', 'On disk')}
             />
             <StatTile

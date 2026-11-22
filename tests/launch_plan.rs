@@ -3,7 +3,8 @@
 use bamboo_launcher::config::{MemorySettings, Resolution};
 use bamboo_launcher::java::JavaRuntime;
 use bamboo_launcher::launcher::{
-    apply_options_once, build_launch_plan, spawn_process, Account, LaunchEvent, LaunchOptions,
+    apply_options_once, build_launch_plan, mark_options_applied, spawn_process, Account,
+    LaunchEvent, LaunchOptions,
 };
 use bamboo_launcher::version;
 use serde_json::json;
@@ -25,6 +26,9 @@ fn options_are_written_only_on_the_first_start() {
     let first = std::fs::read_to_string(dir.join("options.txt")).unwrap();
     assert!(first.contains("lang:de_de"), "{first}");
     assert!(first.contains("renderDistance:8"), "{first}");
+
+    // Erst der erfolgreiche Start macht die Instanz „eingerichtet“.
+    mark_options_applied(&dir).unwrap();
 
     // So, wie das Spiel die Datei zurückschreibt.
     std::fs::write(dir.join("options.txt"), "lang:en_us\nrenderDistance:4\n").unwrap();

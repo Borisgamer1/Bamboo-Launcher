@@ -75,6 +75,7 @@ pub fn sync_servers_dat(data: Value, state: State<'_, LauncherState>) -> Value {
     let mut kept = 0;
     let mut skipped = Vec::new();
     let mut details = Vec::new();
+    let mut failure: Option<String> = None;
     for instance in instances {
         // Eine laufende Instanz schreibt ihre Liste beim Beenden selbst zurück.
         if state.is_instance_running(&instance.name) {
@@ -92,20 +93,28 @@ pub fn sync_servers_dat(data: Value, state: State<'_, LauncherState>) -> Value {
                     "kept": report.kept,
                 }));
             }
-            Err(error) => details.push(json!({
-                "folderName": instance.name,
-                "error": error.to_string(),
-            })),
+            Err(error) => {
+                let message = format!(
+                    "Serverliste in '{}' wurde nicht geändert: {}",
+                    instance.name, error
+                );
+                if failure.is_none() {
+                    failure = Some(message.clone());
+                }
+                details.push(json!({
+                    "folderName": instance.name,
+                    "error": message,
+                }))
+            }
         }
     }
 
-    let failed = details.iter().any(|detail| detail.get("error").is_some());
     json!({
-        "success": !failed,
+        "success": failure.is_none(),
         "written": written,
         "kept": kept,
         "instances": details,
         "skipped": skipped,
-        "error": if failed { Some("Mindestens eine Serverliste konnte nicht geschrieben werden.") } else { None },
+        "error": failure,
     })
 }

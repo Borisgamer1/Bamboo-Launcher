@@ -94,7 +94,10 @@ const bridge = {
   },
 
   launch: {
-    start: (payload: unknown) => send('launch_game', { payload }),
+    // Nicht fire-and-forget: ein abgelehnter Start muss als Fehler ankommen,
+    // sonst blieb der Klick auf „Spielen“ ohne jede Rückmeldung.
+    start: (payload: unknown) =>
+      call('launch_game', { payload }).then(() => undefined),
     stop: (data: { folderName?: string; profileName?: string }) =>
       call<boolean>('kill_game', { folderName: data.folderName ?? '', profileName: data.profileName ?? '' }),
     onStatus: (callback: (status: string) => void) => subscribe('launch-status', callback),
@@ -112,6 +115,12 @@ const bridge = {
     readLatest: (folderName: string) => call<string>('read_latest_log', { folderName }),
     createSupportBundle: (destination: string) =>
       call('logs_support_bundle', { destination }),
+  },
+
+  client: {
+    state: () => call<{ enabled: boolean }>('client_state'),
+    setEnabled: (enabled: boolean) =>
+      call<{ enabled: boolean }>('client_set_enabled', { enabled }),
   },
 
   settings: {
@@ -134,6 +143,8 @@ const bridge = {
     deleteFiles: (folderName: string) => call('delete_instance_files', { folderName }),
     openFolder: (folderName: string) => call('open_instance_folder', { folderName }),
     openProfileFolder: (name: string) => call('open_instance_folder', { folderName: name }),
+    diskUsage: (folderName: string) =>
+      call<{ success: boolean; bytes: number; label: string }>('instance_disk_usage', { folderName }),
     preflight: (folderName: string) => call('preflight_check', { folderName }),
     preflightDisable: (folderName: string, files: string[]) =>
       call('preflight_disable', { folderName, files }),

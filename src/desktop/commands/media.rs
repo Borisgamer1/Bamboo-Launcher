@@ -195,7 +195,7 @@ struct Totals {
 }
 
 fn add_stats(totals: &mut Totals, stats: &Value) {
-    let custom = stats.get("minecraft:custom");
+    let custom = bamboo_launcher::instances::custom_stats(stats);
     let read = |key: &str| {
         custom
             .and_then(|custom| custom.get(key))
@@ -338,6 +338,26 @@ mod tests {
         assert_eq!(value.as_object().expect("object").len(), 16);
         assert_eq!(value["walkCm"], 7);
         assert_eq!(value["happyGhastCm"], 7);
+    }
+
+    #[test]
+    fn reads_playtime_from_the_wrapped_world_stats() {
+        // So schreibt Minecraft die Datei: die Werte liegen unter `stats`.
+        let stats = json!({
+            "stats": {
+                "minecraft:custom": {
+                    "minecraft:play_time": 1200,
+                    "minecraft:walk_one_cm": 400,
+                    "minecraft:mine_block": 7
+                }
+            },
+            "DataVersion": 3955
+        });
+        let mut totals = Totals::default();
+        add_stats(&mut totals, &stats);
+        assert_eq!(totals.play_ms, 1200 * 50);
+        assert_eq!(totals.distance[0], 400);
+        assert_eq!(totals.mined, 7);
     }
 
     #[test]

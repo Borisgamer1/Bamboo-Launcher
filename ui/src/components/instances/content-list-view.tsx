@@ -141,33 +141,53 @@ export const ContentListView = ({
       const allowed = typeDir === 'mods' ? /\.jar(\.disabled)?$/i : /\.zip(\.disabled)?$/i;
       const usable = files.filter((file) => allowed.test(file));
       if (usable.length === 0) return;
-      const known = new Set(
-        (contentRef.current || [])
-          .filter((item) => item.type === typeDir)
-          .map((item) => String(item.fileName || '').toLowerCase()),
-      );
-      const missing = usable.filter((file) => !known.has(file.toLowerCase()));
-      if (missing.length === 0) return;
-      const additions = missing.map<ContentItem>((file) => ({
-        id: `disk:${typeDir}:${file}`,
-        name: file.replace(/\.(jar|zip|disabled)$/i, ''),
-        fileName: file,
-        version: lang === 'de' ? 'Lokal' : 'Local',
-        type: typeDir as ContentItem['type'],
-        enabled: !file.endsWith('.disabled'),
-        locked: false,
-      }));
-      const merge = (items: ContentItem[]) => {
-        const present = new Set(items.map((item) => String(item.fileName || "").toLowerCase()));
-        const fresh = additions.filter((item) => !present.has(item.fileName.toLowerCase()));
-        return fresh.length === 0 ? items : [...items, ...fresh];
-      };
-      // Merge into the live list: two scans racing on one stale snapshot used to add the same file twice.
-      setLocalInst((prev) => ({ ...prev, content: merge(prev.content || []) }));
+      // Der Ordner ist die Wahrheit: pro Datei genau eine Zeile. Wird ein Mod
+      // automatisch deaktiviert, heißt er auf der Platte `x.jar.disabled`; die
+      // alte Zeile `x.jar` darf daneben nicht weiterleben, sonst steht derselbe
+      // Mod zweimal in der Liste. Metadaten (Projekt-ID, Icon, Version) bleiben
+      // dabei erhalten, weil über den Basisnamen zugeordnet wird.
+      const baseName = (name: string) => name.replace(/\.disabled$/i, '').toLowerCase();
+      const current = (contentRef.current || []).filter((item) => item.type === typeDir);
+      const knownByBase = new Map<string, ContentItem>();
+      for (const item of current) {
+        const name = item.fileName || item.id;
+        if (name) knownByBase.set(baseName(name), item);
+      }
+      const scanned = usable.map<ContentItem>((file) => {
+        const existing = knownByBase.get(baseName(file));
+        const enabled = !file.toLowerCase().endsWith('.disabled');
+        if (existing) return { ...existing, fileName: file, enabled };
+        return {
+          id: `disk:${typeDir}:${file}`,
+          name: file.replace(/\.(jar|zip)(\.disabled)?$/i, ''),
+          fileName: file,
+          version: lang === 'de' ? 'Lokal' : 'Local',
+          type: typeDir as ContentItem['type'],
+          enabled,
+          locked: false,
+        };
+      });
+      const unchanged =
+        scanned.length === current.length &&
+        scanned.every((item) => {
+          const previous = current.find((entry) => entry.fileName === item.fileName);
+          return previous !== undefined && previous.enabled === item.enabled;
+        });
+      if (unchanged) return;
+      const apply = (instance: Instance): Instance => ({
+        ...instance,
+        content: [
+          ...(instance.content || []).filter((item) => item.type !== typeDir),
+          ...scanned,
+        ],
+        installedMods: [...new Set([
+          ...(instance.installedMods || []),
+          ...scanned.map((item) => item.projectId).filter((id): id is string => Boolean(id)),
+        ])],
+      });
+      setLocalInst(apply);
       setInstances((prev) => prev.map((instance) =>
-        instance.id === localInst.id
-          ? { ...instance, content: merge(instance.content || []) }
-          : instance,
+        instance.id === localInst.id ? apply(instance) : instance,
       ));
     })();
     return () => { cancelled = true; };
@@ -258,6 +278,7 @@ export const ContentListView = ({
           iconUrl: meta.iconUrl || item.iconUrl,
           versionNumber: meta.versionNumber || item.versionNumber,
           projectId: meta.projectId || item.projectId,
+          slug: meta.slug || item.slug,
           source: meta.source || item.source,
           version: placeholderVersion ? '' : item.version,
         };
@@ -349,31 +370,51 @@ export const ContentListView = ({
 
   const handleDeleteContent = async (itemId: string) => {
     const item = (localInst.content || []).find(c => c.id === itemId);
-    if (item && item.fileName) {
+    if (!item) return;
+    const sameContent = (c: ContentItem) =>
+      c.type === item.type &&
+      (c.id === item.id ||
+        (Boolean(item.fileName) && c.fileName === item.fileName) ||
+        (Boolean(item.projectId) && c.projectId === item.projectId) ||
+        (Boolean(item.modId) && c.modId === item.modId));
+    const duplicates = (localInst.content || []).filter(sameContent);
+    const fileNames = [...new Set(
+      duplicates.map(c => c.fileName).filter((name): name is string => Boolean(name)),
+    )];
+    if (fileNames.length > 0) {
       const folderName = instanceFolderKey(localInst);
       const typeDir = categoryForTab(item.type);
       const deleteFailed = lang === 'de' ? 'Datei konnte nicht gelöscht werden.' : 'The file could not be deleted.';
       try {
-        const removed = await window.electronAPI?.mods.deleteContentFile?.({
-          folderName,
-          fileName: item.fileName,
-          type: typeDir
-        });
-        // Keep the row when the file survived; hiding it would resurrect it on the next disk scan.
-        if (removed === false) {
-          addToast({ type: 'error', message: deleteFailed });
-          return;
+        for (const fileName of fileNames) {
+          const removed = await window.electronAPI?.mods.deleteContentFile?.({
+            folderName,
+            fileName,
+            type: typeDir
+          });
+          // Keep the row when a file survived; hiding it would resurrect it on
+          // the next disk scan.
+          if (removed === false) {
+            addToast({ type: 'error', message: deleteFailed });
+            return;
+          }
         }
       } catch (e) {
         addToast({ type: 'error', message: errorMessage(e) || deleteFailed });
         return;
       }
     }
+    const staleIds = new Set(
+      [item.id, item.projectId, item.slug, ...duplicates.flatMap(c => [c.id, c.projectId, c.slug])]
+        .map(value => value?.toLowerCase())
+        .filter((value): value is string => Boolean(value)),
+    );
+    const removedMods = duplicates.filter(c => c.type === 'mods').length;
     withUpdatedInstance(i => ({
       ...i,
-      content: (i.content || []).filter(c => c.id !== itemId),
-      installedMods: (i.installedMods || []).filter(s => s !== itemId),
-      modCount: item && item.type === 'mods' ? Math.max(0, (i.modCount || 0) - 1) : i.modCount,
+      content: (i.content || []).filter(c => !sameContent(c)),
+      installedMods: (i.installedMods || []).filter(s => !staleIds.has(s.toLowerCase())),
+      modCount: item.type === 'mods' ? Math.max(0, (i.modCount || 0) - removedMods) : i.modCount,
     }));
   };
 
@@ -455,6 +496,10 @@ export const ContentListView = ({
         versionId: localInst.minecraftVersion,
         filename: file.filename,
         itemType: installItemTypeFor(category),
+        projectId: item.projectId,
+        source: item.source,
+        projectVersionId: next.versionId,
+        versionNumber: next.versionNumber,
       };
       const curseForgeFileId = item.source === 'curseforge' ? Number(next.versionId) : NaN;
       if (Number.isFinite(curseForgeFileId) && curseForgeFileId > 0) {
@@ -476,18 +521,35 @@ export const ContentListView = ({
         return;
       }
 
-      if (item.fileName && item.fileName !== file.filename) {
+      // The old version may exist under more than one file name after an
+      // earlier interrupted update. Remove every copy of this project, not just
+      // the row the update was started from.
+      const sameContent = (c: ContentItem) =>
+        c.type === category &&
+        (c.id === itemId ||
+          (Boolean(item.projectId) && c.projectId === item.projectId) ||
+          (Boolean(item.modId) && c.modId === item.modId) ||
+          (Boolean(item.fileName) && c.fileName === item.fileName));
+      const oldFiles = [...new Set(
+        (localInst.content || [])
+          .filter(sameContent)
+          .map(c => c.fileName)
+          .filter((name): name is string => Boolean(name) && name !== file.filename),
+      )];
+      for (const fileName of oldFiles) {
         try {
-          await window.electronAPI?.mods.deleteContentFile?.({ folderName, fileName: item.fileName, type: typeDir });
+          await window.electronAPI?.mods.deleteContentFile?.({ folderName, fileName, type: typeDir });
         } catch { console.warn('[Instances] Old content file could not be removed'); }
       }
 
       updateTargets.current.delete(itemId);
-      updateContent(items => items.map(c =>
-        c.id === itemId
-          ? { ...c, fileName: file.filename, version: localInst.minecraftVersion, versionNumber: next.versionNumber, updateAvailable: false }
-          : c
-      ));
+      updateContent(items => items
+        .filter(c => c.id === itemId || !sameContent(c))
+        .map(c =>
+          c.id === itemId
+            ? { ...c, fileName: file.filename, version: localInst.minecraftVersion, versionNumber: next.versionNumber, updateAvailable: false }
+            : c
+        ));
       if (!options.silent) {
         addToast({ type: 'success', message: formatMessage(t.updateSuccess, { name: item.name, version: next.versionNumber }) });
       }
@@ -660,6 +722,9 @@ export const ContentListView = ({
               ? `Welt „${result.worldName}“ gelöscht.`
               : `World “${result.worldName}” deleted.`,
         });
+        for (const warning of result.warnings ?? []) {
+          addToast({ type: "warning", message: warning });
+        }
       } else {
         addToast({
           type: "error",

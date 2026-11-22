@@ -78,7 +78,7 @@ pub enum ModError {
     },
 
     #[error(
-        "CurseForge braucht einen API-Key. Trage ihn im Launcher unter Einstellungen → Erweitert ein oder setze BAMBOO_CURSEFORGE_API_KEY. Ein Key lässt sich unter https://console.curseforge.com erstellen."
+        "Dieser Build enthält keinen CurseForge-API-Key. Normalerweise bringt der Launcher ihn mit – bitte melde den Fehler, statt einen eigenen Key einzutragen."
     )]
     MissingApiKey,
 
@@ -567,6 +567,29 @@ impl ModProvider for AnyProvider {
 /// Der Name kommt von einer fremden API; ohne Prüfung könnte ein Eintrag wie
 /// `../../start.bat` aus dem Instanzordner ausbrechen.
 pub fn validate_mod_file_name(name: &str) -> Result<&str> {
+    let name = check_file_name(name)?;
+    if !name.to_ascii_lowercase().ends_with(".jar") {
+        return Err(ModError::NotAJar(name.to_string()));
+    }
+    Ok(name)
+}
+
+/// Wie [`validate_mod_file_name`], erlaubt aber auch `.zip`.
+///
+/// Ressourcen- und Shaderpakete sind Archive und gehören nicht in `mods/`.
+/// Ohne diese Variante würde ein `.zip` aus einem Modpack als „keine .jar“
+/// abgelehnt, obwohl es genau das sein soll: ein Paket.
+pub fn validate_content_file_name(name: &str) -> Result<&str> {
+    let name = check_file_name(name)?;
+    let lower = name.to_ascii_lowercase();
+    if !lower.ends_with(".jar") && !lower.ends_with(".zip") {
+        return Err(ModError::NotAJar(name.to_string()));
+    }
+    Ok(name)
+}
+
+/// Die gemeinsamen Prüfungen für jeden Dateinamen aus einer fremden API.
+fn check_file_name(name: &str) -> Result<&str> {
     if name.is_empty() || name.len() > MAX_FILE_NAME {
         return Err(ModError::UnsafeFileName(name.to_string()));
     }
@@ -592,9 +615,6 @@ pub fn validate_mod_file_name(name: &str) -> Result<&str> {
         .to_ascii_uppercase();
     if RESERVED_NAMES.contains(&stem.as_str()) {
         return Err(ModError::UnsafeFileName(name.to_string()));
-    }
-    if !name.to_ascii_lowercase().ends_with(".jar") {
-        return Err(ModError::NotAJar(name.to_string()));
     }
     Ok(name)
 }
@@ -688,6 +708,15 @@ mod tests {
         ];
         let picked = pick_version(&versions, &ModTarget::new("1.20.1", Some(Loader::Fabric)));
         assert_eq!(picked.map(|version| version.id.as_str()), Some("new"));
+    }
+
+    #[test]
+    fn content_names_allow_archives_but_not_anything_else() {
+        assert!(validate_content_file_name("Faithful-1.20.zip").is_ok());
+        assert!(validate_content_file_name("sodium.jar").is_ok());
+        assert!(validate_content_file_name("../../evil.zip").is_err());
+        assert!(validate_content_file_name("notes.txt").is_err());
+        assert!(validate_content_file_name("world.mcworld").is_err());
     }
 
     #[test]

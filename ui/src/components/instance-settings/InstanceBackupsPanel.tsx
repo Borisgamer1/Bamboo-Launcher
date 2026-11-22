@@ -68,6 +68,9 @@ export function InstanceBackupsPanel({ instance, lang }: InstanceBackupsPanelPro
         type: 'success',
         message: t(L, 'Sicherung angelegt.', 'Backup created.'),
       })
+      for (const warning of result.warnings ?? []) {
+        addToast({ type: 'warning', message: warning })
+      }
       await refresh()
     } catch (error) {
       addToast({ type: 'error', message: String(error) })

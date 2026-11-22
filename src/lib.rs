@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod backup;
+pub mod client_mode;
 pub mod config;
 pub mod cosmetics;
 pub mod download;
@@ -20,6 +21,7 @@ pub mod loader;
 pub mod modpack;
 pub mod mods;
 pub mod preflight;
+pub mod safe_fs;
 pub mod server_ping;
 pub mod servers_dat;
 pub mod sessions;

@@ -12,6 +12,7 @@
 //! werden von Bamboo selbst installiert.
 
 use crate::mods::Loader;
+use crate::safe_fs;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -202,7 +203,12 @@ impl ExternalInstance {
         if selection.config {
             for file in ["options.txt", "servers.dat"] {
                 let source = self.game_dir.join(file);
-                if !source.is_file() {
+                // Weder in der Quelle noch im Ziel einem Link folgen.
+                if safe_fs::is_link(&source) || !source.is_file() {
+                    continue;
+                }
+                if safe_fs::is_link(&target.join(file)) {
+                    report.skipped += 1;
                     continue;
                 }
                 if target.join(file).exists() {
@@ -581,6 +587,10 @@ fn copy_tree(
     if depth > MAX_COPY_DEPTH {
         return Ok((0, 0, 0, 0));
     }
+    // Ein Link im Ziel würde beim Kopieren außerhalb der Instanz schreiben.
+    if safe_fs::is_link(target) {
+        return Ok((0, 0, 1, 0));
+    }
     std::fs::create_dir_all(target)?;
     // Ein gesperrter Unterordner soll den restlichen Import nicht verhindern.
     let Ok(entries) = std::fs::read_dir(source) else {
@@ -597,6 +607,12 @@ fn copy_tree(
             continue;
         };
         if metadata.file_type().is_symlink() {
+            skipped += 1;
+            continue;
+        }
+        if safe_fs::is_link(&target.join(entry.file_name())) {
+            // Ein Link im Ziel würde beim Kopieren auf sein Ziel außerhalb
+            // der Instanz schreiben.
             skipped += 1;
             continue;
         }
@@ -788,6 +804,46 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&target);
+    }
+
+    #[test]
+    fn copy_content_does_not_write_through_a_link_in_the_target() {
+        use crate::safe_fs::test_support::dir_link;
+
+        let dir = temp_dir("link-source");
+        write(
+            &dir.join("profile.json"),
+            br#"{"name":"Link","game_version":"1.20.1","loader":"fabric","loader_version":"0.16.10"}"#,
+        );
+        write(&dir.join("mods/a.jar"), b"a");
+        let instance = ExternalInstance::detect(&dir).unwrap();
+
+        let target = temp_dir("link-target");
+        let outside = temp_dir("link-outside");
+        if !dir_link(&outside, &target.join("mods")) {
+            eprintln!("Links werden auf dieser Maschine nicht unterstützt; Test übersprungen");
+            return;
+        }
+
+        let report = instance
+            .copy_content(
+                &target,
+                ContentSelection {
+                    mods: true,
+                    ..ContentSelection::default()
+                },
+            )
+            .unwrap();
+
+        assert_eq!(report.counts.mods, 0);
+        assert!(
+            !outside.join("a.jar").exists(),
+            "Mod wurde durch einen Link außerhalb der Instanz abgelegt"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&target);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     #[test]

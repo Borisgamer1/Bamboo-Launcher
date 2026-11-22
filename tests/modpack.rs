@@ -955,7 +955,7 @@ async fn curseforge_import_without_a_key_creates_nothing() {
 }
 
 #[tokio::test]
-async fn curseforge_import_reports_mods_that_forbid_downloads() {
+async fn curseforge_import_skips_mods_that_forbid_downloads() {
     let mock = start_mock(|path| match path {
         "/v1/mods/10/files/20" => ok(serde_json::to_vec(&json!({
             "data": {
@@ -980,33 +980,106 @@ async fn curseforge_import_reports_mods_that_forbid_downloads() {
 
     let root = temp_root();
     write_base_version(&root, &mock.base, "1.20.1");
+    // Ohne Loader läuft kein Java-Installer: der Test prüft nur, dass die
+    // übersprungene Datei den Import nicht mehr abbricht.
     let manifest = curseforge_manifest(
-        json!([{"id": "forge-47.2.0", "primary": true}]),
+        json!([]),
         vec![json!({"projectID": 10, "fileID": 20})],
         None,
     );
     let pack = build_curseforge_pack(&root, &manifest, &[]);
 
-    let error = ModpackImporter::new(root.join("cache"))
+    // Eine einzelne Datei ohne Download-Recht bricht den Pack nicht ab: sie
+    // wird übersprungen und am Ende gemeldet.
+    let report = ModpackImporter::new(root.join("cache"))
         .with_curseforge_key(Some("test-key".to_string()))
         .with_curseforge_base(format!("{}/v1", mock.base))
         .with_curseforge_cdn(format!("{}/cdn", mock.base))
         .import(&root, &pack, Some("Blockiert"))
         .await
-        .unwrap_err();
-    assert!(
-        matches!(
-            error,
-            ModpackError::CurseForgeFile {
-                project_id: 10,
-                file_id: 20,
-                ..
+        .expect("Import trotz übersprungener Datei");
+    assert_eq!(report.files, 0);
+    assert_eq!(report.failures.len(), 1);
+    let message = report.failures[0].message();
+    assert!(message.contains("20"), "{message}");
+    assert!(message.contains("Blocked Mod"), "{message}");
+    assert!(root.join("instances/Blockiert").exists());
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+const CF_RESOURCE_PACK: &[u8] = b"faithful-resource-pack";
+
+/// Ein `.zip` in einem CurseForge-Manifest ist ein Ressourcenpaket. Es gehört
+/// nach `resourcepacks/`, nicht in `mods/`, und darf nicht als „keine .jar“
+/// abgelehnt werden.
+#[tokio::test]
+async fn curseforge_import_places_resource_packs_in_their_own_folder() {
+    let mock = start_mock_routed(|base, path| match path {
+        "/v1/mods/500/files/600" => ok(serde_json::to_vec(&json!({
+            "data": {
+                "id": 600,
+                "modId": 500,
+                "displayName": "Faithful 32x",
+                "fileName": "Faithful-32x-1.20.zip",
+                "releaseType": 1,
+                "fileLength": CF_RESOURCE_PACK.len(),
+                "downloadUrl": format!("{base}/cf/files/faithful.zip"),
+                "gameVersions": ["1.20.1"],
+                "hashes": [{"value": sha1_hex(CF_RESOURCE_PACK), "algo": 1}]
             }
-        ),
-        "unerwarteter Fehler: {error}"
+        }))
+        .unwrap()),
+        "/v1/mods/500" => ok(serde_json::to_vec(&json!({
+            "data": {"id": 500, "name": "Faithful 32x", "classId": 12}
+        }))
+        .unwrap()),
+        "/cf/files/faithful.zip" => ok(CF_RESOURCE_PACK.to_vec()),
+        other => fabric_route(base, other),
+    })
+    .await;
+
+    let root = temp_root();
+    write_base_version(&root, &mock.base, "1.20.1");
+    let manifest = curseforge_manifest(
+        json!([{"id": "fabric-0.16.10", "primary": true}]),
+        vec![json!({"projectID": 500, "fileID": 600})],
+        None,
     );
-    assert!(error.to_string().contains("Blocked Mod"), "{error}");
-    assert!(!root.join("instances/Blockiert").exists());
+    let pack = build_curseforge_pack(&root, &manifest, &[]);
+
+    let report = ModpackImporter::new(root.join("cache"))
+        .with_curseforge_key(Some("test-key".to_string()))
+        .with_curseforge_base(format!("{}/v1", mock.base))
+        .with_curseforge_cdn(format!("{}/cdn", mock.base))
+        .import(&root, &pack, Some("Ressourcen"))
+        .await
+        .expect("Import mit Ressourcenpaket");
+
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    assert_eq!(report.files, 1);
+    assert_eq!(
+        report.index_files[0].path,
+        "resourcepacks/Faithful-32x-1.20.zip"
+    );
+    assert_eq!(
+        std::fs::read(
+            report
+                .instance
+                .dir
+                .join("resourcepacks/Faithful-32x-1.20.zip")
+        )
+        .unwrap(),
+        CF_RESOURCE_PACK
+    );
+    assert!(!report
+        .instance
+        .dir
+        .join("mods/Faithful-32x-1.20.zip")
+        .exists());
+    let ledger = ModLedger::load(&report.instance.dir).unwrap();
+    assert!(ledger.mods.is_empty(), "ein Ressourcenpaket ist keine Mod");
+    assert_eq!(ledger.pack.expect("Pack-Eintrag").files.len(), 1);
 
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -3,17 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bamboo Launcher — Minecraft starten, nicht verwalten</title>
-  <meta name="description" content="Bamboo Launcher bündelt Minecraft-Instanzen, Mods von CurseForge und Modrinth, Java und Einstellungen in einer ruhigen Windows-Oberfläche. Screenshots aus der laufenden App und echter Release-Status.">
-  <meta name="theme-color" content="#070b08">
+  <meta name="author" content="Borisgamer">
+  <title>Bamboo Launcher 0.2.7 — Minecraft starten, nicht verwalten</title>
+  <meta name="description" content="Bamboo Launcher 0.2.7 bündelt Instanzen, Mods von CurseForge und Modrinth, Java, Einstellungen und Welten in einem Fenster. Für Windows, macOS und Linux, kostenlos und ohne Werbung.">
+  <meta name="theme-color" content="#050806">
   <link rel="icon" href="assets/bamboo-logo.png" type="image/png">
+  <link rel="preload" href="assets/fonts/Monocraft.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="assets/fonts/InterVariable-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/site.js" defer></script>
 
   <meta property="og:type" content="website">
   <meta property="og:locale" content="de_DE">
   <meta property="og:site_name" content="Bamboo Launcher">
-  <meta property="og:title" content="Bamboo Launcher — Minecraft starten, nicht verwalten">
-  <meta property="og:description" content="Instanzen, Mods, Java und Einstellungen an einem Ort. Echte Screenshots, klarer Release-Status.">
+  <meta property="og:title" content="Bamboo Launcher 0.2.7 — Minecraft starten, nicht verwalten">
+  <meta property="og:description" content="Instanzen, Mods, Java und Einstellungen in einem Fenster. Neu in 0.2.7: die Startseite mit „Weiterspielen“ und Quick Play für Welten.">
   <meta property="og:url" content="https://bamboolauncher.pages.dev/">
   <meta property="og:image" content="https://bamboolauncher.pages.dev/assets/og.jpg">
   <meta name="twitter:card" content="summary_large_image">
@@ -21,348 +25,740 @@
 <body>
   <a class="skip" href="#main">Zum Inhalt springen</a>
 
-  <header class="site-header">
+  <header class="site-header" data-header>
     <div class="wrap header-inner">
       <a class="brand" href="index.html" aria-label="Bamboo Launcher Startseite">
-        <img src="assets/bamboo-logo.png" alt="" width="30" height="30">
-        <span>Bamboo Launcher</span>
+        <img src="assets/bamboo-logo.png" alt="" width="34" height="34">
+        <span class="brand-text"><strong>Bamboo</strong><span>Launcher</span></span>
       </a>
-      <nav class="site-nav" aria-label="Hauptnavigation">
-        <a class="nav-keep" href="#instanzen">Instanzen</a>
-        <a href="#mods">Mods</a>
-        <a href="#einstellungen">Einstellungen</a>
+      <nav class="site-nav" id="site-nav" aria-label="Hauptnavigation">
+        <a href="#funktionen">Funktionen</a>
+        <a href="#app">Die App</a>
+        <a href="#themes">Themes</a>
+        <a href="#changelog">Changelog</a>
         <a href="#download">Download</a>
+        <a href="#faq">FAQ</a>
       </nav>
-      <span class="head-status"><i aria-hidden="true"></i>0.2.7 · Rust &amp; Tauri</span>
+      <div class="header-actions">
+        <a class="icon-link" href="https://github.com/Borisgamer1/Bamboo-Launcher" aria-label="GitHub-Repository">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 2.5-.34c.85 0 1.71.12 2.5.34 1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.8-4.57 5.05.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/>
+          </svg>
+        </a>
+        <a class="btn btn-primary btn-sm header-dl" href="#download">Download</a>
+        <button class="menu-btn" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Menü öffnen">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
     </div>
   </header>
 
   <main id="main">
-  <aside class="migrate" aria-labelledby="migrate-title">
-    <div class="wrap migrate-inner">
-      <p class="migrate-tag">Umstieg von Electron</p>
-      <div>
-        <h2 id="migrate-title">Bamboo läuft jetzt komplett auf Rust und Tauri.</h2>
-        <p>
-          Die alte Electron-Fassung (0.2.4 oder älter) kann sich nicht selbst ersetzen.
-          Einmalig das Paket für dein System installieren &mdash; Instanzen, Welten, Mods und
-          Einstellungen bleiben erhalten. Ab 0.2.6 aktualisiert sich der Launcher selbst.
-        </p>
-        <p class="migrate-links">
-          <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_x64-setup.exe">Windows &middot; Setup</a>
-          <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_x64_en-US.msi">Windows &middot; MSI</a>
-          <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_aarch64.dmg">macOS &middot; Apple Silicon</a>
-          <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_x64.dmg">macOS &middot; Intel</a>
-          <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_amd64.AppImage">Linux &middot; AppImage</a>
-          <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_amd64.deb">Linux &middot; DEB</a>
-          <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher-0.2.7-1.x86_64.rpm">Linux &middot; RPM</a>
-        </p>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-scene" aria-hidden="true">
+        <div class="scene-photo"></div>
+        <div class="scene-bloom"></div>
+        <div class="scene-shade"></div>
+        <div class="scene-grid"></div>
       </div>
-    </div>
-  </aside>
 
-    <div class="wrap">
-      <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap hero-inner">
         <div class="hero-copy">
-          <p class="caps kicker">Minecraft: Java Edition</p>
-          <h1 id="hero-title">Minecraft starten.<em>Nicht verwalten.</em></h1>
+          <a class="release-chip" href="#changelog">
+            <span class="dot" aria-hidden="true"></span>
+            0.2.7 ist da
+            <span class="chip-arrow" aria-hidden="true">→</span>
+          </a>
+          <h1 id="hero-title">
+            <span class="line">Minecraft</span>
+            <span class="line">starten.</span>
+            <span class="line accent">Nicht verwalten.</span>
+          </h1>
           <p class="lead">
-            Bamboo bündelt Instanzen, Mods, Java und Einstellungen in einer ruhigen Oberfläche.
-            Vier Bereiche, ein Ort – und nichts, was du erst suchen musst.
+            Instanzen, Mods von CurseForge und Modrinth, Java und Einstellungen in einem Fenster.
+            Bamboo richtet ein, was zum Spielen nötig ist, und lässt den Rest in Ruhe.
           </p>
           <div class="hero-actions">
-            <a class="btn btn-primary" href="#instanzen">Was Bamboo kann <span class="arrow" aria-hidden="true">↓</span></a>
-            <a class="btn btn-quiet" href="#download">Download &amp; Versionen</a>
+            <a class="dl-hero" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7/Bamboo.Launcher_0.2.7_x64-setup.exe">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M3 5.6 10.4 4.5v6.9H3V5.6Zm8.6-1.2L21 3v8.4h-9.4V4.4ZM3 12.5h7.4v7L3 18.4v-5.9Zm8.6 0H21V21l-9.4-1.3v-7.2Z"/>
+              </svg>
+              <span class="dl-hero-text">
+                <strong>Für Windows herunterladen</strong>
+                <small>0.2.7 · EXE, 26,7 MB</small>
+              </span>
+              <svg class="dl-hero-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3v11m0 0 4.2-4.2M12 14l-4.2-4.2M4.5 20h15"/>
+              </svg>
+            </a>
+            <a class="btn btn-ghost" href="#download">Alle Plattformen</a>
           </div>
-          <dl class="hero-meta">
-            <div><dt>Version</dt><dd>0.2.7</dd></div>
-            <div><dt>Plattform</dt><dd>Windows · macOS · Linux</dd></div>
-            <div><dt>Downloads</dt><dd><a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest">GitHub-Release</a></dd></div>
-          </dl>
+          <ul class="hero-checks">
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7"/></svg>
+              Kostenlos, ohne Werbung
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7"/></svg>
+              CurseForge und Modrinth eingebaut
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7"/></svg>
+              Vanilla bis NeoForge
+            </li>
+          </ul>
         </div>
 
-        <figure class="shot hero-shot">
-          <img src="assets/screens/mods.webp" width="1440" height="900" fetchpriority="high"
-               alt="Bamboo Launcher Mod-Browser mit echten CurseForge-Suchergebnissen für Just Enough Items">
-          <figcaption><strong>Echte App</strong> Mod-Browser · CurseForge-Suche nach „Just Enough Items“</figcaption>
+        <figure class="hero-plate">
+          <div class="plate">
+            <img src="assets/screens/home.webp" width="1221" height="687" fetchpriority="high"
+                 alt="Startseite von Bamboo Launcher 0.2.7 mit Weiterspielen, sechs Profilen und vier Servern">
+          </div>
+          <figcaption><span class="dot" aria-hidden="true"></span>Startseite · Aufnahme aus der laufenden App</figcaption>
         </figure>
-      </section>
-
-      <div class="factbar" aria-label="Bamboo auf einen Blick">
-        <div class="fact"><strong>Vier Einstellungsbereiche</strong><span>Allgemein, Darstellung, Spiel, Konto</span></div>
-        <div class="fact"><strong>Zwei Mod-Quellen</strong><span>CurseForge und Modrinth</span></div>
-        <div class="fact"><strong>Drei Tastatur-Layouts</strong><span>100 %, TKL und 75 %</span></div>
-        <div class="fact"><strong>Automatisch gespeichert</strong><span>Auch beim schnellen Beenden</span></div>
       </div>
-    </div>
+      <div class="hero-rail" aria-hidden="true"><span>Scroll</span><i></i></div>
+    </section>
 
-    <section class="section" id="instanzen" aria-labelledby="instanzen-title">
+    <section class="stats" aria-label="Bamboo auf einen Blick">
+      <div class="wrap stats-grid">
+        <div class="stat">
+          <span class="stat-num">0.2.7</span>
+          <span class="stat-label">Aktuelle Version</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num">3</span>
+          <span class="stat-label">Windows, macOS und Linux</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num">5</span>
+          <span class="stat-label">Loader von Vanilla bis Quilt</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num">2</span>
+          <span class="stat-label">Mod-Quellen in einer Suche</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="funktionen" aria-labelledby="funktionen-title">
       <div class="wrap">
         <div class="section-head">
-          <p class="section-num">01 / Instanzen</p>
-          <div>
-            <h2 id="instanzen-title">Jede Instanz bleibt ihre eigene Welt.</h2>
+          <p class="eyebrow"><span class="eyebrow-num">01</span>Funktionen</p>
+          <div class="section-title-row">
+            <h2 id="funktionen-title">Alles, was ein Launcher <span class="accent">können sollte.</span></h2>
             <p class="section-intro">
-              Vanilla, Fabric, Forge oder NeoForge: Du entscheidest pro Instanz, welche Version läuft,
-              wie viel RAM sie bekommt und mit welchem Java sie startet.
+              Kein Ballast, keine Werbung, kein Konto beim Launcher. Nur die Dinge, die du beim
+              Spielen wirklich anfasst.
             </p>
           </div>
         </div>
 
-        <div class="feature">
-          <figure class="shot">
-            <img src="assets/screens/instances.webp" width="1440" height="900" loading="lazy"
-                 alt="Instanzen-Ansicht von Bamboo Launcher mit vier Demo-Profilen für Vanilla, Fabric, Forge und NeoForge">
-            <figcaption><strong>Echte App</strong> Instanzen · Demo-Profile für die Aufnahme</figcaption>
-          </figure>
-
-          <div class="feature-copy">
-            <h3>Getrennt, wo es zählt.</h3>
-            <ul class="spec-list">
-              <li><span>Loader</span><span>Vanilla, Fabric, Forge und NeoForge – pro Instanz ausgewählt.</span></li>
-              <li><span>Ressourcen</span><span>Eigener RAM, eigenes Java und eigene JVM-Argumente.</span></li>
-              <li><span>Start</span><span>Fenstergröße, Vollbild und letzter Start werden pro Instanz gespeichert.</span></li>
-              <li><span>Aufräumen</span><span>Löschen mit Bestätigung; Export als Modrinth-Pack oder ZIP.</span></li>
-              <li><span>Crash-Logs</span><span>Die Log-Analyse erkennt bekannte Fehler und schlägt konkrete Korrekturen vor.</span></li>
+        <div class="feature-grid">
+          <article class="card c7">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/>
+              </svg>
+            </div>
+            <h3>Jede Instanz bleibt ihre eigene Welt</h3>
+            <p>
+              Vanilla, Fabric, Forge, NeoForge oder Quilt: Minecraft-Version, Loader, Java und RAM
+              hängen an der Instanz, nicht am Launcher. Welten, Mods und Einstellungen bleiben
+              getrennt, auch wenn du zwischen ihnen wechselst.
+            </p>
+            <ul class="tags">
+              <li>Vanilla</li><li>Fabric</li><li>Forge</li><li>NeoForge</li><li>Quilt</li>
             </ul>
-            <p class="note">Die Aufnahme zeigt vier Demo-Profile in einer isolierten Testumgebung – die Oberfläche ist die echte App.</p>
-          </div>
-        </div>
-      </div>
-    </section>
+          </article>
 
-    <section class="section" id="mods" aria-labelledby="mods-title">
-      <div class="wrap">
-        <div class="section-head">
-          <p class="section-num">02 / Mods</p>
-          <div>
-            <h2 id="mods-title">Suchen, filtern, installieren.</h2>
-            <p class="section-intro">
-              Der Mod-Browser spricht direkt mit CurseForge und Modrinth. Du suchst, filterst nach
-              Spielversion und Kategorie und installierst in die Instanz, die es braucht.
-            </p>
-          </div>
-        </div>
-
-        <div class="mods-panel">
-          <div class="mods-copy">
-            <h3>Zwei Datenbanken, eine Oberfläche.</h3>
+          <article class="card c5">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M17.5 14v7"/>
+              </svg>
+            </div>
+            <h3>Zwei Mod-Quellen, eine Suche</h3>
             <p>
-              CurseForge und Modrinth liefern Suchergebnisse, Versionen und Dateien.
-              Bamboo zeigt beide Quellen im selben Browser – mit Projekttyp, Kategorie,
-              Minecraft-Version und Sortierung.
+              CurseForge und Modrinth im selben Browser. Filter nach Spielversion und Kategorie,
+              Installation direkt in die gewählte Instanz – mit Metadaten und Hashes, soweit die
+              APIs sie liefern.
             </p>
+            <ul class="tags">
+              <li>CurseForge</li><li>Modrinth</li>
+            </ul>
+          </article>
+
+          <article class="card c4">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="4"/><path d="m10 8.5 5.5 3.5-5.5 3.5V8.5Z"/>
+              </svg>
+            </div>
+            <h3>Weiterspielen statt suchen</h3>
             <p>
-              Die Installation landet in der gewählten Instanz – Mods in <code>mods</code>,
-              Ressourcenpakete und Shader in ihren eigenen Ordnern. Metadaten und Hashes werden
-              genutzt, soweit die APIs sie bereitstellen.
+              Die letzte Welt steht oben als große Karte. Ab Minecraft 1.20 startet Quick Play
+              direkt in die Welt, ohne Umweg über das Hauptmenü.
             </p>
-            <p class="note">Der Screenshot im Kopfbereich ist eine echte CurseForge-Antwort auf die Suche nach „Just Enough Items“.</p>
+            <ul class="tags">
+              <li class="new">Neu in 0.2.7</li>
+            </ul>
+          </article>
+
+          <article class="card c4">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h9M17 18h3"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="18" r="2"/>
+              </svg>
+            </div>
+            <h3>Einstellungen ohne Umwege</h3>
+            <p>
+              Allgemein, Darstellung, Java, Spiel, Steuerung und Konto. Änderungen werden
+              gespeichert, auch wenn du das Fenster schnell wieder schließt.
+            </p>
+          </article>
+
+          <article class="card c4">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M6 13h.01M9.5 13h.01M13 13h.01M16.5 13h.01M8 16h8"/>
+              </svg>
+            </div>
+            <h3>Die Tastatur im Blick</h3>
+            <p>
+              32 Aktionen als Liste, dazu ein Diagramm für 100 %, TKL und 75 %. Belegte Tasten
+              grün, Konflikte rot – geschrieben wird beim ersten Start in die Instanz.
+            </p>
+            <ul class="tags">
+              <li>100 %</li><li>TKL</li><li>75 %</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="repair-strip">
+          <div>
+            <h3>Und wenn etwas kaputtgeht</h3>
+            <p>Bamboo sucht den Fehler mit, statt dich mit einem Log allein zu lassen.</p>
           </div>
-          <div class="source-grid">
-            <div class="source">
-              <p class="source-label">Quelle 01</p>
-              <h4>CurseForge</h4>
-              <p>Mods, Modpacks, Ressourcenpakete, Shader, Datenpakete und Welten – durchsuchbar über die offizielle API.</p>
+          <div class="repair-items">
+            <div class="repair-item">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3 19 6v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6l7-3Z"/><path d="m9 12 2 2 4-4"/>
+              </svg>
+              <div>
+                <h4>Crash-Analyse</h4>
+                <p>Speichermangel, altes Java, fehlende Abhängigkeiten und Mixin-Fehler werden erkannt.</p>
+              </div>
             </div>
-            <div class="source">
-              <p class="source-label">Quelle 02</p>
-              <h4>Modrinth</h4>
-              <p>Mods, Modpacks, Ressourcenpakete, Shader, Datenpakete und Plugins, gefiltert nach Version und Loader.</p>
+            <div class="repair-item">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 4 3 20h18L12 4Z"/><path d="M12 10v4M12 17h.01"/>
+              </svg>
+              <div>
+                <h4>Startprüfung</h4>
+                <p>Doppelte Mods und falsche Loader erscheinen vor dem Start, mit Schalter pro Datei.</p>
+              </div>
             </div>
-            <div class="source">
-              <p class="source-label">Ablauf</p>
-              <h4>In die Instanz, nicht in einen Sammelordner.</h4>
-              <p>Die gewählte Datei wird heruntergeladen und der Instanz zugeordnet. Die Verwaltung bleibt dort, wo das Spiel läuft.</p>
+            <div class="repair-item">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 7h16v13H4z"/><path d="M4 7 6 3h12l2 4M9 12h6"/>
+              </svg>
+              <div>
+                <h4>Sicherungen</h4>
+                <p>Vor Modpack-Updates, Versionswechseln und Importen wird die Instanz gesichert.</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="section" id="einstellungen" aria-labelledby="einstellungen-title">
+    <section class="section gallery-section" id="app" aria-labelledby="app-title">
       <div class="wrap">
         <div class="section-head">
-          <p class="section-num">03 / Einstellungen</p>
-          <div>
-            <h2 id="einstellungen-title">Vier Bereiche. Nichts versteckt.</h2>
+          <p class="eyebrow"><span class="eyebrow-num">02</span>Die App</p>
+          <div class="section-title-row">
+            <h2 id="app-title">Echte Fenster, <span class="accent">keine Mockups.</span></h2>
             <p class="section-intro">
-              Die Einstellungen sind nach Aufgaben sortiert, nicht nach technischen Modulen.
-              Sprache, Themes, Spieloptionen und Konto liegen dort, wo man sie erwartet.
+              Vier Ansichten aus der laufenden App, direkt aus dem Fenster aufgenommen.
+              Seitlich scrollen für die nächste Aufnahme.
             </p>
-          </div>
-        </div>
-
-        <div class="feature reverse">
-          <figure class="shot">
-            <img src="assets/screens/settings.webp" width="1440" height="900" loading="lazy"
-                 alt="Einstellungen von Bamboo Launcher mit den vier Tabs Allgemein, Darstellung, Spiel und Konto">
-            <figcaption><strong>Echte App</strong> Einstellungen · Darstellung</figcaption>
-          </figure>
-
-          <div class="feature-copy">
-            <h3>Nach Aufgabe sortiert.</h3>
-            <div class="tab-index">
-              <div class="tab-cell"><strong>Allgemein</strong><span>Start &amp; Verhalten, Launcher- und Minecraft-Sprache, Import, Export und Reset.</span></div>
-              <div class="tab-cell"><strong>Darstellung</strong><span>Themes, Hell/Dunkel/System, Hintergrund, Helligkeit, Unschärfe, Partikel und Glow.</span></div>
-              <div class="tab-cell"><strong>Spiel</strong><span>Java &amp; RAM, Spieloptionen, Steuerung und Standards für neue Instanzen.</span></div>
-              <div class="tab-cell"><strong>Konto</strong><span>Microsoft-Anmeldung, Konto und der lokale Sitzungsspeicher.</span></div>
-            </div>
-            <p class="note">Änderungen werden automatisch gespeichert – und beim Schließen vor dem Beenden geschrieben, damit auch die letzte Änderung bleibt.</p>
           </div>
         </div>
       </div>
-    </section>
-
-    <section class="section" id="steuerung" aria-labelledby="steuerung-title">
-      <div class="wrap">
-        <div class="section-head">
-          <p class="section-num">04 / Steuerung</p>
-          <div>
-            <h2 id="steuerung-title">Die Tastatur ist Teil der Oberfläche.</h2>
-            <p class="section-intro">
-              Die 32 Aktionen stehen in einer Liste; das Tastaturdiagramm zeigt, wo die belegten Tasten
-              des gewählten Layouts liegen. Belegte Tasten sind grün, Konflikte rot – und das Layout
-              lässt sich an die eigene Tastatur anpassen.
-            </p>
-          </div>
-        </div>
-
-        <div class="layout-row" aria-label="Unterstützte Tastatur-Layouts">
-          <div class="layout-chip"><strong>100 %</strong><span>Vollformat mit Nummernblock</span></div>
-          <div class="layout-chip"><strong>TKL</strong><span>Ohne Nummernblock</span></div>
-          <div class="layout-chip"><strong>75 %</strong><span>Kompakt, ohne Nummernblock</span></div>
-        </div>
-
-        <figure class="shot wide-shot">
-          <img src="assets/screens/keybinds.webp" width="1440" height="900" loading="lazy"
-               alt="Tastaturdiagramm in den Steuerungseinstellungen von Bamboo Launcher mit belegten Tasten und Konfliktanzeige">
-          <figcaption><strong>Echte App</strong> Steuerung · Tastatur-Layout 100 %</figcaption>
+      <div class="gallery" role="list">
+        <figure class="shot" role="listitem">
+          <img src="assets/screens/instances.webp" width="1221" height="687" loading="lazy"
+               alt="Instanzen-Ansicht von Bamboo 0.2.7 mit sechs Profilen von Vanilla bis Quilt">
+          <figcaption><span class="tag">01</span>Instanzen · 1.21.4, Vanilla bis Quilt</figcaption>
         </figure>
+        <figure class="shot" role="listitem">
+          <img src="assets/screens/mods.webp" width="1221" height="687" loading="lazy"
+               alt="Mod-Browser mit Modrinth-Ergebnissen für Fabric API, Sodium und Iris Shaders">
+          <figcaption><span class="tag">02</span>Mod-Browser · Modrinth, Filter, Installation</figcaption>
+        </figure>
+        <figure class="shot" role="listitem">
+          <img src="assets/screens/settings.webp" width="1221" height="687" loading="lazy"
+               alt="Einstellungen mit den Bereichen Allgemein, Darstellung, Spiel und Konto">
+          <figcaption><span class="tag">03</span>Einstellungen · Allgemein</figcaption>
+        </figure>
+        <figure class="shot" role="listitem">
+          <img src="assets/screens/keybinds.webp" width="1221" height="687" loading="lazy"
+               alt="Tastenbelegung im 100-Prozent-Layout mit belegten Tasten, Konfliktprüfung und 32 Aktionen">
+          <figcaption><span class="tag">04</span>Steuerung · 100 %, TKL und 75 %</figcaption>
+        </figure>
+      </div>
+    </section>
 
-        <p class="section-intro wide-note">
-          Die Belegung wird beim Anlegen einer Instanz einmalig in ihre <code>options.txt</code> geschrieben.
-          Beim Anlegen und beim Start bleibt eine vorhandene <code>options.txt</code> unverändert; spätere
-          Änderungen in den Instanz-Einstellungen schreiben nur die geänderten Schlüssel.
-        </p>
+    <section class="section themes-section" id="themes" aria-labelledby="themes-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow"><span class="eyebrow-num">03</span>Themes</p>
+          <div class="section-title-row">
+            <h2 id="themes-title">Neun Welten. <span class="accent">Deine Farben.</span></h2>
+            <p class="section-intro">
+              Bamboo Forest, End City, Cherry Blossom und sechs weitere. Jedes Theme bringt eigenen
+              Hintergrund, Akzentfarbe und Partikel mit. Wechseln dauert einen Klick.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="theme-row" role="list" aria-label="Themes im Launcher">
+        <figure class="theme-card" role="listitem">
+          <img src="assets/themes/bamboo.webp" width="600" height="360" loading="lazy" alt="Bamboo Forest: grüner Bambuswald mit Sonnenlicht am Wasser">
+          <figcaption><strong>Bamboo Forest</strong><span class="theme-color"><i class="theme-dot" style="background:#5fbf6a"></i>Grün</span></figcaption>
+        </figure>
+        <figure class="theme-card" role="listitem">
+          <img src="assets/themes/end.webp" width="600" height="360" loading="lazy" alt="End City: violette Türme über der Leere">
+          <figcaption><strong>End City</strong><span class="theme-color"><i class="theme-dot" style="background:#b06ad4"></i>Violett</span></figcaption>
+        </figure>
+        <figure class="theme-card" role="listitem">
+          <img src="assets/themes/frozen.webp" width="600" height="360" loading="lazy" alt="Snowy Lands: Eislandschaft in hellem Blau">
+          <figcaption><strong>Snowy Lands</strong><span class="theme-color"><i class="theme-dot" style="background:#9fc6e0"></i>Hellblau</span></figcaption>
+        </figure>
+        <figure class="theme-card" role="listitem">
+          <img src="assets/themes/nether.webp" width="600" height="360" loading="lazy" alt="Nether Fortress: glühende Lava zwischen Basalt">
+          <figcaption><strong>Nether Fortress</strong><span class="theme-color"><i class="theme-dot" style="background:#e05252"></i>Rot</span></figcaption>
+        </figure>
+        <figure class="theme-card" role="listitem">
+          <img src="assets/themes/obsidian.webp" width="600" height="360" loading="lazy" alt="Obsidian Portal: dunkelblaues Portal mit Amethyst">
+          <figcaption><strong>Obsidian Portal</strong><span class="theme-color"><i class="theme-dot" style="background:#7d74d9"></i>Dunkelblau</span></figcaption>
+        </figure>
+        <figure class="theme-card" role="listitem">
+          <img src="assets/themes/warden.webp" width="600" height="360" loading="lazy" alt="Warden Valley: cyanfarbene Sculk-Höhle im Deep Dark">
+          <figcaption><strong>Warden Valley</strong><span class="theme-color"><i class="theme-dot" style="background:#4fb3ab"></i>Cyan</span></figcaption>
+        </figure>
+        <figure class="theme-card" role="listitem">
+          <img src="assets/themes/copper.webp" width="600" height="360" loading="lazy" alt="Copper Trials: kupferfarbene Trial Chambers">
+          <figcaption><strong>Copper Trials</strong><span class="theme-color"><i class="theme-dot" style="background:#d97742"></i>Orange</span></figcaption>
+        </figure>
+        <figure class="theme-card" role="listitem">
+          <img src="assets/themes/underwater.webp" width="600" height="360" loading="lazy" alt="Underwater Paradise: blaue Unterwasserwelt mit ruhigem Licht">
+          <figcaption><strong>Underwater Paradise</strong><span class="theme-color"><i class="theme-dot" style="background:#3f8fd0"></i>Blau</span></figcaption>
+        </figure>
+        <figure class="theme-card" role="listitem">
+          <img src="assets/themes/cherry.webp" width="600" height="360" loading="lazy" alt="Cherry Blossom: rosa Kirschblüten über einer Wiese">
+          <figcaption><strong>Cherry Blossom</strong><span class="theme-color"><i class="theme-dot" style="background:#f2a3b7"></i>Pink</span></figcaption>
+        </figure>
+      </div>
+      <div class="wrap theme-foot">
+        <p>Neun Presets. Eigene Akzentfarbe und eigenes Hintergrundbild stellst du im Launcher unter Anpassen ein.</p>
+      </div>
+    </section>
+
+    <section class="section" id="changelog" aria-labelledby="changelog-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow"><span class="eyebrow-num">04</span>Changelog</p>
+          <div class="section-title-row">
+            <h2 id="changelog-title">Jede Version, <span class="accent">ehrlich aufgelistet.</span></h2>
+            <p class="section-intro">
+              Die 0.2.7 macht die Startseite zum Ort, an dem du wirklich weiterspielst.
+              Die letzten Versionen stehen darunter.
+            </p>
+          </div>
+        </div>
+
+        <article class="release" aria-labelledby="release-title">
+          <header class="release-head">
+            <div class="release-version">
+              <span class="v" id="release-title">v0.2.7</span>
+              <span class="release-badge">Aktuell</span>
+            </div>
+            <span class="release-date">11. November 2026</span>
+            <a class="release-link" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/tag/v0.2.7">Release ansehen →</a>
+          </header>
+          <p class="release-summary">
+            Die Startseite ist jetzt der Ort, an dem du wirklich weiterspielst: die letzte Welt als
+            große Karte, darunter Welten, Server und Profile. Der Launcher startet die Welt ab
+            Minecraft 1.20 direkt per Quick Play und merkt sich, was zuletzt lief.
+          </p>
+
+          <div class="changelog-groups">
+            <section aria-labelledby="group-new">
+              <div class="group-head">
+                <span class="group-tag new" id="group-new">Neu</span>
+                <span class="group-count">6 Einträge</span>
+              </div>
+              <ul class="changelog-list">
+                <li class="new"><strong>Neue Startseite „Weiterspielen“:</strong> Die letzte Welt steht als große Karte oben, darunter folgen Welten, Server und Profile. Ein Klick startet, der Laufzustand ist direkt sichtbar.</li>
+                <li class="new"><strong>Quick Play für Welten:</strong> Ab Minecraft 1.20 öffnet „Weiter spielen“ die Welt direkt, ohne Umweg über das Hauptmenü. Ältere Versionen starten weiterhin das Profil.</li>
+                <li class="new"><strong>Welten und Server anpinnen:</strong> Favoriten stehen oben und bleiben lokal gespeichert. Server merken sich außerdem den letzten Beitritt.</li>
+                <li class="new"><strong>Server direkt von der Startseite:</strong> Ping, Spielerzahl und das passende Profil stehen neben dem Server. „Beitreten“ startet die Instanz und verbindet.</li>
+                <li class="new"><strong>Hintergrund und Effekte bei Preset-Themes:</strong> Bild, Partikel und Glow lassen sich in Darstellung unabhängig abschalten, ohne auf eigene Farben zu wechseln.</li>
+                <li class="new"><strong>CurseForge-Key beim Umstieg:</strong> Der Key aus der alten Electron-Fassung wird übernommen. Fehlt er in der Mod-Suche, führt „Key hinterlegen“ direkt zu Einstellungen → Erweitert.</li>
+              </ul>
+            </section>
+
+            <section aria-labelledby="group-better">
+              <div class="group-head">
+                <span class="group-tag better" id="group-better">Besser</span>
+                <span class="group-count">4 Einträge</span>
+              </div>
+              <ul class="changelog-list">
+                <li><strong>Startseite:</strong> zeigt relative Spielzeit, Version, Loader und den letzten Serverstatus statt einer Sammlung von Links.</li>
+                <li><strong>Startzustand:</strong> Startende Instanzen zeigen „Startet“ mit Spinner; erst wenn das Spiel läuft, wechselt der Knopf auf „Beenden“.</li>
+                <li><strong>Listen:</strong> Profil- und Serverlisten sortieren angepinnte Einträge nach oben und starten ohne Umweg über die jeweilige Ansicht.</li>
+                <li><strong>Typografie:</strong> Die Bamboo-Marker vor Überschriften sind entfernt; die Startseite arbeitet mit Abständen und einer Akzentfarbe statt mit Dekoration.</li>
+              </ul>
+            </section>
+
+            <section aria-labelledby="group-fixed">
+              <div class="group-head">
+                <span class="group-tag fixed" id="group-fixed">Behoben</span>
+                <span class="group-count">3 Einträge</span>
+              </div>
+              <ul class="changelog-list">
+                <li>Ohne Hintergrundbild zeigte der Start einen falschen Basiston statt der Theme-Fläche.</li>
+                <li>Helligkeit und Unschärfe wurden bei Preset-Themes ignoriert; beide Regler wirken jetzt auch dort.</li>
+                <li>Ein Weltname für Quick Play wird vor dem Start geprüft: nur ein direkter Ordnername aus <code>saves/</code> erreicht das Spiel.</li>
+              </ul>
+            </section>
+          </div>
+        </article>
+
+        <div class="release-archive">
+          <h3>Ältere Versionen</h3>
+          <p class="archive-note">Auszug. Alle Einträge stehen im <a href="https://github.com/Borisgamer1/Bamboo-Launcher/blob/main/ui/CHANGELOG.md">vollständigen Changelog auf GitHub</a>.</p>
+
+          <details class="release-old">
+            <summary>
+              <span class="old-v">v0.2.6</span>
+              <span class="old-date">11. November 2026</span>
+              <span class="old-note">Electron-Umstieg, stilles Token-Refresh, Aufräumen beim Start</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="old-body">
+              <div>
+                <h4>Neu</h4>
+                <ul>
+                  <li>0.2.4 oder älter bekommen die 0.2.6 beim Update-Check angeboten und steigen einmalig über den Installer um.</li>
+                  <li>Die Kopfzeile zeigt Konto und Skin sofort aus dem lokalen Zwischenspeicher.</li>
+                </ul>
+              </div>
+              <div>
+                <h4>Besser</h4>
+                <ul>
+                  <li>Die Microsoft-Sitzung wird vor dem Start still aufgefrischt, wenn ihr Token bald abläuft.</li>
+                  <li>Sprache und Standard-Optionen schreibt der Launcher nur beim ersten Start einer Instanz.</li>
+                  <li>Das Fenster für den Versionswechsel ist breiter und sortiert Loader-Versionen numerisch.</li>
+                </ul>
+              </div>
+              <div>
+                <h4>Behoben</h4>
+                <ul>
+                  <li>Java, <code>reg</code>, <code>taskkill</code> und PowerShell laufen ohne aufblitzende Konsolenfenster.</li>
+                  <li>Die Update-Prüfung vergleicht die Versions-ID der Datei statt nur ihren Namen.</li>
+                  <li>Mods lassen sich auch bei gesperrter Datei löschen.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+
+          <details class="release-old">
+            <summary>
+              <span class="old-v">v0.2.5</span>
+              <span class="old-date">10. November 2026</span>
+              <span class="old-note">Der Wechsel auf Rust und Tauri, Installer für alle Systeme</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="old-body">
+              <div>
+                <h4>Neu</h4>
+                <ul>
+                  <li>Der Launcher läuft komplett auf Rust und Tauri; die Electron-Shell ist entfernt.</li>
+                  <li>MSI und NSIS unter Windows, DMG unter macOS, DEB, RPM und AppImage unter Linux.</li>
+                  <li>CurseForge, Quilt und Modpack-Importe laufen im neuen Kern.</li>
+                </ul>
+              </div>
+              <div>
+                <h4>Besser</h4>
+                <ul>
+                  <li>Mehrere Microsoft-Konten mit Wechsel und Abmelden.</li>
+                  <li>Sicherungen vor Modpack-Updates, Versionswechseln und Importen.</li>
+                  <li>Updates werden im Launcher geladen und signiert geprüft.</li>
+                </ul>
+              </div>
+              <div>
+                <h4>Behoben</h4>
+                <ul>
+                  <li>„Reparieren“ meldet keinen Erfolg mehr, ohne etwas zu tun.</li>
+                  <li>Server-Pings übertragen die Adresse wieder.</li>
+                  <li>Instanzen aus der Electron-Zeit erscheinen wieder in der Liste.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+        </div>
       </div>
     </section>
 
     <section class="section" id="download" aria-labelledby="download-title">
       <div class="wrap">
         <div class="section-head">
-          <p class="section-num">05 / Download</p>
-          <div>
-            <h2 id="download-title">0.2.7 für Windows, macOS und Linux.</h2>
+          <p class="eyebrow"><span class="eyebrow-num">05</span>Download</p>
+          <div class="section-title-row">
+            <h2 id="download-title">0.2.7 für <span class="accent">dein System.</span></h2>
             <p class="section-intro">
-              Der Launcher läuft vollständig auf Rust und Tauri. Die 0.2.7 bringt die neue
-              Startseite mit „Weiterspielen“, Quick Play für Welten und Pins für Welten und
-              Server. Alle Pakete liegen am GitHub-Release; Updates holt der Launcher selbst.
+              Alle Pakete liegen am GitHub-Release. Windows bekommt Setup und MSI, macOS ein DMG
+              je Architektur, Linux AppImage, DEB und RPM.
             </p>
           </div>
         </div>
 
-        <div class="release-grid">
-          <div class="release-main">
-            <span class="status-chip"><i aria-hidden="true"></i>Veröffentlicht</span>
-            <h3>Bamboo Launcher 0.2.7</h3>
-            <p>
-              Windows bekommt MSI und NSIS-Setup, macOS ein DMG je Architektur, Linux DEB,
-              RPM und AppImage. Danach holt „Nach Updates suchen“ jede neue Version im
-              Launcher, ohne Installer-Download.
-            </p>
+        <div class="platform-grid">
+          <article class="platform platform-primary">
+            <div class="platform-head">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M3 5.6 10.4 4.5v6.9H3V5.6Zm8.6-1.2L21 3v8.4h-9.4V4.4ZM3 12.5h7.4v7L3 18.4v-5.9Zm8.6 0H21V21l-9.4-1.3v-7.2Z"/>
+              </svg>
+              <div>
+                <h3>Windows</h3>
+                <p>Windows 10/11 · x64</p>
+              </div>
+              <span class="platform-chip">Empfohlen</span>
+            </div>
+            <a class="pkg pkg-primary" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7/Bamboo.Launcher_0.2.7_x64-setup.exe">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11m0 0 4.2-4.2M12 14l-4.2-4.2M4.5 20h15"/></svg>
+              Setup (EXE)
+              <span class="size">26,7 MB</span>
+            </a>
+            <a class="pkg" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7/Bamboo.Launcher_0.2.7_x64_en-US.msi">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11m0 0 4.2-4.2M12 14l-4.2-4.2M4.5 20h15"/></svg>
+              MSI
+              <span class="size">30,9 MB</span>
+            </a>
+            <p class="platform-note">Setup und MSI installieren dasselbe Programm.</p>
+          </article>
 
-            <div class="dl-table" role="table" aria-label="Gebaute Versionen">
-              <div class="dl-row dl-head" role="row">
-                <span role="columnheader">Version</span>
-                <span role="columnheader">Plattform</span>
-                <span role="columnheader">Paket</span>
-                <span role="columnheader">Status</span>
-              </div>
-              <div class="dl-row" role="row">
-                <span role="cell"><strong>0.2.7</strong></span>
-                <span role="cell">Windows 10/11 · x64</span>
-                <span role="cell"><a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_x64-setup.exe">EXE</a> · <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_x64_en-US.msi">MSI</a></span>
-                <span role="cell">Veröffentlicht</span>
-              </div>
-              <div class="dl-row" role="row">
-                <span role="cell"><strong>0.2.7</strong></span>
-                <span role="cell">macOS · Apple Silicon &amp; Intel</span>
-                <span role="cell"><a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_aarch64.dmg">Apple Silicon</a> · <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_x64.dmg">Intel</a></span>
-                <span role="cell">Veröffentlicht</span>
-              </div>
-              <div class="dl-row" role="row">
-                <span role="cell"><strong>0.2.7</strong></span>
-                <span role="cell">Linux · x64</span>
-                <span role="cell"><a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_amd64.AppImage">AppImage</a> · <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher_0.2.7_amd64.deb">DEB</a> · <a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest/download/Bamboo.Launcher-0.2.7-1.x86_64.rpm">RPM</a></span>
-                <span role="cell">Veröffentlicht</span>
+          <article class="platform">
+            <div class="platform-head">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"/>
+                <path d="M10 2c1 .5 2 2 2 5"/>
+              </svg>
+              <div>
+                <h3>macOS</h3>
+                <p>Apple Silicon und Intel</p>
               </div>
             </div>
+            <a class="pkg" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7/Bamboo.Launcher_0.2.7_aarch64.dmg">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11m0 0 4.2-4.2M12 14l-4.2-4.2M4.5 20h15"/></svg>
+              Apple Silicon
+              <span class="size">33,2 MB</span>
+            </a>
+            <a class="pkg" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7/Bamboo.Launcher_0.2.7_x64.dmg">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11m0 0 4.2-4.2M12 14l-4.2-4.2M4.5 20h15"/></svg>
+              Intel
+              <span class="size">33,7 MB</span>
+            </a>
+            <p class="platform-note">DMG öffnen und Bamboo nach „Programme“ ziehen.</p>
+          </article>
 
-            <p class="fine">
-              <a class="btn btn-primary" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/latest">Zum Release <span class="arrow" aria-hidden="true">→</span></a>
-            </p>
+          <article class="platform">
+            <div class="platform-head">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m4 6 5 4-5 4M11 18h9"/>
+              </svg>
+              <div>
+                <h3>Linux</h3>
+                <p>Distributionen mit x64</p>
+              </div>
+            </div>
+            <a class="pkg" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7/Bamboo.Launcher_0.2.7_amd64.AppImage">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11m0 0 4.2-4.2M12 14l-4.2-4.2M4.5 20h15"/></svg>
+              AppImage
+              <span class="size">108,1 MB</span>
+            </a>
+            <a class="pkg" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7/Bamboo.Launcher_0.2.7_amd64.deb">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11m0 0 4.2-4.2M12 14l-4.2-4.2M4.5 20h15"/></svg>
+              DEB
+              <span class="size">34,7 MB</span>
+            </a>
+            <a class="pkg" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7/Bamboo.Launcher-0.2.7-1.x86_64.rpm">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11m0 0 4.2-4.2M12 14l-4.2-4.2M4.5 20h15"/></svg>
+              RPM
+              <span class="size">34,7 MB</span>
+            </a>
+            <p class="platform-note">AppImage direkt starten, DEB und RPM über den Paketmanager.</p>
+          </article>
+        </div>
+
+        <div class="dl-notes">
+          <div>
+            <h3>Updates</h3>
+            <p>Ab 0.2.6 holt „Nach Updates suchen“ die neue Version im Launcher und prüft ihre Signatur. Ein Installer-Download ist dafür nicht mehr nötig.</p>
           </div>
+          <div>
+            <h3>Umstieg von Electron</h3>
+            <p>0.2.4 oder älter können sich nicht selbst ersetzen. Einmalig das Paket installieren — Instanzen, Welten, Mods und Einstellungen bleiben erhalten.</p>
+          </div>
+          <div>
+            <h3>Prüfen</h3>
+            <p><a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7/SHA256SUMS.txt">SHA256-Prüfsummen</a> liegen am Release. Alle Dateien stammen aus dem GitHub-Release des Projekts.</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
-          <aside class="release-aside">
-            <div class="aside-block">
-              <h4>Neu in 0.2.7</h4>
-              <p>Startseite mit „Weiterspielen“, Quick Play für Welten ab 1.20 und Pins für Welten und Server. Der CurseForge-Key aus der Electron-Zeit bleibt erhalten.</p>
+    <section class="section" id="faq" aria-labelledby="faq-title">
+      <div class="wrap faq-layout">
+        <div class="faq-intro">
+          <p class="eyebrow"><span class="eyebrow-num">06</span>FAQ</p>
+          <h2 id="faq-title">Fragen, <span class="accent">kurz beantwortet.</span></h2>
+          <p>
+            Etwas fehlt? Fehler und Wünsche sammeln wir in den
+            <a href="https://github.com/Borisgamer1/Bamboo-Launcher/issues">GitHub-Issues</a>.
+          </p>
+        </div>
+
+        <div class="faq-list">
+          <details class="faq-item">
+            <summary>
+              <span class="faq-num">01</span>
+              <span>Kostet Bamboo etwas?</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="faq-answer">
+              <p>Nein. Der Launcher ist kostenlos, ohne Abo, ohne Werbung und ohne Shop. Ein Launcher-Konto gibt es nicht; gespielt wird mit deinem Microsoft-Konto.</p>
             </div>
-            <div class="aside-block">
-              <h4>Voraussetzungen</h4>
-              <ul>
-                <li>Windows 10/11, macOS oder eine gängige Linux-Distribution</li>
-                <li>Minecraft: Java Edition mit Microsoft-Konto</li>
-                <li>Internetverbindung für Spiel- und Mod-Downloads</li>
-              </ul>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span class="faq-num">02</span>
+              <span>Brauche ich Minecraft: Java Edition?</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="faq-answer">
+              <p>Ja. Bamboo startet nur, was du besitzt: ein Microsoft-Konto mit Minecraft: Java Edition. Der Launcher legt kein eigenes Konto an und sieht dein Passwort nicht.</p>
             </div>
-            <div class="aside-block">
-              <h4>Update von 0.2.4 oder älter</h4>
-              <p>Diese Fassungen waren noch Electron und können sich nicht selbst ersetzen. Einmalig das Paket oben installieren; ab 0.2.6 läuft jedes Update ueber den Knopf im Launcher.</p>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span class="faq-num">03</span>
+              <span>Läuft Bamboo auf meinem System?</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="faq-answer">
+              <p>Windows 10/11 (x64), macOS auf Apple Silicon und Intel sowie Linux (x64) mit DEB, RPM oder AppImage. Java bringt Bamboo bei Bedarf selbst mit.</p>
             </div>
-            <div class="aside-block">
-              <h4>Stand der Aufnahmen</h4>
-              <p class="fine">Alle Screenshots stammen aus der laufenden App bei 1440 × 900 auf Windows. Die Mod-Suche lief gegen die echte CurseForge-API.</p>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span class="faq-num">04</span>
+              <span>Übernimmt Bamboo meine alten Instanzen?</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="faq-answer">
+              <p>Ja. Instanzen aus der Electron-Zeit erscheinen weiter, ebenso fertige Ordner aus Prism/MultiMC, der CurseForge App und der Modrinth App. Der Import überschreibt keine Welten und keine vorhandenen Dateien.</p>
             </div>
-          </aside>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span class="faq-num">05</span>
+              <span>Bleibt der Launcher aktuell?</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="faq-answer">
+              <p>Ab 0.2.6 sucht der Launcher selbst nach Updates, lädt sie im Hintergrund und prüft die Signatur. Wer noch 0.2.4 oder älter nutzt, installiert die 0.2.7 einmal von Hand.</p>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span class="faq-num">06</span>
+              <span>Wo melde ich Fehler?</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <div class="faq-answer">
+              <p>Am besten in den <a href="https://github.com/Borisgamer1/Bamboo-Launcher/issues">GitHub-Issues</a>. Bitte Version, Betriebssystem und den relevanten Teil des Logs dazuschreiben.</p>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta" aria-labelledby="cta-title">
+      <div class="wrap cta-inner">
+        <div>
+          <h2 id="cta-title">Einmal installiert. <span class="accent">Danach spielst du.</span></h2>
+          <p>0.2.7 für Windows, macOS und Linux. Kostenlos, ohne Werbung, ohne Launcher-Konto.</p>
+        </div>
+        <div class="cta-actions">
+          <a class="btn btn-primary btn-lg" href="https://github.com/Borisgamer1/Bamboo-Launcher/releases/download/v0.2.7/Bamboo.Launcher_0.2.7_x64-setup.exe">Windows-Setup</a>
+          <a class="btn btn-ghost btn-lg" href="#download">Alle Plattformen</a>
         </div>
       </div>
     </section>
   </main>
 
-  <footer class="site-footer">
+  <footer class="site-footer" id="footer">
     <div class="wrap">
       <div class="footer-grid">
         <div class="footer-brand">
           <a class="brand" href="index.html">
-            <img src="assets/bamboo-logo.png" alt="" width="30" height="30">
-            <span>Bamboo Launcher</span>
+            <img src="assets/bamboo-logo.png" alt="" width="34" height="34">
+            <span class="brand-text"><strong>Bamboo</strong><span>Launcher</span></span>
           </a>
-          <p>Minecraft: Java Edition, ohne Ballast. Ein unabhängiges Projekt, kein offizielles Minecraft-Produkt.</p>
+          <p>Minecraft-Launcher mit Rust-Kern und React-Oberfläche. Ein unabhängiges Projekt von Borisgamer, kein offizielles Minecraft-Produkt.</p>
         </div>
         <div class="footer-col">
-          <h4>Seiten</h4>
+          <h3>Launcher</h3>
           <ul>
-            <li><a href="#instanzen">Instanzen</a></li>
-            <li><a href="#mods">Mods</a></li>
-            <li><a href="#einstellungen">Einstellungen</a></li>
+            <li><a href="#funktionen">Funktionen</a></li>
+            <li><a href="#app">Die App</a></li>
+            <li><a href="#themes">Themes</a></li>
+            <li><a href="#changelog">Changelog</a></li>
             <li><a href="#download">Download</a></li>
+            <li><a href="#faq">FAQ</a></li>
           </ul>
         </div>
         <div class="footer-col">
-          <h4>Rechtliches</h4>
+          <h3>Projekt</h3>
+          <ul>
+            <li><a href="https://github.com/Borisgamer1/Bamboo-Launcher">GitHub</a></li>
+            <li><a href="https://github.com/Borisgamer1/Bamboo-Launcher/releases">Releases</a></li>
+            <li><a href="https://github.com/Borisgamer1/Bamboo-Launcher/issues">Issues</a></li>
+            <li><a href="https://github.com/Borisgamer1/Bamboo-Launcher/blob/main/ui/CHANGELOG.md">Changelog-Datei</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h3>Rechtliches</h3>
           <ul>
             <li><a href="nutzungsbedingungen.html">Nutzungsbedingungen</a></li>
             <li><a href="datenschutz.html">Datenschutz</a></li>
-            <li><a href="https://github.com/Borisgamer1" rel="noopener noreferrer">Projektkontakt</a></li>
           </ul>
         </div>
       </div>
       <div class="footer-bottom">
-        <span>© 2026 Boris · Bamboo Launcher 0.2.7</span>
+        <span>© 2026 Borisgamer · Bamboo Launcher 0.2.7</span>
         <span>Nicht mit Mojang Studios, Microsoft oder Discord verbunden.</span>
       </div>
+      <div class="footer-brandmark" aria-hidden="true"><span>Bamboo</span></div>
     </div>
   </footer>
 </body>

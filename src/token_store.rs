@@ -3,12 +3,13 @@
 //! Service unter Linux) – nie in einer Datei und nie in den Einstellungen.
 //!
 //! Unter Windows nimmt der Credential Manager pro Eintrag höchstens 2560 Byte
-//! UTF-16 auf,
-//! also 1280 Zeichen. Ein Token-Satz ist deutlich größer, deshalb wird das
-//! JSON in Stücke von [`CHUNK_CHARS`] Zeichen zerlegt und auf nummerierte
-//! Einträge verteilt. Ein Manifest-Eintrag nennt die Anzahl der Teile; er wird
-//! zuletzt geschrieben. Bricht der Vorgang dazwischen ab, existiert kein
-//! Manifest und damit auch keine halbe Sitzung.
+//! UTF-16 auf, also 1280 Zeichen. Ein Token-Satz ist deutlich größer, deshalb
+//! wird das JSON in Stücke von [`CHUNK_CHARS`] Zeichen zerlegt und auf
+//! nummerierte Einträge verteilt. Ein Manifest-Eintrag nennt Generation und
+//! Anzahl der Teile. Jeder Schreibvorgang legt seinen Stand in eigenen
+//! Einträgen an und schaltet erst danach das Manifest um: Bricht er vorher ab,
+//! bleibt der vorige Stand vollständig lesbar. Reste einer abgebrochenen
+//! Generation räumt der nächste Schreibvorgang weg.
 
 use crate::auth::{AuthError, LoginOutcome, MicrosoftAuth};
 use crate::launcher::{Account, UserType};
@@ -320,17 +321,139 @@ fn split_secret(secret: &str) -> Vec<String> {
         .collect()
 }
 
-fn manifest_for(count: usize) -> String {
-    format!("{MANIFEST_PREFIX}{count}")
+/// Ein Manifest nennt Generation und Anzahl der Teile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Manifest {
+    /// 0 steht für das alte Format ohne Generation.
+    generation: u32,
+    count: usize,
 }
 
-fn parse_manifest(raw: &str) -> Option<usize> {
-    let count = raw
-        .trim()
-        .strip_prefix(MANIFEST_PREFIX)?
-        .parse::<usize>()
-        .ok()?;
-    (1..=MAX_CHUNKS).contains(&count).then_some(count)
+fn manifest_for(generation: u32, count: usize) -> String {
+    format!("{MANIFEST_PREFIX}{generation}:{count}")
+}
+
+/// Liest das alte Format (`…v1:3`) und das neue (`…v1:2:3`).
+fn parse_manifest(raw: &str) -> Option<Manifest> {
+    let rest = raw.trim().strip_prefix(MANIFEST_PREFIX)?;
+    let (generation, count) = match rest.split_once(':') {
+        Some((generation, count)) => (generation.parse().ok()?, count),
+        None => (0, rest),
+    };
+    let count = count.parse::<usize>().ok()?;
+    (1..=MAX_CHUNKS)
+        .contains(&count)
+        .then_some(Manifest { generation, count })
+}
+
+/// Name eines Teils. Generation 0 ist der Altbestand ohne Generation.
+fn chunk_name(entry: &str, generation: u32, index: usize) -> String {
+    if generation == 0 {
+        format!("{entry}.{index}")
+    } else {
+        format!("{entry}.{generation}.{index}")
+    }
+}
+
+/// Einzelne Einträge einer Ablage; vom Keyring und von Tests umgesetzt.
+trait CredentialEntries {
+    fn get(&self, name: &str) -> Result<Option<String>>;
+    fn set(&self, name: &str, value: &str) -> Result<()>;
+    /// Löscht den Eintrag und meldet, ob er existierte.
+    fn remove(&self, name: &str) -> Result<bool>;
+}
+
+fn read_manifest(entries: &dyn CredentialEntries, entry: &str) -> Result<Option<Manifest>> {
+    let Some(raw) = entries.get(entry)? else {
+        return Ok(None);
+    };
+    parse_manifest(&raw).map(Some).ok_or_else(|| {
+        SessionError::Corrupt(format!("Unbekanntes Manifest im Credential Store: {raw}"))
+    })
+}
+
+/// Löscht alle Teile einer Generation.
+///
+/// Bewusst ohne Abbruch beim ersten fehlenden Teil: Ein abgebrochener
+/// Schreibvorgang hinterlässt Lücken, und genau die sollen nicht dauerhaft im
+/// Credential Store liegen bleiben. Die Obergrenze `MAX_CHUNKS` hält den
+/// Aufwand begrenzt.
+fn clear_generation(entries: &dyn CredentialEntries, entry: &str, generation: u32) -> Result<()> {
+    for index in 0..MAX_CHUNKS {
+        entries.remove(&chunk_name(entry, generation, index))?;
+    }
+    Ok(())
+}
+
+/// Schreibt ein Secret atomar.
+///
+/// Der neue Stand bekommt eigene Einträge; erst das Manifest macht ihn
+/// sichtbar, danach fällt der alte Stand weg. Bricht der Vorgang vorher ab,
+/// bleibt die alte Sitzung vollständig lesbar – früher waren in diesem Moment
+/// alle Konten weg. Die Zielgeneration wird vorher geleert, damit Reste eines
+/// abgebrochenen Versuchs nicht neben dem neuen Stand stehen bleiben.
+fn write_secret(entries: &dyn CredentialEntries, entry: &str, secret: &str) -> Result<()> {
+    let chunks = split_secret(secret);
+    if chunks.is_empty() {
+        return Err(SessionError::Corrupt(
+            "Eine leere Sitzung wird nicht gespeichert.".to_string(),
+        ));
+    }
+    if chunks.len() > MAX_CHUNKS {
+        return Err(SessionError::Corrupt(format!(
+            "Sitzung ist mit {} Zeichen zu groß für den Credential Store.",
+            secret.chars().count()
+        )));
+    }
+
+    // Ein unlesbares Manifest ist kein Grund, das Speichern zu verweigern.
+    let previous = read_manifest(entries, entry).ok().flatten();
+    let generation = previous.map_or(1, |manifest| manifest.generation.wrapping_add(1).max(1));
+
+    clear_generation(entries, entry, generation)?;
+    for (index, chunk) in chunks.iter().enumerate() {
+        if let Err(error) = entries.set(&chunk_name(entry, generation, index), chunk) {
+            let _ = clear_generation(entries, entry, generation);
+            return Err(error);
+        }
+    }
+    // Das Manifest ist die Marke für „vollständig geschrieben“.
+    entries.set(entry, &manifest_for(generation, chunks.len()))?;
+    // Erst jetzt darf der alte Stand verschwinden. Ein Fehler dabei ist
+    // folgenlos, denn der neue Stand steht bereits.
+    if let Some(previous) = previous {
+        let _ = clear_generation(entries, entry, previous.generation);
+    }
+    Ok(())
+}
+
+fn read_secret(entries: &dyn CredentialEntries, entry: &str) -> Result<Option<String>> {
+    let Some(manifest) = read_manifest(entries, entry)? else {
+        return Ok(None);
+    };
+    let mut secret = String::new();
+    for index in 0..manifest.count {
+        match entries.get(&chunk_name(entry, manifest.generation, index))? {
+            Some(chunk) => secret.push_str(&chunk),
+            None => {
+                return Err(SessionError::Corrupt(format!(
+                    "Sitzungsteil {index} von {} fehlt im Credential Store.",
+                    manifest.count
+                )))
+            }
+        }
+    }
+    Ok(Some(secret))
+}
+
+fn erase_secret(entries: &dyn CredentialEntries, entry: &str) -> Result<()> {
+    let manifest = read_manifest(entries, entry).ok().flatten();
+    entries.remove(entry)?;
+    if let Some(manifest) = manifest {
+        clear_generation(entries, entry, manifest.generation)?;
+    }
+    // Altbestand aus der Zeit vor den Generationen.
+    clear_generation(entries, entry, 0)
 }
 
 /// Speichert Secrets im Anmeldedaten-Speicher des Systems.
@@ -362,12 +485,8 @@ impl KeyringStore {
         }
     }
 
-    fn entry(&self, suffix: Option<usize>) -> Result<keyring::Entry> {
-        let name = match suffix {
-            Some(index) => format!("{}.{index}", self.entry),
-            None => self.entry.clone(),
-        };
-        keyring::Entry::new(&self.service, &name).map_err(|error| match error {
+    fn keyring_entry(&self, name: &str) -> Result<keyring::Entry> {
+        keyring::Entry::new(&self.service, name).map_err(|error| match error {
             keyring::Error::NoDefaultStore => SessionError::Unavailable(
                 "Der Anmeldedaten-Speicher des Systems ist nicht verfügbar.".to_string(),
             ),
@@ -375,16 +494,34 @@ impl KeyringStore {
         })
     }
 
-    fn read_entry(&self, suffix: Option<usize>) -> Result<Option<String>> {
-        match self.entry(suffix)?.get_password() {
+    /// Zahl der zusammenhängend vorhandenen Teile – für Diagnose und Tests.
+    pub fn stored_chunks(&self) -> Result<usize> {
+        let Some(manifest) = read_manifest(self, &self.entry)? else {
+            return Ok(0);
+        };
+        let mut count = 0;
+        for index in 0..manifest.count {
+            let name = chunk_name(&self.entry, manifest.generation, index);
+            if self.get(&name)?.is_none() {
+                break;
+            }
+            count += 1;
+        }
+        Ok(count)
+    }
+}
+
+impl CredentialEntries for KeyringStore {
+    fn get(&self, name: &str) -> Result<Option<String>> {
+        match self.keyring_entry(name)?.get_password() {
             Ok(value) => Ok(Some(value)),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(error) => Err(SessionError::Backend(error.to_string())),
         }
     }
 
-    fn write_entry(&self, suffix: Option<usize>, value: &str) -> Result<()> {
-        self.entry(suffix)?
+    fn set(&self, name: &str, value: &str) -> Result<()> {
+        self.keyring_entry(name)?
             .set_password(value)
             .map_err(|error| match error {
                 keyring::Error::TooLong(field, limit) => SessionError::Backend(format!(
@@ -394,94 +531,26 @@ impl KeyringStore {
             })
     }
 
-    /// Löscht einen Eintrag und meldet, ob er überhaupt existierte.
-    fn delete_entry(&self, suffix: Option<usize>) -> Result<bool> {
-        match self.entry(suffix)?.delete_credential() {
+    fn remove(&self, name: &str) -> Result<bool> {
+        match self.keyring_entry(name)?.delete_credential() {
             Ok(()) => Ok(true),
             Err(keyring::Error::NoEntry) => Ok(false),
             Err(error) => Err(SessionError::Backend(error.to_string())),
         }
     }
-
-    /// Löscht Manifest und alle vorhandenen Teile.
-    ///
-    /// Die Teile werden gelöscht, bis der erste fehlt – nicht nur bis zur im
-    /// Manifest genannten Zahl. Ein beschädigtes oder fehlendes Manifest darf
-    /// keine Waisen im Credential Store hinterlassen.
-    fn clear_chunks(&self) -> Result<usize> {
-        self.delete_entry(None)?;
-        let mut removed = 0;
-        for index in 0..MAX_CHUNKS {
-            if !self.delete_entry(Some(index))? {
-                break;
-            }
-            removed += 1;
-        }
-        Ok(removed)
-    }
-
-    /// Zahl der zusammenhängend vorhandenen Teile – für Diagnose und Tests.
-    pub fn stored_chunks(&self) -> Result<usize> {
-        let mut count = 0;
-        for index in 0..MAX_CHUNKS {
-            if self.read_entry(Some(index))?.is_none() {
-                break;
-            }
-            count += 1;
-        }
-        Ok(count)
-    }
 }
 
 impl SecretStore for KeyringStore {
     fn write(&self, secret: &str) -> Result<()> {
-        let chunks = split_secret(secret);
-        if chunks.is_empty() {
-            return Err(SessionError::Corrupt(
-                "Eine leere Sitzung wird nicht gespeichert.".to_string(),
-            ));
-        }
-        if chunks.len() > MAX_CHUNKS {
-            return Err(SessionError::Corrupt(format!(
-                "Sitzung ist mit {} Zeichen zu groß für den Credential Store.",
-                secret.chars().count()
-            )));
-        }
-
-        // Erst alles Alte weg, damit keine Teile einer früheren Sitzung bleiben.
-        self.clear_chunks()?;
-        for (index, chunk) in chunks.iter().enumerate() {
-            self.write_entry(Some(index), chunk)?;
-        }
-        // Das Manifest ist die Marke für „vollständig geschrieben“.
-        self.write_entry(None, &manifest_for(chunks.len()))?;
-        Ok(())
+        write_secret(self, &self.entry, secret)
     }
 
     fn read(&self) -> Result<Option<String>> {
-        let Some(raw) = self.read_entry(None)? else {
-            return Ok(None);
-        };
-        let count = parse_manifest(&raw).ok_or_else(|| {
-            SessionError::Corrupt(format!("Unbekanntes Manifest im Credential Store: {raw}"))
-        })?;
-
-        let mut secret = String::new();
-        for index in 0..count {
-            match self.read_entry(Some(index))? {
-                Some(chunk) => secret.push_str(&chunk),
-                None => {
-                    return Err(SessionError::Corrupt(format!(
-                        "Sitzungsteil {index} von {count} fehlt im Credential Store."
-                    )))
-                }
-            }
-        }
-        Ok(Some(secret))
+        read_secret(self, &self.entry)
     }
 
     fn erase(&self) -> Result<()> {
-        self.clear_chunks().map(|_| ())
+        erase_secret(self, &self.entry)
     }
 }
 
@@ -688,14 +757,170 @@ mod tests {
 
     #[test]
     fn manifest_round_trips_and_rejects_nonsense() {
-        assert_eq!(parse_manifest(&manifest_for(7)), Some(7));
-        assert_eq!(parse_manifest("bamboo-session-v1:0"), None);
         assert_eq!(
-            parse_manifest(&format!("bamboo-session-v1:{}", MAX_CHUNKS + 1)),
-            None
+            parse_manifest(&manifest_for(2, 7)),
+            Some(Manifest {
+                generation: 2,
+                count: 7
+            })
         );
+        // Das alte Format ohne Generation bleibt lesbar.
+        assert_eq!(
+            parse_manifest("bamboo-session-v1:7"),
+            Some(Manifest {
+                generation: 0,
+                count: 7
+            })
+        );
+        assert_eq!(parse_manifest("bamboo-session-v1:1:0"), None);
+        assert_eq!(parse_manifest(&manifest_for(1, MAX_CHUNKS + 1)), None);
         assert_eq!(parse_manifest("fremdes-format"), None);
         assert_eq!(parse_manifest("bamboo-session-v1:abc"), None);
+    }
+
+    /// Credential-Ablage im Speicher, die auf Wunsch mitten im Schreiben
+    /// scheitert – so lässt sich ein Absturz nachstellen.
+    #[derive(Default)]
+    struct FakeEntries {
+        entries: std::sync::Mutex<std::collections::BTreeMap<String, String>>,
+        writes: std::sync::Mutex<usize>,
+        fail_at: std::sync::Mutex<Option<usize>>,
+    }
+
+    impl FakeEntries {
+        /// Der angegebene Schreibvorgang (ab 0) scheitert.
+        fn fail_on_write(&self, write: usize) {
+            *self.writes.lock().unwrap() = 0;
+            *self.fail_at.lock().unwrap() = Some(write);
+        }
+
+        fn allow_writes(&self) {
+            *self.fail_at.lock().unwrap() = None;
+            *self.writes.lock().unwrap() = 0;
+        }
+
+        fn keys(&self) -> Vec<String> {
+            self.entries.lock().unwrap().keys().cloned().collect()
+        }
+    }
+
+    impl CredentialEntries for FakeEntries {
+        fn get(&self, name: &str) -> Result<Option<String>> {
+            Ok(self.entries.lock().unwrap().get(name).cloned())
+        }
+
+        fn set(&self, name: &str, value: &str) -> Result<()> {
+            let mut writes = self.writes.lock().unwrap();
+            if *self.fail_at.lock().unwrap() == Some(*writes) {
+                return Err(SessionError::Backend("Testfehler".to_string()));
+            }
+            *writes += 1;
+            self.entries
+                .lock()
+                .unwrap()
+                .insert(name.to_string(), value.to_string());
+            Ok(())
+        }
+
+        fn remove(&self, name: &str) -> Result<bool> {
+            Ok(self.entries.lock().unwrap().remove(name).is_some())
+        }
+    }
+
+    #[test]
+    fn a_failed_write_leaves_the_previous_session_intact() {
+        let entries = FakeEntries::default();
+        let old = "a".repeat(CHUNK_CHARS * 3 + 7);
+        write_secret(&entries, KEYRING_ENTRY, &old).unwrap();
+
+        // Ein Teil des neuen Standes scheitert: Das Manifest bleibt das alte.
+        let next = "b".repeat(CHUNK_CHARS * 2 + 1);
+        entries.fail_on_write(1);
+        assert!(write_secret(&entries, KEYRING_ENTRY, &next).is_err());
+        assert_eq!(
+            read_secret(&entries, KEYRING_ENTRY).unwrap().as_deref(),
+            Some(old.as_str())
+        );
+
+        // Auch ein Fehler beim Manifest-Schreiben darf die Konten nicht kosten.
+        entries.fail_on_write(3);
+        assert!(write_secret(&entries, KEYRING_ENTRY, &next).is_err());
+        assert_eq!(
+            read_secret(&entries, KEYRING_ENTRY).unwrap().as_deref(),
+            Some(old.as_str())
+        );
+
+        // Danach bleibt nur der neue Stand übrig – auch die Teile des
+        // gescheiterten Versuchs in derselben Generation sind weg.
+        entries.allow_writes();
+        write_secret(&entries, KEYRING_ENTRY, "neu").unwrap();
+        assert_eq!(
+            read_secret(&entries, KEYRING_ENTRY).unwrap().as_deref(),
+            Some("neu")
+        );
+        assert_eq!(
+            entries.keys(),
+            vec![
+                "microsoft-session".to_string(),
+                "microsoft-session.2.0".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_manifest_without_generation_still_reads() {
+        let entries = FakeEntries::default();
+        entries.set(KEYRING_ENTRY, "bamboo-session-v1:2").unwrap();
+        entries
+            .set("microsoft-session.0", &"x".repeat(CHUNK_CHARS))
+            .unwrap();
+        entries.set("microsoft-session.1", "rest").unwrap();
+
+        let legacy = format!("{}rest", "x".repeat(CHUNK_CHARS));
+        assert_eq!(
+            read_secret(&entries, KEYRING_ENTRY).unwrap().as_deref(),
+            Some(legacy.as_str())
+        );
+
+        // Der nächste Schreibvorgang räumt die alten Teile weg.
+        write_secret(&entries, KEYRING_ENTRY, "kurz").unwrap();
+        assert_eq!(
+            entries.keys(),
+            vec![
+                "microsoft-session".to_string(),
+                "microsoft-session.1.0".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn leftovers_of_a_crashed_write_are_cleaned_up() {
+        let entries = FakeEntries::default();
+        write_secret(&entries, KEYRING_ENTRY, "alt").unwrap();
+        // Ein harter Absturz hinterlässt Teile, die das Manifest nicht kennt.
+        entries.set("microsoft-session.1.4", "Rest").unwrap();
+
+        write_secret(&entries, KEYRING_ENTRY, "neu").unwrap();
+        assert_eq!(
+            entries.keys(),
+            vec![
+                "microsoft-session".to_string(),
+                "microsoft-session.2.0".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn erase_removes_manifest_and_every_part() {
+        let entries = FakeEntries::default();
+        write_secret(&entries, KEYRING_ENTRY, &"q".repeat(CHUNK_CHARS * 2 + 1)).unwrap();
+        // Lücken und Altbestand aus der Zeit vor den Generationen.
+        entries.set("microsoft-session.1.5", "Rest").unwrap();
+        entries.set("microsoft-session.2", "alte Sitzung").unwrap();
+
+        erase_secret(&entries, KEYRING_ENTRY).unwrap();
+        assert!(entries.keys().is_empty(), "Reste: {:?}", entries.keys());
+        assert!(read_secret(&entries, KEYRING_ENTRY).unwrap().is_none());
     }
 
     #[test]

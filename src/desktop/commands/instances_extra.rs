@@ -5,14 +5,18 @@ use std::path::{Path, PathBuf};
 
 use bamboo_launcher::config;
 use bamboo_launcher::install::{InstallOptions, Installer};
-use bamboo_launcher::instances::validate_instance_name;
+use bamboo_launcher::instances::{validate_instance_name, InstanceManager};
 use bamboo_launcher::loader::LoaderInstaller;
 use bamboo_launcher::mods::Loader;
+use bamboo_launcher::safe_fs;
 use serde_json::{json, Value};
 use tauri::State;
 use zip::write::SimpleFileOptions;
 
 use crate::ipc::{self, LauncherState};
+
+/// Arbeitsordner beim Löschen einer Welt: erst beiseitelegen, dann löschen.
+const WORLD_TRASH: &str = ".bamboo-world-trash";
 
 /// Copies an instance folder, skipping build artefacts nobody wants doubled.
 fn copy_instance_tree(source: &Path, target: &Path) -> std::io::Result<()> {
@@ -32,6 +36,34 @@ fn copy_instance_tree(source: &Path, target: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Wie viele Namen für einen Klon höchstens geprüft werden.
+const MAX_CLONE_ATTEMPTS: usize = 1_000;
+
+/// Erster freier Name für einen Klon.
+///
+/// Jeder Kandidat wird geprüft; ein angehängter Zähler verlängert den Namen,
+/// deshalb endet die Suche spätestens an der Längengrenze statt wie früher
+/// endlos weiterzulaufen.
+fn clone_target_name(manager: &InstanceManager, base: &str) -> std::result::Result<String, String> {
+    validate_instance_name(base)
+        .map_err(|error| format!("'{base}' lässt sich nicht klonen: {error}"))?;
+    for suffix in 1..=MAX_CLONE_ATTEMPTS {
+        let name = match suffix {
+            1 => base.to_string(),
+            _ => format!("{base} {suffix}"),
+        };
+        if validate_instance_name(&name).is_err() {
+            break;
+        }
+        match manager.instance_dir(&name) {
+            Ok(dir) if !dir.exists() => return Ok(name),
+            Ok(_) => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Err(format!("Für '{base}' ist kein freier Klon-Name verfügbar."))
 }
 
 #[tauri::command]
@@ -57,21 +89,20 @@ pub fn clone_instance(data: Value) -> Value {
         .filter(|name| !name.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| format!("{folder}-Kopie"));
-    let mut name = base.clone();
-    let mut suffix = 2;
-    while manager
-        .instance_dir(&name)
-        .map(|dir| dir.exists())
-        .unwrap_or(true)
-    {
-        name = format!("{base} {suffix}");
-        suffix += 1;
+    let name = match clone_target_name(&manager, &base) {
+        Ok(name) => name,
+        Err(error) => return json!({"success": false, "code": "invalid-name", "error": error}),
+    };
+    let Ok(target) = manager.instance_dir(&name) else {
+        return json!({"success": false, "code": "invalid-name", "error": "Ungültiger Instanzname."});
+    };
+    if target.exists() {
+        return json!({
+            "success": false,
+            "code": "exists",
+            "error": format!("'{name}' existiert bereits.")
+        });
     }
-    if let Err(error) = validate_instance_name(&name) {
-        return json!({"success": false, "code": "invalid-name", "error": error.to_string()});
-    }
-
-    let target = manager.instance_dir(&name).expect("validated name");
     if let Err(error) = copy_instance_tree(&source, &target) {
         let _ = std::fs::remove_dir_all(&target);
         return json!({"success": false, "code": "copy-failed", "error": error.to_string()});
@@ -261,9 +292,9 @@ fn world_playtime(world: &Path) -> (Option<u64>, usize) {
         let Some(stats) = ipc::read_json(&path) else {
             continue;
         };
-        // 1 tick = 50 ms; only counted when the file names the play time.
-        if let Some(value) = stats
-            .pointer("/minecraft:custom/minecraft:play_time")
+        // 1 tick = 50 ms; nur zählen, wenn die Datei die Spielzeit nennt.
+        if let Some(value) = bamboo_launcher::instances::custom_stats(&stats)
+            .and_then(|custom| custom.get("minecraft:play_time"))
             .and_then(Value::as_u64)
         {
             ticks = ticks.saturating_add(value);
@@ -330,6 +361,43 @@ pub fn list_instance_worlds(folder_name: String) -> Value {
             .cmp(&left["lastPlayed"].as_u64().unwrap_or(0))
     });
     Value::Array(worlds)
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const MB: f64 = 1024.0 * 1024.0;
+    const GB: f64 = 1024.0 * 1024.0 * 1024.0;
+    let value = bytes as f64;
+    if value >= GB {
+        format!("{:.2} GB", value / GB)
+    } else if value >= MB {
+        format!("{:.1} MB", value / MB)
+    } else {
+        format!("{} KB", (bytes / 1024).max(1))
+    }
+}
+
+/// Belegte Größe einer Instanz auf der Platte. Wird erst beim Öffnen der
+/// Statistiken berechnet: Beim Start würde das Durchlaufen aller Welten den
+/// Launcher nur ausbremsen.
+#[tauri::command]
+pub fn instance_disk_usage(folder_name: String) -> Value {
+    let root = ipc::load_rust_settings().game_root;
+    let Ok(dir) = ipc::manager(&root).instance_dir(&folder_name) else {
+        return json!({"success": false, "error": "Instanz nicht gefunden."});
+    };
+    if !dir.is_dir() {
+        return json!({"success": false, "error": "Instanz nicht gefunden."});
+    }
+    let bytes = bamboo_launcher::instances::folder_size(&dir);
+    let label = human_bytes(bytes);
+    // Der Wert bleibt in der Instanzdatei, damit die Liste ihn beim nächsten
+    // Start ohne erneuten Durchlauf zeigen kann.
+    let meta_path = dir.join("instance.json");
+    if let Some(mut meta) = ipc::read_json(&meta_path) {
+        meta["size_label"] = json!(label);
+        let _ = ipc::write_json(&meta_path, &meta);
+    }
+    json!({"success": true, "bytes": bytes, "label": label})
 }
 
 // ---------------------------------------------------------------------------
@@ -635,10 +703,27 @@ pub fn import_instance_world(data: Value, state: State<'_, LauncherState>) -> Va
             "bytes": bytes,
         }),
         Err(error) => {
-            let _ = std::fs::remove_dir_all(&destination);
-            json!({"success": false, "code": "import-failed", "error": error})
+            let mut message = error;
+            if let Some(note) = cleanup_partial_world(&destination) {
+                message.push(' ');
+                message.push_str(&note);
+            }
+            json!({"success": false, "code": "import-failed", "error": message})
         }
     }
+}
+
+/// Entfernt einen halb entpackten Welt-Ordner. Bleibt er liegen, muss die
+/// Meldung den Pfad nennen: sonst stünde eine unbrauchbare Welt in der
+/// Weltliste des Spiels, ohne dass jemand erfährt, woher sie kommt.
+fn cleanup_partial_world(destination: &Path) -> Option<String> {
+    if std::fs::remove_dir_all(destination).is_err() && destination.exists() {
+        return Some(format!(
+            "Der halb entpackte Ordner {} konnte nicht entfernt werden; bitte lösche ihn von Hand.",
+            destination.display()
+        ));
+    }
+    None
 }
 
 #[tauri::command]
@@ -656,10 +741,198 @@ pub fn delete_instance_world(data: Value, state: State<'_, LauncherState>) -> Va
         Ok(found) => found,
         Err(error) => return error,
     };
-    match std::fs::remove_dir_all(&dir) {
+    delete_world_folder(&dir, &world)
+}
+
+/// Legt eine Welt erst beiseite und löscht sie dann.
+///
+/// Ein `rename` macht die Welt sofort und unteilbar verschwunden; bricht das
+/// endgültige Löschen ab, steht deshalb keine halb gelöschte Welt mehr in der
+/// Liste des Spiels. Ein Link in der Welt wird nur selbst verschoben, nie sein
+/// Ziel. Was nicht gelöscht werden konnte, nennt der Hinweis mit Pfad.
+fn delete_world_folder(dir: &Path, world: &str) -> Value {
+    // Der eigene Arbeitsordner ist keine Welt; er darf nie als solche gelten.
+    if world.to_ascii_lowercase().starts_with(".bamboo-") {
+        return json!({
+            "success": false,
+            "code": "invalid-name",
+            "error": "Ungültiger Weltname."
+        });
+    }
+    let Some(saves) = dir.parent() else {
+        return json!({
+            "success": false,
+            "code": "delete-failed",
+            "error": "Der Weltordner liegt nicht in einem saves-Ordner."
+        });
+    };
+
+    let mut trash = safe_fs::Trash::under(&saves.join(WORLD_TRASH));
+    if let Err(error) = trash.take(dir) {
+        // Nichts wurde verschoben: den leeren Papierkorb wieder abräumen, damit
+        // die Welt unverändert und ohne Arbeitsordner dasteht.
+        let _ = trash.restore();
+        return json!({
+            "success": false,
+            "code": "delete-failed",
+            "error": error.to_string()
+        });
+    }
+
+    match trash.discard() {
         Ok(()) => json!({"success": true, "worldName": world}),
-        Err(error) => {
-            json!({"success": false, "code": "delete-failed", "error": error.to_string()})
+        Err(error) => json!({
+            "success": true,
+            "worldName": world,
+            "warnings": [format!(
+                "Die Welt ist aus der Liste verschwunden, die Reste in {} konnten aber nicht gelöscht werden: {error}",
+                trash.root().display()
+            )]
+        }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manager(root: &Path) -> InstanceManager {
+        InstanceManager::new(root.join("instances"))
+    }
+
+    #[test]
+    fn clone_uses_the_next_free_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        std::fs::create_dir_all(manager.root().join("Kopie")).unwrap();
+        std::fs::create_dir_all(manager.root().join("Kopie 2")).unwrap();
+
+        assert_eq!(clone_target_name(&manager, "Kopie").unwrap(), "Kopie 3");
+    }
+
+    #[test]
+    fn clone_returns_a_free_name_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        assert_eq!(clone_target_name(&manager, "Frei").unwrap(), "Frei");
+    }
+
+    #[test]
+    fn clone_aborts_instead_of_looping_when_the_counter_makes_the_name_too_long() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        // 64 Zeichen sind erlaubt; „<name> 2“ wäre 66 und damit ungültig.
+        let base = "a".repeat(64);
+        std::fs::create_dir_all(manager.root().join(&base)).unwrap();
+
+        let error = clone_target_name(&manager, &base).unwrap_err();
+        assert!(error.contains("kein freier Klon-Name"), "{error}");
+    }
+
+    #[test]
+    fn clone_rejects_names_that_are_invalid_from_the_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+
+        assert!(clone_target_name(&manager, &"b".repeat(65)).is_err());
+        assert!(clone_target_name(&manager, "a/b").is_err());
+        assert!(clone_target_name(&manager, "CON").is_err());
+    }
+
+    #[test]
+    fn a_partial_world_is_removed_or_named() {
+        let dir = tempfile::tempdir().unwrap();
+        let world = dir.path().join("Welt (2)");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), "x").unwrap();
+
+        assert_eq!(cleanup_partial_world(&world), None);
+        assert!(!world.exists(), "der halb entpackte Ordner muss weg sein");
+
+        // Lässt sich der Ordner nicht entfernen, muss die Meldung den Pfad
+        // nennen – sonst stünde eine unbrauchbare Welt unerklärt in der Liste.
+        std::fs::write(&world, "kein Ordner").unwrap();
+        let note = cleanup_partial_world(&world).expect("Rest muss gemeldet werden");
+        assert!(note.contains("Welt (2)"), "{note}");
+        assert!(world.is_file());
+    }
+
+    #[test]
+    fn deleting_a_world_leaves_no_working_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let saves = dir.path().join("saves");
+        let world = saves.join("Welt");
+        std::fs::create_dir_all(world.join("region")).unwrap();
+        std::fs::write(world.join("level.dat"), "welt").unwrap();
+        std::fs::write(world.join("region/r.0.0.mca"), "region").unwrap();
+
+        let result = delete_world_folder(&world, "Welt");
+        assert_eq!(result["success"], json!(true), "{result}");
+        assert!(!world.exists(), "die Welt muss weg sein");
+        assert!(
+            !saves.join(WORLD_TRASH).exists(),
+            "kein Arbeitsordner bleibt liegen"
+        );
+    }
+
+    #[test]
+    fn a_locked_world_is_not_half_deleted() {
+        #[cfg(not(windows))]
+        {
+            eprintln!("Ohne Windows keine Sperre; Test übersprungen");
+            return;
         }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+
+            let dir = tempfile::tempdir().unwrap();
+            let saves = dir.path().join("saves");
+            let world = saves.join("Welt");
+            std::fs::create_dir_all(world.join("region")).unwrap();
+            std::fs::write(world.join("level.dat"), "welt").unwrap();
+            std::fs::write(world.join("region/r.0.0.mca"), "region").unwrap();
+            // Die Region-Datei ist gesperrt; `level.dat` läge beim Löschen
+            // alphabetisch davor, ein direktes Löschen ließe also eine halbe
+            // Welt stehen.
+            let held = std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0x0000_0001)
+                .open(world.join("region/r.0.0.mca"))
+                .unwrap();
+
+            let result = delete_world_folder(&world, "Welt");
+            assert_eq!(result["success"], json!(false), "{result}");
+            assert_eq!(
+                std::fs::read_to_string(world.join("level.dat")).unwrap(),
+                "welt",
+                "eine gesperrte Welt bleibt vollständig stehen"
+            );
+            assert!(
+                world.join("region/r.0.0.mca").is_file(),
+                "nichts darf schon gelöscht sein"
+            );
+            assert!(
+                !saves.join(WORLD_TRASH).exists(),
+                "kein leerer Arbeitsordner bleibt liegen"
+            );
+
+            drop(held);
+            let _ = std::fs::remove_dir_all(&saves);
+        }
+    }
+
+    #[test]
+    fn the_launcher_working_folder_is_not_a_world() {
+        let dir = tempfile::tempdir().unwrap();
+        let world = dir.path().join("saves/.bamboo-world-trash/123");
+        std::fs::create_dir_all(&world).unwrap();
+
+        let result = delete_world_folder(&world, ".bamboo-world-trash");
+        assert_eq!(result["success"], json!(false), "{result}");
+        assert!(
+            world.exists(),
+            "der Arbeitsordner darf nicht gelöscht werden"
+        );
     }
 }
