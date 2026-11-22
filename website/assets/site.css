@@ -804,6 +804,15 @@ h2 .accent { color: var(--green); }
   border-radius: 50%;
   box-shadow: 0 0 0 2px rgba(0, 0, 0, .35);
 }
+.theme-dot.dot-green { background: #5fbf6a; }
+.theme-dot.dot-violet { background: #b06ad4; }
+.theme-dot.dot-sky { background: #9fc6e0; }
+.theme-dot.dot-red { background: #e05252; }
+.theme-dot.dot-indigo { background: #7d74d9; }
+.theme-dot.dot-teal { background: #4fb3ab; }
+.theme-dot.dot-orange { background: #d97742; }
+.theme-dot.dot-blue { background: #3f8fd0; }
+.theme-dot.dot-pink { background: #f2a3b7; }
 .theme-foot { padding-top: 18px; border-top: 1px solid var(--line); }
 .theme-foot p { color: var(--ink-3); font-size: 12px; }
 .theme-foot a { color: var(--green); }
